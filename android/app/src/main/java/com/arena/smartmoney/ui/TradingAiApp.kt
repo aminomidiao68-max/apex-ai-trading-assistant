@@ -1,0 +1,179 @@
+package com.arena.smartmoney.ui
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.arena.smartmoney.data.session.SessionManager
+import com.arena.smartmoney.push.PushRegistrationHelper
+import com.arena.smartmoney.ui.analytics.AnalyticsScreen
+import com.arena.smartmoney.ui.auth.AuthScreen
+import com.arena.smartmoney.ui.backtest.BacktestScreen
+import com.arena.smartmoney.ui.broker.BrokerScreen
+import com.arena.smartmoney.ui.chart.ChartScreen
+import com.arena.smartmoney.ui.dashboard.DashboardScreen
+import com.arena.smartmoney.ui.journal.JournalScreen
+import com.arena.smartmoney.ui.profile.ProfileScreen
+import com.arena.smartmoney.ui.readiness.ReadinessScreen
+import com.arena.smartmoney.ui.risk.RiskCalculatorScreen
+import com.arena.smartmoney.ui.settings.SettingsScreen
+import com.arena.smartmoney.ui.signals.SignalsScreen
+
+sealed class AppRoute(val route: String, val label: String) {
+    data object Dashboard : AppRoute("dashboard", "Dashboard")
+    data object Signals : AppRoute("signals", "Signals")
+    data object Chart : AppRoute("chart", "Chart")
+    data object Risk : AppRoute("risk", "Risk")
+    data object Broker : AppRoute("broker", "Broker")
+    data object Profile : AppRoute("profile", "Profile")
+    data object Journal : AppRoute("journal", "Journal")
+    data object Backtest : AppRoute("backtest", "Backtest")
+    data object Analytics : AppRoute("analytics", "Analytics")
+    data object Settings : AppRoute("settings", "Settings")
+    data object Readiness : AppRoute("readiness", "Readiness")
+}
+
+@Composable
+fun TradingAiApp() {
+    val context = LocalContext.current
+    val sessionManager = remember { SessionManager(context) }
+    var isLoggedIn by rememberSaveable { mutableStateOf(sessionManager.getToken() != null) }
+    RequestNotificationPermissionIfNeeded()
+
+    LaunchedEffect(isLoggedIn) {
+        if (isLoggedIn) {
+            PushRegistrationHelper.registerCurrentDevice(sessionManager)
+        }
+    }
+
+    if (!isLoggedIn) {
+        AuthScreen(onAuthSuccess = { isLoggedIn = true })
+    } else {
+        TradingMainScaffold(
+            onLogout = {
+                sessionManager.clearSession()
+                isLoggedIn = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun RequestNotificationPermissionIfNeeded() {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TradingMainScaffold(onLogout: () -> Unit) {
+    val navController = rememberNavController()
+    val items = listOf(
+        AppRoute.Dashboard,
+        AppRoute.Signals,
+        AppRoute.Chart,
+        AppRoute.Risk,
+        AppRoute.Broker,
+        AppRoute.Profile
+    )
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                val navBackStackEntry by navController.currentBackStackEntryAsState()
+                val currentDestination = navBackStackEntry?.destination
+                items.forEach { route ->
+                    val icon = when (route) {
+                        AppRoute.Dashboard -> Icons.Default.Dashboard
+                        AppRoute.Signals -> Icons.Default.Analytics
+                        AppRoute.Chart -> Icons.Default.ShowChart
+                        AppRoute.Risk -> Icons.Default.Calculate
+                        AppRoute.Broker -> Icons.Default.Settings
+                        AppRoute.Profile -> Icons.Default.Person
+                        AppRoute.Journal -> Icons.Default.Analytics
+                        AppRoute.Backtest -> Icons.Default.Analytics
+                        AppRoute.Analytics -> Icons.Default.Analytics
+                        AppRoute.Settings -> Icons.Default.Settings
+                        AppRoute.Readiness -> Icons.Default.Settings
+                    }
+                    NavigationBarItem(
+                        selected = currentDestination?.hierarchy?.any { it.route == route.route } == true,
+                        onClick = { navController.navigate(route.route) },
+                        icon = { Icon(icon, contentDescription = route.label) },
+                        label = { Text(route.label) }
+                    )
+                }
+            }
+        }
+    ) { innerPadding ->
+        NavHost(
+            navController = navController,
+            startDestination = AppRoute.Dashboard.route,
+            modifier = Modifier.padding(innerPadding)
+        ) {
+            composable(AppRoute.Dashboard.route) {
+                DashboardScreen(
+                    onOpenBacktest = { navController.navigate(AppRoute.Backtest.route) },
+                    onOpenAnalytics = { navController.navigate(AppRoute.Analytics.route) }
+                )
+            }
+            composable(AppRoute.Signals.route) {
+                SignalsScreen(onOpenJournal = { navController.navigate(AppRoute.Journal.route) })
+            }
+            composable(AppRoute.Chart.route) { ChartScreen() }
+            composable(AppRoute.Risk.route) { RiskCalculatorScreen() }
+            composable(AppRoute.Broker.route) { BrokerScreen() }
+            composable(AppRoute.Profile.route) {
+                ProfileScreen(
+                    onLogout = onLogout,
+                    onOpenSettings = { navController.navigate(AppRoute.Settings.route) }
+                )
+            }
+            composable(AppRoute.Journal.route) { JournalScreen() }
+            composable(AppRoute.Backtest.route) { BacktestScreen() }
+            composable(AppRoute.Analytics.route) { AnalyticsScreen() }
+            composable(AppRoute.Settings.route) { SettingsScreen(onOpenReadiness = { navController.navigate(AppRoute.Readiness.route) }) }
+            composable(AppRoute.Readiness.route) { ReadinessScreen() }
+        }
+    }
+}

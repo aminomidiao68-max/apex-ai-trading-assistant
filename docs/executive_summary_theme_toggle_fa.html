@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Executive Summary Theme Toggle - APEX AI</title>
+  <style>
+    :root {
+      --bg: #07111d;
+      --bg2: #0b1830;
+      --card: rgba(255,255,255,0.05);
+      --line: rgba(99,236,255,0.16);
+      --text: #eef7ff;
+      --muted: #a8c7d7;
+      --accent: #63ecff;
+    }
+    body.light {
+      --bg: #f5fbff;
+      --bg2: #ffffff;
+      --card: rgba(255,255,255,0.95);
+      --line: rgba(20,120,160,0.18);
+      --text: #102331;
+      --muted: #49616e;
+      --accent: #0b86a8;
+    }
+    body {
+      margin: 0;
+      font-family: Tahoma, Arial, sans-serif;
+      background: linear-gradient(180deg, var(--bg2), var(--bg));
+      color: var(--text);
+      line-height: 1.8;
+      transition: all .25s ease;
+    }
+    .wrap { width:min(1100px, calc(100% - 28px)); margin:0 auto; padding:28px 0 40px; }
+    .toolbar { display:flex; justify-content:flex-start; gap:10px; margin-bottom:16px; }
+    .btn { border:none; border-radius:12px; padding:10px 14px; cursor:pointer; background:var(--accent); color:#04111a; font-weight:bold; }
+    .hero, .card { background: var(--card); border:1px solid var(--line); border-radius:20px; box-shadow:0 18px 45px rgba(0,0,0,.12); }
+    .hero { overflow:hidden; }
+    .hero img { width:100%; display:block; }
+    .copy { padding:22px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; margin-top:18px; }
+    .card { padding:18px; }
+    h1,h2 { color: var(--accent); margin-top:0; }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="toolbar">
+      <button class="btn" onclick="document.body.classList.toggle('light')">تغییر تم تاریک / روشن</button>
+    </div>
+
+    <div class="hero">
+      <img src="assets/apex_ai_hero.png" alt="APEX AI Hero" />
+      <div class="copy">
+        <h1>Executive Summary — APEX AI</h1>
+        <p class="muted">نسخه تعاملی با تم تاریک / روشن</p>
+        <p><strong>سازنده:</strong> Amin omidi</p>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>وضعیت فعلی</h2>
+        <p class="muted">APEX AI اکنون در مرحله Product-Ready Foundation و Pre-Production / Private-Beta Readiness قرار دارد.</p>
+      </div>
+      <div class="card">
+        <h2>نقاط قوت</h2>
+        <p class="muted">معماری منظم، validation tooling، execution preview، و مستندات کامل از نقاط قوت اصلی این پروژه هستند.</p>
+      </div>
+      <div class="card">
+        <h2>Gapها</h2>
+        <p class="muted">Firebase واقعی، credentialهای واقعی، MT5 bridge، cTrader routing و production infrastructure از مهم‌ترین gapهای باقی‌مانده‌اند.</p>
+      </div>
+      <div class="card">
+        <h2>تصمیم پیشنهادی</h2>
+        <p class="muted">تمرکز کوتاه‌مدت باید روی Firebase، demo/testnet execution و release stabilization باقی بماند.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

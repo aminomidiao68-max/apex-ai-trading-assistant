@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>APEX AI - Landing Page</title>
+  <style>
+    :root {
+      --bg: #06101c;
+      --bg2: #0b1830;
+      --card: rgba(255,255,255,0.05);
+      --line: rgba(98, 234, 255, 0.18);
+      --text: #eef7ff;
+      --muted: #a8c7d7;
+      --accent: #63ecff;
+      --accent2: #2ec7ff;
+      --success: #5af0b6;
+      --warn: #ffc857;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Tahoma, Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(34, 190, 255, 0.16), transparent 28%),
+        linear-gradient(180deg, var(--bg2), var(--bg));
+      line-height: 1.9;
+    }
+    .container {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+    .hero {
+      padding: 44px 0 28px;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 26px;
+      align-items: center;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: 0 24px 70px rgba(0,0,0,0.25);
+      overflow: hidden;
+    }
+    .hero-copy { padding: 34px; }
+    .eyebrow {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(99,236,255,0.09);
+      border: 1px solid rgba(99,236,255,0.18);
+      color: var(--accent);
+      font-size: 14px;
+    }
+    h1 {
+      font-size: 46px;
+      margin: 18px 0 12px;
+      line-height: 1.25;
+      color: white;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 18px;
+      margin-bottom: 20px;
+    }
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 12px 18px;
+      border-radius: 14px;
+      text-decoration: none;
+      font-weight: bold;
+      border: 1px solid var(--line);
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      color: #03111d;
+    }
+    .btn-secondary {
+      color: var(--text);
+      background: rgba(255,255,255,0.03);
+    }
+    .hero-meta {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 22px;
+    }
+    .mini {
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      text-align: center;
+    }
+    .mini strong { color: var(--accent); display: block; font-size: 20px; }
+    .hero-image img, .wide-image img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .section {
+      padding: 20px 0 8px;
+    }
+    .section h2 {
+      color: var(--accent);
+      font-size: 32px;
+      margin-bottom: 8px;
+    }
+    .section p.lead {
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 18px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 20px;
+    }
+    .card h3 {
+      margin-top: 0;
+      color: white;
+      font-size: 20px;
+    }
+    .card p, .card li { color: var(--muted); }
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    .tag {
+      display: inline-block;
+      margin: 4px 6px 0 0;
+      padding: 8px 12px;
+      background: rgba(99,236,255,0.08);
+      border: 1px solid rgba(99,236,255,0.14);
+      border-radius: 999px;
+      color: #d9f8ff;
+      font-size: 14px;
+    }
+    .roadmap li, ul.clean li { margin-bottom: 8px; }
+    .status-box {
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(90, 240, 182, 0.08);
+      border: 1px solid rgba(90, 240, 182, 0.18);
+      color: #e9fff6;
+    }
+    .warn-box {
+      padding: 18px;
+      border-radius: 18px;
+      background: rgba(255, 200, 87, 0.08);
+      border: 1px solid rgba(255, 200, 87, 0.18);
+      color: #fff8e3;
+    }
+    footer {
+      margin-top: 34px;
+      padding: 24px 0 40px;
+      color: var(--muted);
+      text-align: center;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    @media (max-width: 900px) {
+      .hero-grid, .two-col { grid-template-columns: 1fr; }
+      h1 { font-size: 34px; }
+      .hero-meta { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="hero">
+      <div class="hero-grid">
+        <div class="panel hero-copy">
+          <span class="eyebrow">APEX AI • Final Product Presentation</span>
+          <h1>دستیار معاملاتی حرفه‌ای برای کریپتو و فارکس</h1>
+          <p class="sub">
+            پلتفرمی موبایل‌محور برای تحلیل بازار، مدیریت ریسک، ژورنال، بک‌تست،
+            walk-forward، و آماده‌سازی اجرای سفارش با معماری اپلیکیشن + بک‌اند.
+          </p>
+          <p><strong style="color: var(--accent)">سازنده:</strong> Amin omidi</p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="presentation_script_fa.md">متن ارائه</a>
+            <a class="btn btn-secondary" href="release_checklist_fa.md">چک‌لیست انتشار</a>
+            <a class="btn btn-secondary" href="run_on_your_system_fa.md">راهنمای اجرا</a>
+          </div>
+          <div class="hero-meta">
+            <div class="mini"><strong>Android</strong> Kotlin + Compose</div>
+            <div class="mini"><strong>Backend</strong> FastAPI + SQLite</div>
+            <div class="mini"><strong>Validation</strong> Backtest / Sweep / Walk-Forward</div>
+          </div>
+        </div>
+        <div class="panel hero-image">
+          <img src="assets/apex_ai_hero.png" alt="APEX AI Hero" />
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>چرا APEX AI؟</h2>
+      <p class="lead">APEX AI برای یکپارچه‌سازی جریان واقعی معامله‌گری طراحی شده است: از تحلیل تا ارزیابی، از مدیریت ریسک تا پیش‌نمایش اجرای سفارش.</p>
+      <div class="grid">
+        <div class="card">
+          <h3>تحلیل ساختاریافته</h3>
+          <p>تحلیل الهام‌گرفته از ICT / Smart Money همراه با ساختار بازار، فیلترهای زمانی و ابزارهای کمکی.</p>
+        </div>
+        <div class="card">
+          <h3>کنترل ریسک</h3>
+          <p>ماشین‌حساب ریسک، محدودیت‌های روزانه، و نگاه حرفه‌ای به مدیریت پوزیشن و حدضرر.</p>
+        </div>
+        <div class="card">
+          <h3>اعتبارسنجی استراتژی</h3>
+          <p>Backtest، Parameter Sweep، و Walk-Forward برای ارزیابی منظم کیفیت عملکرد.</p>
+        </div>
+        <div class="card">
+          <h3>آماده اجرای کنترل‌شده</h3>
+          <p>Execution Preview Lab و foundation چند connector برای توسعه فازهای بعدی live routing.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section two-col">
+      <div class="card">
+        <h2 style="font-size:28px">اجزای اپلیکیشن</h2>
+        <ul class="clean">
+          <li>Dashboard زنده</li>
+          <li>Signal Center</li>
+          <li>Candlestick Chart با Crosshair</li>
+          <li>Risk Calculator</li>
+          <li>Trade Journal</li>
+          <li>Backtest Lab</li>
+          <li>Analytics Center</li>
+          <li>Broker / Execution Preview Lab</li>
+          <li>Settings و Risk Acknowledgement</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2 style="font-size:28px">اجزای بک‌اند</h2>
+        <ul class="clean">
+          <li>FastAPI REST API</li>
+          <li>WebSocket Market Stream</li>
+          <li>Signal Engine</li>
+          <li>Risk Engine</li>
+          <li>Storage / Journal Layer</li>
+          <li>Backtest / Sweep / Walk-Forward</li>
+          <li>Analytics Reporting</li>
+          <li>Notification Foundation</li>
+          <li>Connector Foundations</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>کانکتورها و مسیر توسعه</h2>
+      <div class="grid">
+        <div class="card"><h3>Binance Futures</h3><p>مسیر اجرا و preview آماده، مناسب برای testnet و توسعه live controlled.</p></div>
+        <div class="card"><h3>Bybit</h3><p>Order route foundation با امضای درخواست و ساختار v5 آماده شده است.</p></div>
+        <div class="card"><h3>OANDA</h3><p>پشتیبانی مناسب برای practice account و توسعه execution controlled.</p></div>
+        <div class="card"><h3>MT5 / cTrader</h3><p>Foundation و آماده‌سازی برای bridge / Open API integration در فاز بعدی.</p></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>امکانات اعتبارسنجی</h2>
+      <div class="card">
+        <span class="tag">Backtest</span>
+        <span class="tag">Parameter Sweep</span>
+        <span class="tag">Walk-Forward</span>
+        <span class="tag">Journal Stats</span>
+        <span class="tag">Analytics Report</span>
+        <p style="margin-top: 16px; color: var(--muted);">
+          این بخش‌ها کمک می‌کنند تصمیم‌گیری فقط بر پایه احساس نباشد و کیفیت استراتژی با داده و ساختار ارزیابی شود.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>وضعیت فعلی محصول</h2>
+      <div class="status-box">
+        APEX AI در این مرحله یک <strong>Product-Ready Foundation</strong> است؛ یعنی برای دمو، ارائه، توسعه تیمی، تحویل فنی و آماده‌سازی production بسیار مناسب است.
+      </div>
+      <div class="warn-box" style="margin-top: 14px;">
+        برای اجرای کاملاً production-grade هنوز نیاز به credentialهای واقعی، Firebase واقعی، bridge نهایی MT5، و routing کامل cTrader وجود دارد.
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>گام‌های بعدی</h2>
+      <ul class="roadmap">
+        <li>افزودن `google-services.json` و Firebase واقعی</li>
+        <li>تکمیل bridge واقعی MT5</li>
+        <li>تکمیل session/routing واقعی cTrader</li>
+        <li>گسترش optimization و auto-parameter search</li>
+        <li>تقویت chart UX و interaction</li>
+        <li>سخت‌سازی deployment و monitoring production</li>
+      </ul>
+    </section>
+
+    <footer>
+      APEX AI • Final Presentation & Publication Package • Created by Amin omidi
+    </footer>
+  </div>
+</body>
+</html>

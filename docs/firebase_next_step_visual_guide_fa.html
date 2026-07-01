@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>راهنمای تصویری مرحله بعد Firebase و اجرای اپ</title>
+  <style>
+    body{font-family:Tahoma,Arial,sans-serif;background:#0b1220;color:#eef6ff;line-height:2;margin:0}
+    .wrap{max-width:980px;margin:0 auto;padding:24px}
+    .card{background:#121b2e;border:1px solid #263453;border-radius:18px;padding:18px 20px;margin:14px 0}
+    h1,h2{color:#67e8f9;margin:0 0 10px}
+    .ok{background:#0f2a20;border-color:#1f6b53}
+    .warn{background:#2b2212;border-color:#7a5b1a}
+    .step{background:#17233a;border:1px solid #2d4167;border-radius:16px;padding:16px;margin:12px 0}
+    .num{display:inline-block;background:#67e8f9;color:#06111f;font-weight:700;border-radius:999px;padding:2px 10px;margin-left:8px}
+    .ui{display:inline-block;background:#23314f;border:1px solid #3f5684;border-radius:10px;padding:3px 10px;color:#fff;font-weight:700}
+    .path{display:block;background:#09111d;border:1px dashed #3d516f;border-radius:10px;padding:10px 12px;margin-top:8px;direction:ltr;text-align:left}
+    .small{color:#b8c7de;font-size:14px}
+    ul{margin:8px 0;padding-right:20px}
+    .big{font-size:20px;font-weight:700;color:#fff}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card ok">
+    <h1>الان از تو دقیقاً چی می‌خوام؟</h1>
+    <div class="big">فایل Firebase را من قبلاً داخل پروژه گذاشتم. تو دیگر لازم نیست فایل بسازی.</div>
+    <p>الان فقط باید روی <b>کامپیوتر / لپ‌تاپ</b> پروژه را در <b>Android Studio</b> باز کنی و ببینی اپ بدون خطا اجرا می‌شود یا نه.</p>
+  </div>
+
+  <div class="card warn">
+    <h2>خیلی مهم</h2>
+    <p>این مراحل با <b>گوشی</b> انجام نمی‌شود. برای ادامه باید یکی از این‌ها را داشته باشی:</p>
+    <ul>
+      <li>لپ‌تاپ ویندوز</li>
+      <li>مک‌بوک</li>
+      <li>کامپیوتر رومیزی</li>
+    </ul>
+    <p>اگر فقط گوشی داری، همین حالا به من بگو: <b>«من فقط گوشی دارم»</b> تا مسیر ساده‌تر پیشنهاد بدهم.</p>
+  </div>
+
+  <div class="card">
+    <h2>چک‌لیست خیلی کوتاه</h2>
+    <ul>
+      <li>Android Studio نصب باشد</li>
+      <li>پوشه پروژه روی کامپیوترت باشد</li>
+      <li>من فایل Firebase را داخل این مسیر گذاشته‌ام:</li>
+    </ul>
+    <span class="path">project/android/app/google-services.json</span>
+  </div>
+
+  <div class="step">
+    <span class="num">1</span><b>Android Studio را باز کن</b>
+    <p>اگر روی کامپیوتر Android Studio نصب نیست، اول آن را نصب کن. اگر نصب است، بازش کن.</p>
+  </div>
+
+  <div class="step">
+    <span class="num">2</span><b>پروژه اندروید را باز کن</b>
+    <p>در Android Studio این کار را انجام بده:</p>
+    <ul>
+      <li>روی <span class="ui">Open</span> بزن</li>
+      <li>این پوشه را انتخاب کن:</li>
+    </ul>
+    <span class="path">project/android</span>
+    <p class="small">دقت کن کل پوشه <b>android</b> را باز کنی، نه پوشه app را.</p>
+  </div>
+
+  <div class="step">
+    <span class="num">3</span><b>صبر کن پروژه لود شود</b>
+    <p>بعد از باز شدن پروژه، Android Studio چند ثانیه یا چند دقیقه مشغول می‌شود.</p>
+    <p>اگر پایین صفحه چیزی مثل <span class="ui">Gradle Sync</span> دیدی، صبر کن تمام شود.</p>
+  </div>
+
+  <div class="step">
+    <span class="num">4</span><b>اگر دکمه Sync دیدی، رویش بزن</b>
+    <p>گاهی بالای برنامه یک نوار زرد/آبی می‌آید و می‌گوید:</p>
+    <p><span class="ui">Sync Now</span></p>
+    <p>اگر دیدی، روی آن بزن.</p>
+  </div>
+
+  <div class="step">
+    <span class="num">5</span><b>اگر خطا آمد، فقط اسکرین‌شات بفرست</b>
+    <p>اگر هر خطای قرمز یا زرد دیدی:</p>
+    <ul>
+      <li>هیچ چیزی را حدس نزن</li>
+      <li>فقط اسکرین‌شات بگیر</li>
+      <li>برای من بفرست</li>
+    </ul>
+    <p class="small">من از روی اسکرین‌شات دقیقاً می‌گویم چه کار کنی.</p>
+  </div>
+
+  <div class="step">
+    <span class="num">6</span><b>اگر Sync موفق بود، اپ را اجرا کن</b>
+    <p>بالای Android Studio معمولاً یک دکمه سبز مثل این هست:</p>
+    <p><span class="ui">▶ Run</span></p>
+    <p>روی آن بزن.</p>
+    <p>اگر ازت دستگاه خواست، یکی از این دو را انتخاب کن:</p>
+    <ul>
+      <li>Emulator</li>
+      <li>گوشی واقعی با USB Debugging</li>
+    </ul>
+  </div>
+
+  <div class="step">
+    <span class="num">7</span><b>نتیجه‌ای که باید ببینی</b>
+    <ul>
+      <li>اول عکس برند APEX AI نمایش داده می‌شود</li>
+      <li>بعد صفحه ورود می‌آید</li>
+      <li>اگر اینجا رسیدی یعنی بخش اندروید تقریباً درست است</li>
+    </ul>
+  </div>
+
+  <div class="step">
+    <span class="num">8</span><b>ورود آزمایشی</b>
+    <p>اگر اپ باز شد، با این مشخصات وارد شو:</p>
+    <ul>
+      <li>Email: <span class="ui">demo@apexai.app</span></li>
+      <li>Password: <span class="ui">Demo12345!</span></li>
+    </ul>
+  </div>
+
+  <div class="step">
+    <span class="num">9</span><b>بعد از ورود برو به Profile</b>
+    <p>در Profile دو دکمه مهم هست:</p>
+    <ul>
+      <li><span class="ui">Register Device for Push</span></li>
+      <li><span class="ui">Send Test Push Event</span></li>
+    </ul>
+    <p>فعلاً فقط اگر اپ باز شد، همین مرحله کافی است. لازم نیست همه چیز را یک‌باره تست کنی.</p>
+  </div>
+
+  <div class="card ok">
+    <h2>اگر بخواهم خیلی ساده بگویم</h2>
+    <ol>
+      <li>Android Studio را باز کن</li>
+      <li>پوشه <span class="ui">project/android</span> را باز کن</li>
+      <li>اگر لازم بود <span class="ui">Sync Now</span> را بزن</li>
+      <li>اگر خطا آمد، اسکرین‌شات برای من بفرست</li>
+      <li>اگر خطا نیامد، دکمه <span class="ui">▶ Run</span> را بزن</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>دو جواب آماده که می‌توانی برای من بفرستی</h2>
+    <ul>
+      <li><b>«پروژه باز شد و خطا نداد»</b></li>
+      <li><b>«این خطا را گرفتم»</b> + اسکرین‌شات</li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

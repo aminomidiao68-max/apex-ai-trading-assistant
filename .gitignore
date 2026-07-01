@@ -1,0 +1,21 @@
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/app_data/
+*.pyc
+
+# Android / Gradle
+android/.gradle/
+android/local.properties
+android/app/google-services.json
+android/app/build/
+android/build/
+*.jks
+*.keystore
+*.aab
+*.apk
+
+# Environment / secrets
+backend/.env
+backend/.env.*.local
+*.log

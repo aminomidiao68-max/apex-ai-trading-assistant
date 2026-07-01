@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Executive Summary - APEX AI</title>
+  <style>
+    :root {
+      --bg: #07111d;
+      --bg2: #0b1830;
+      --card: rgba(255,255,255,0.05);
+      --line: rgba(99,236,255,0.16);
+      --text: #eef7ff;
+      --muted: #a8c7d7;
+      --accent: #63ecff;
+      --good: #69f0ae;
+      --warn: #ffd166;
+      --danger: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Tahoma, Arial, sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(55,200,255,0.12), transparent 26%),
+        linear-gradient(180deg, var(--bg2), var(--bg));
+      color: var(--text);
+      line-height: 1.8;
+    }
+    .container {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 40px;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 22px;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: 0 22px 64px rgba(0,0,0,0.28);
+      overflow: hidden;
+    }
+    .hero-copy { padding: 28px; }
+    .badge {
+      display: inline-block;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(99,236,255,0.08);
+      border: 1px solid rgba(99,236,255,0.18);
+      color: var(--accent);
+      font-size: 14px;
+    }
+    h1 {
+      font-size: 42px;
+      margin: 16px 0 10px;
+      line-height: 1.25;
+    }
+    h2 {
+      color: var(--accent);
+      font-size: 26px;
+      margin: 0 0 10px;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 18px;
+      margin-bottom: 18px;
+    }
+    .meta-grid, .grid {
+      display: grid;
+      gap: 16px;
+    }
+    .meta-grid { grid-template-columns: repeat(3, 1fr); margin-top: 18px; }
+    .grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .mini, .card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 18px;
+      padding: 16px;
+    }
+    .mini strong {
+      display: block;
+      color: var(--accent);
+      font-size: 20px;
+      margin-bottom: 6px;
+    }
+    .hero-image img {
+      width: 100%;
+      display: block;
+      height: auto;
+    }
+    .section {
+      margin-top: 18px;
+    }
+    .card h3 {
+      margin-top: 0;
+      margin-bottom: 8px;
+      color: white;
+      font-size: 20px;
+    }
+    .muted { color: var(--muted); }
+    ul { margin: 0; padding-right: 18px; }
+    li { margin-bottom: 6px; }
+    .status {
+      border-right: 4px solid var(--good);
+      background: rgba(105,240,174,0.08);
+    }
+    .warn {
+      border-right: 4px solid var(--warn);
+      background: rgba(255,209,102,0.08);
+    }
+    .danger {
+      border-right: 4px solid var(--danger);
+      background: rgba(255,107,107,0.08);
+    }
+    .summary-box {
+      font-size: 18px;
+      font-weight: bold;
+      color: #ffffff;
+    }
+    .footer {
+      margin-top: 30px;
+      text-align: center;
+      color: var(--muted);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding-top: 18px;
+    }
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; }
+      .meta-grid { grid-template-columns: 1fr; }
+      h1 { font-size: 32px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="hero">
+      <div class="panel hero-copy">
+        <span class="badge">Executive Summary • One Page • APEX AI</span>
+        <h1>جمع‌بندی مدیریتی نهایی پروژه APEX AI</h1>
+        <p class="sub">
+          یک نمای سریع و حرفه‌ای از وضعیت فعلی محصول، نقاط قوت، گپ‌های باقی‌مانده، اولویت‌های اجرایی و تصمیم پیشنهادی برای حرکت به سمت محصول واقعی.
+        </p>
+        <p><strong style="color: var(--accent);">سازنده:</strong> Amin omidi</p>
+        <div class="meta-grid">
+          <div class="mini"><strong>Stage</strong> Pre-Production / Private Beta Ready</div>
+          <div class="mini"><strong>Core</strong> App + Backend + Validation + Execution Preview</div>
+          <div class="mini"><strong>Next Focus</strong> Firebase واقعی + Connectorهای دمو/تست</div>
+        </div>
+      </div>
+      <div class="panel hero-image">
+        <img src="assets/apex_ai_hero.png" alt="APEX AI Executive Hero" />
+      </div>
+    </section>
+
+    <section class="section grid">
+      <div class="card status">
+        <h2>وضعیت فعلی</h2>
+        <p class="summary-box">APEX AI اکنون یک Product-Ready Foundation بسیار قوی است و از مرحله نمونه اولیه ساده عبور کرده است.</p>
+        <p class="muted">پروژه شامل اپ اندروید، بک‌اند FastAPI، موتور تحلیل، مدیریت ریسک، ژورنال، بک‌تست، sweep، walk-forward، analytics و execution preview است.</p>
+      </div>
+      <div class="card">
+        <h2>الان دقیقاً کجا هستیم؟</h2>
+        <p class="muted">مرحله فعلی را می‌توان این‌طور توصیف کرد:</p>
+        <p class="summary-box">Pre-Production / Private-Beta Readiness</p>
+      </div>
+    </section>
+
+    <section class="section grid">
+      <div class="card">
+        <h2>بزرگ‌ترین نقاط قوت</h2>
+        <ul>
+          <li>معماری منظم در اندروید و بک‌اند</li>
+          <li>مدیریت ریسک داخلی</li>
+          <li>Backtest / Sweep / Walk-Forward</li>
+          <li>Execution Preview Lab</li>
+          <li>مستندات کامل تحویل، انتشار و اجرا</li>
+        </ul>
+      </div>
+      <div class="card warn">
+        <h2>مهم‌ترین Gapها</h2>
+        <ul>
+          <li>google-services.json</li>
+          <li>Firebase service account واقعی</li>
+          <li>credentialهای واقعی/testnet بروکرها</li>
+          <li>bridge واقعی MT5</li>
+          <li>routing/session واقعی cTrader</li>
+          <li>دامنه و HTTPS production</li>
+          <li>تست گسترده روی دستگاه واقعی</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section grid">
+      <div class="card danger">
+        <h2>Blockerهای فعلی</h2>
+        <ul>
+          <li><strong>فنی:</strong> نبود credentialها و فایل‌های واقعی بیرونی</li>
+          <li><strong>عملیاتی:</strong> staging / production environment نهایی نشده</li>
+          <li><strong>تجاری:</strong> private alpha واقعی هنوز آغاز نشده</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h2>اولویت همین هفته</h2>
+        <ol>
+          <li>تکمیل Firebase واقعی</li>
+          <li>تست Binance testnet + OANDA practice</li>
+          <li>تست release build روی دستگاه واقعی</li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section grid">
+      <div class="card">
+        <h2>بهترین مسیر بعدی</h2>
+        <h3>کوتاه‌مدت</h3>
+        <ul>
+          <li>Firebase واقعی</li>
+          <li>Execution demo/testnet</li>
+          <li>Staging پایدار</li>
+        </ul>
+        <h3>میان‌مدت</h3>
+        <ul>
+          <li>Private Alpha</li>
+          <li>Feedback واقعی</li>
+          <li>بهبود UX و connectorها</li>
+        </ul>
+        <h3>بلندمدت</h3>
+        <ul>
+          <li>Closed Beta</li>
+          <li>Production محدود</li>
+          <li>Monetization / Launch Strategy</li>
+        </ul>
+      </div>
+      <div class="card warn">
+        <h2>ریسک اصلی اگر عجله کنیم</h2>
+        <p class="muted">اگر قبل از تکمیل testnet/demo و risk guardها وارد live execution شویم:</p>
+        <ul>
+          <li>ریسک خطای سفارش بالا می‌رود</li>
+          <li>ناهماهنگی connectorها بیشتر می‌شود</li>
+          <li>اعتماد به محصول آسیب می‌بیند</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="card status">
+        <h2>جمع‌بندی مدیریتی یک‌خطی</h2>
+        <p class="summary-box">
+          APEX AI از نظر نرم‌افزاری آماده جهش به private alpha است، اما برای تبدیل شدن به محصول واقعی عملیاتی، اکنون باید روی credentialهای واقعی، Firebase، testnet execution و production setup تمرکز شود.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="card">
+        <h2>تصمیم پیشنهادی فعلی</h2>
+        <ul>
+          <li>هنوز live execution عمومی فعال نشود</li>
+          <li>۲ تا ۴ هفته فقط روی Firebase + execution demo/testnet + release stabilization کار شود</li>
+          <li>سپس private alpha با کاربران محدود آغاز شود</li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="footer">
+      APEX AI • Executive Summary • Created by Amin omidi
+    </div>
+  </div>
+</body>
+</html>
