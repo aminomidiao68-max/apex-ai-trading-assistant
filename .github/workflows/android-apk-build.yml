@@ -31,11 +31,16 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
       - name: Restore google-services.json if secret exists
         shell: bash
         run: |
           if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
-            echo "${{ secrets.GOOGLE_SERVICES_JSON }}" > android/app/google-services.json
+            printf '%s' "${{ secrets.GOOGLE_SERVICES_JSON }}" > android/app/google-services.json
           fi
 
       - name: Restore release keystore if secret exists
@@ -47,13 +52,14 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: gradle assembleDebug --stacktrace
 
       - name: Build release APK
         working-directory: android
-        run: ./gradlew assembleRelease
+        run: gradle assembleRelease --stacktrace
 
       - name: Upload APK artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: apex-ai-apks
