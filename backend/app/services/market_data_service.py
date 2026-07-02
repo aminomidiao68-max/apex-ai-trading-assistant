@@ -15,7 +15,7 @@ class MarketDataService:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url, params={"symbol": symbol.upper()})
             if response.status_code == 451:
-                return await self.fetch_bybit_ticker(symbol)
+                return await self.fetch_okx_ticker(symbol)
             response.raise_for_status()
             data = response.json()
         return MarketSnapshot(
@@ -35,7 +35,7 @@ class MarketDataService:
                 params={"symbol": symbol.upper(), "interval": interval, "limit": limit},
             )
             if response.status_code == 451:
-                return await self.fetch_bybit_candles(symbol, interval=interval, limit=limit)
+                return await self.fetch_okx_candles(symbol, interval=interval, limit=limit)
             response.raise_for_status()
             raw = response.json()
         candles: list[Candle] = []
@@ -52,46 +52,43 @@ class MarketDataService:
             )
         return candles
 
-    async def fetch_bybit_ticker(self, symbol: str) -> MarketSnapshot:
-        url = f"{settings.bybit_base_url}/v5/market/tickers"
-        params = {"category": "linear", "symbol": symbol.upper()}
+    async def fetch_okx_ticker(self, symbol: str) -> MarketSnapshot:
+        inst_id = self._normalize_okx_symbol(symbol)
+        url = "https://www.okx.com/api/v5/market/ticker"
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(url, params=params)
+            response = await client.get(url, params={"instId": inst_id})
             response.raise_for_status()
             data = response.json()
-        items = (data.get("result") or {}).get("list") or []
+        items = data.get("data") or []
         if not items:
             return MarketSnapshot(
                 symbol=symbol.upper(),
                 market=MarketType.crypto,
-                source="bybit",
+                source="okx",
                 status="empty_response",
             )
         item = items[0]
-        last_price = item.get("lastPrice")
-        change_pct = item.get("price24hPcnt")
+        last_price = float(item["last"])
+        open_24h = float(item.get("open24h") or last_price)
+        change_pct = ((last_price - open_24h) / open_24h * 100.0) if open_24h else 0.0
         return MarketSnapshot(
             symbol=symbol.upper(),
             market=MarketType.crypto,
-            last_price=float(last_price) if last_price is not None else None,
-            change_pct=(float(change_pct) * 100.0) if change_pct not in (None, "") else None,
-            source="bybit",
+            last_price=last_price,
+            change_pct=round(change_pct, 4),
+            source="okx",
             status="live-fallback",
         )
 
-    async def fetch_bybit_candles(self, symbol: str, interval: str = "15m", limit: int = 200) -> List[Candle]:
-        url = f"{settings.bybit_base_url}/v5/market/kline"
-        params = {
-            "category": "linear",
-            "symbol": symbol.upper(),
-            "interval": self._normalize_bybit_interval(interval),
-            "limit": limit,
-        }
+    async def fetch_okx_candles(self, symbol: str, interval: str = "15m", limit: int = 200) -> List[Candle]:
+        inst_id = self._normalize_okx_symbol(symbol)
+        bar = self._normalize_okx_interval(interval)
+        url = "https://www.okx.com/api/v5/market/candles"
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(url, params=params)
+            response = await client.get(url, params={"instId": inst_id, "bar": bar, "limit": limit})
             response.raise_for_status()
             data = response.json()
-        raw = (data.get("result") or {}).get("list") or []
+        raw = data.get("data") or []
         candles: list[Candle] = []
         for item in reversed(raw):
             candles.append(
@@ -207,18 +204,24 @@ class MarketDataService:
             return f"{normalized[:3]}/{normalized[3:]}"
         return symbol
 
-    def _normalize_bybit_interval(self, interval: str) -> str:
+    def _normalize_okx_symbol(self, symbol: str) -> str:
+        upper = symbol.upper()
+        if upper.endswith("USDT"):
+            return f"{upper[:-4]}-USDT"
+        return upper
+
+    def _normalize_okx_interval(self, interval: str) -> str:
         mapping = {
-            "1m": "1",
-            "3m": "3",
-            "5m": "5",
-            "15m": "15",
-            "30m": "30",
-            "1h": "60",
-            "2h": "120",
-            "4h": "240",
-            "6h": "360",
-            "12h": "720",
-            "1d": "D",
+            "1m": "1m",
+            "3m": "3m",
+            "5m": "5m",
+            "15m": "15m",
+            "30m": "30m",
+            "1h": "1H",
+            "2h": "2H",
+            "4h": "4H",
+            "6h": "6H",
+            "12h": "12H",
+            "1d": "1D",
         }
-        return mapping.get(interval, "15")
+        return mapping.get(interval, "15m")
