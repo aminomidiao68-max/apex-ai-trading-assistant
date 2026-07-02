@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Iterable, List
 
 import httpx
@@ -13,6 +14,8 @@ class MarketDataService:
         url = "https://api.binance.com/api/v3/ticker/24hr"
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url, params={"symbol": symbol.upper()})
+            if response.status_code == 451:
+                return await self.fetch_bybit_ticker(symbol)
             response.raise_for_status()
             data = response.json()
         return MarketSnapshot(
@@ -31,18 +34,74 @@ class MarketDataService:
                 url,
                 params={"symbol": symbol.upper(), "interval": interval, "limit": limit},
             )
+            if response.status_code == 451:
+                return await self.fetch_bybit_candles(symbol, interval=interval, limit=limit)
             response.raise_for_status()
             raw = response.json()
         candles: list[Candle] = []
         for item in raw:
             candles.append(
                 Candle(
-                    timestamp=item[0] / 1000,
+                    timestamp=datetime.fromtimestamp(item[0] / 1000, tz=timezone.utc),
                     open=float(item[1]),
                     high=float(item[2]),
                     low=float(item[3]),
                     close=float(item[4]),
                     volume=float(item[5]),
+                )
+            )
+        return candles
+
+    async def fetch_bybit_ticker(self, symbol: str) -> MarketSnapshot:
+        url = f"{settings.bybit_base_url}/v5/market/tickers"
+        params = {"category": "linear", "symbol": symbol.upper()}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+        items = (data.get("result") or {}).get("list") or []
+        if not items:
+            return MarketSnapshot(
+                symbol=symbol.upper(),
+                market=MarketType.crypto,
+                source="bybit",
+                status="empty_response",
+            )
+        item = items[0]
+        last_price = item.get("lastPrice")
+        change_pct = item.get("price24hPcnt")
+        return MarketSnapshot(
+            symbol=symbol.upper(),
+            market=MarketType.crypto,
+            last_price=float(last_price) if last_price is not None else None,
+            change_pct=(float(change_pct) * 100.0) if change_pct not in (None, "") else None,
+            source="bybit",
+            status="live-fallback",
+        )
+
+    async def fetch_bybit_candles(self, symbol: str, interval: str = "15m", limit: int = 200) -> List[Candle]:
+        url = f"{settings.bybit_base_url}/v5/market/kline"
+        params = {
+            "category": "linear",
+            "symbol": symbol.upper(),
+            "interval": self._normalize_bybit_interval(interval),
+            "limit": limit,
+        }
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            data = response.json()
+        raw = (data.get("result") or {}).get("list") or []
+        candles: list[Candle] = []
+        for item in reversed(raw):
+            candles.append(
+                Candle(
+                    timestamp=datetime.fromtimestamp(int(item[0]) / 1000, tz=timezone.utc),
+                    open=float(item[1]),
+                    high=float(item[2]),
+                    low=float(item[3]),
+                    close=float(item[4]),
+                    volume=float(item[5]) if len(item) > 5 else 0.0,
                 )
             )
         return candles
@@ -147,3 +206,19 @@ class MarketDataService:
         if len(normalized) == 6:
             return f"{normalized[:3]}/{normalized[3:]}"
         return symbol
+
+    def _normalize_bybit_interval(self, interval: str) -> str:
+        mapping = {
+            "1m": "1",
+            "3m": "3",
+            "5m": "5",
+            "15m": "15",
+            "30m": "30",
+            "1h": "60",
+            "2h": "120",
+            "4h": "240",
+            "6h": "360",
+            "12h": "720",
+            "1d": "D",
+        }
+        return mapping.get(interval, "15")
