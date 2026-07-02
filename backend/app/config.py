@@ -25,7 +25,7 @@ class Settings(BaseModel):
 
     bybit_api_key: str = os.getenv("BYBIT_API_KEY", "")
     bybit_api_secret: str = os.getenv("BYBIT_API_SECRET", "")
-    bybit_base_url: str = os.getenv("BYBIT_BASE_URL", "https://api-testnet.bybit.com")
+    bybit_base_url: str = os.getenv("BYBIT_BASE_URL", "https://api.bybit.com")
 
     oanda_api_token: str = os.getenv("OANDA_API_TOKEN", "")
     oanda_account_id: str = os.getenv("OANDA_ACCOUNT_ID", "")
