@@ -131,7 +131,7 @@ private fun CandlestickChart(
     Card(modifier = Modifier.fillMaxWidth()) {
         if (candles.isEmpty()) {
             Text("No chart data available", modifier = Modifier.padding(16.dp))
-            return
+            return@Card
         }
 
         var chartWidthPx by remember { mutableIntStateOf(0) }
