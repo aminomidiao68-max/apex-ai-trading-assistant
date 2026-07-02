@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "543287599251",
+    "project_id": "apex-ai-24b9f",
+    "storage_bucket": "apex-ai-24b9f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:543287599251:android:d224c46eb949044180ed66",
+        "android_client_info": {
+          "package_name": "com.arena.smartmoney"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAl6hFARK8wUZPhsFMpsu_LGAxMn-8TC0Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
