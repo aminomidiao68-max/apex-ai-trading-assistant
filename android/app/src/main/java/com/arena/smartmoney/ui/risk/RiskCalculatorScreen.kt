@@ -25,6 +25,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arena.smartmoney.ui.components.PremiumGlassCard
 import com.arena.smartmoney.ui.components.PremiumScreenBackground
 import com.arena.smartmoney.ui.components.PremiumSectionHeader
+import com.arena.smartmoney.ui.components.premiumTextFieldColors
+import com.arena.smartmoney.ui.components.premiumTextFieldStyle
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 
 @Composable
@@ -54,7 +56,10 @@ fun RiskCalculatorScreen(viewModel: RiskCalculatorViewModel = viewModel()) {
                     onValueChange = viewModel::onEntryChange,
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(t("Entry Price", "قیمت ورود")) },
-                    shape = RoundedCornerShape(18.dp)
+                    shape = RoundedCornerShape(18.dp),
+                    singleLine = true,
+                    textStyle = premiumTextFieldStyle(),
+                    colors = premiumTextFieldColors()
                 )
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
@@ -62,7 +67,10 @@ fun RiskCalculatorScreen(viewModel: RiskCalculatorViewModel = viewModel()) {
                     onValueChange = viewModel::onStopChange,
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(t("Stop Loss", "حد ضرر")) },
-                    shape = RoundedCornerShape(18.dp)
+                    shape = RoundedCornerShape(18.dp),
+                    singleLine = true,
+                    textStyle = premiumTextFieldStyle(),
+                    colors = premiumTextFieldColors()
                 )
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
@@ -70,7 +78,10 @@ fun RiskCalculatorScreen(viewModel: RiskCalculatorViewModel = viewModel()) {
                     onValueChange = viewModel::onBalanceChange,
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(t("Account Balance", "بالانس حساب")) },
-                    shape = RoundedCornerShape(18.dp)
+                    shape = RoundedCornerShape(18.dp),
+                    singleLine = true,
+                    textStyle = premiumTextFieldStyle(),
+                    colors = premiumTextFieldColors()
                 )
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
@@ -78,7 +89,10 @@ fun RiskCalculatorScreen(viewModel: RiskCalculatorViewModel = viewModel()) {
                     onValueChange = viewModel::onRiskPctChange,
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(t("Risk % per Trade", "درصد ریسک هر معامله")) },
-                    shape = RoundedCornerShape(18.dp)
+                    shape = RoundedCornerShape(18.dp),
+                    singleLine = true,
+                    textStyle = premiumTextFieldStyle(),
+                    colors = premiumTextFieldColors()
                 )
                 Spacer(Modifier.height(12.dp))
                 Button(onClick = viewModel::calculate, modifier = Modifier.fillMaxWidth()) {

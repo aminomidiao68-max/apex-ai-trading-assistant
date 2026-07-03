@@ -40,6 +40,8 @@ import com.arena.smartmoney.push.PushRegistrationHelper
 import com.arena.smartmoney.ui.components.PremiumGlassCard
 import com.arena.smartmoney.ui.components.PremiumScreenBackground
 import com.arena.smartmoney.ui.components.PremiumSectionHeader
+import com.arena.smartmoney.ui.components.premiumTextFieldColors
+import com.arena.smartmoney.ui.components.premiumTextFieldStyle
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 import kotlinx.coroutines.launch
 
@@ -57,6 +59,33 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     var password by rememberSaveable { mutableStateOf("Demo12345!") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    fun humanizeAuthError(raw: String?): String {
+        val msg = raw.orEmpty()
+        return when {
+            "409" in msg || msg.contains("already registered", ignoreCase = true) ->
+                t("This email is already registered. Please log in instead.", "این ایمیل قبلاً ثبت شده است. لطفاً وارد شوید.")
+            "401" in msg || msg.contains("invalid email or password", ignoreCase = true) ->
+                t("Email or password is incorrect.", "ایمیل یا رمز عبور اشتباه است.")
+            msg.isBlank() -> t("Authentication failed", "ورود/ثبت‌نام ناموفق بود")
+            else -> msg
+        }
+    }
+
+    fun switchToLogin() {
+        isRegisterMode = false
+        error = null
+        if (email.isBlank()) email = "demo@apexai.app"
+        if (password.isBlank()) password = "Demo12345!"
+    }
+
+    fun switchToRegister() {
+        isRegisterMode = true
+        error = null
+        name = ""
+        email = ""
+        password = ""
+    }
 
     PremiumScreenBackground {
         Column(
@@ -81,10 +110,10 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
 
             PremiumGlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = { isRegisterMode = false }) {
+                    TextButton(onClick = { switchToLogin() }) {
                         Text(t("Login", "ورود"), color = if (!isRegisterMode) Color(0xFF67ECFF) else Color.White)
                     }
-                    TextButton(onClick = { isRegisterMode = true }) {
+                    TextButton(onClick = { switchToRegister() }) {
                         Text(t("Register", "ثبت‌نام"), color = if (isRegisterMode) Color(0xFF67ECFF) else Color.White)
                     }
                 }
@@ -97,7 +126,10 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                         onValueChange = { name = it },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(t("Full Name", "نام کامل")) },
-                        shape = RoundedCornerShape(18.dp)
+                        shape = RoundedCornerShape(18.dp),
+                        singleLine = true,
+                        textStyle = premiumTextFieldStyle(),
+                        colors = premiumTextFieldColors()
                     )
                     Spacer(Modifier.height(10.dp))
                 }
@@ -107,7 +139,10 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                     onValueChange = { email = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(t("Email", "ایمیل")) },
-                    shape = RoundedCornerShape(18.dp)
+                    shape = RoundedCornerShape(18.dp),
+                    singleLine = true,
+                    textStyle = premiumTextFieldStyle(),
+                    colors = premiumTextFieldColors()
                 )
                 Spacer(Modifier.height(10.dp))
 
@@ -117,11 +152,14 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(t("Password", "رمز عبور")) },
                     visualTransformation = PasswordVisualTransformation(),
-                    shape = RoundedCornerShape(18.dp)
+                    shape = RoundedCornerShape(18.dp),
+                    singleLine = true,
+                    textStyle = premiumTextFieldStyle(),
+                    colors = premiumTextFieldColors()
                 )
 
                 Spacer(Modifier.height(12.dp))
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                error?.let { Text(humanizeAuthError(it), color = MaterialTheme.colorScheme.error) }
 
                 Button(
                     onClick = {
@@ -150,7 +188,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                                 onAuthSuccess()
                             }.onFailure { throwable ->
                                 loading = false
-                                error = throwable.message ?: t("Authentication failed", "ورود ناموفق بود")
+                                error = humanizeAuthError(throwable.message)
                             }
                         }
                     },

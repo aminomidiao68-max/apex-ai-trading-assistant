@@ -11,11 +11,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -82,3 +84,29 @@ fun PremiumSectionHeader(
         }
     }
 }
+
+@Composable
+fun PremiumAccentText(value: String) {
+    Text(
+        text = value,
+        color = Color(0xFF67ECFF),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold
+    )
+}
+
+@Composable
+fun premiumTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Color.White,
+    unfocusedTextColor = Color.White,
+    disabledTextColor = Color(0xFFBCEEFF),
+    focusedBorderColor = Color(0xFF4D8DFF),
+    unfocusedBorderColor = Color(0x66BCEEFF),
+    focusedLabelColor = Color(0xFF67ECFF),
+    unfocusedLabelColor = Color(0x88BCEEFF),
+    cursorColor = Color(0xFF67ECFF),
+    focusedContainerColor = Color.Transparent,
+    unfocusedContainerColor = Color.Transparent
+)
+
+fun premiumTextFieldStyle(): TextStyle = TextStyle(color = Color.White)

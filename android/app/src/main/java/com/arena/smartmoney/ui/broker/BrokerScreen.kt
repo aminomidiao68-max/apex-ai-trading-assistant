@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -23,6 +24,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arena.smartmoney.ui.components.PremiumGlassCard
 import com.arena.smartmoney.ui.components.PremiumScreenBackground
 import com.arena.smartmoney.ui.components.PremiumSectionHeader
+import com.arena.smartmoney.ui.components.premiumTextFieldColors
+import com.arena.smartmoney.ui.components.premiumTextFieldStyle
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 
 @Composable
@@ -81,13 +84,21 @@ fun BrokerScreen(viewModel: BrokerViewModel = viewModel()) {
                         value = state.symbol,
                         onValueChange = viewModel::updateSymbol,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text(t("Symbol / Instrument", "نماد / ابزار")) }
+                        label = { Text(t("Symbol / Instrument", "نماد / ابزار")) },
+                        shape = RoundedCornerShape(18.dp),
+                        singleLine = true,
+                        textStyle = premiumTextFieldStyle(),
+                        colors = premiumTextFieldColors()
                     )
                     OutlinedTextField(
                         value = state.quantity,
                         onValueChange = viewModel::updateQuantity,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text(t("Quantity / Units / Volume", "مقدار / واحد / حجم")) }
+                        label = { Text(t("Quantity / Units / Volume", "مقدار / واحد / حجم")) },
+                        shape = RoundedCornerShape(18.dp),
+                        singleLine = true,
+                        textStyle = premiumTextFieldStyle(),
+                        colors = premiumTextFieldColors()
                     )
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { viewModel.updateSide("buy") }, modifier = Modifier.weight(1f)) { Text(t("BUY", "خرید")) }
