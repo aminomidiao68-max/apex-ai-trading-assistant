@@ -99,9 +99,9 @@ fun DashboardScreen(
                     .padding(22.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("APEX AI", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text("APEX AI PREMIUM", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                     Text(
-                        t("Advanced AI Trading Dashboard", "داشبورد پیشرفته هوش مصنوعی معاملات"),
+                        t("Premium AI Market Command Center", "مرکز فرمان پرمیوم هوش مصنوعی بازار"),
                         style = MaterialTheme.typography.titleMedium,
                         color = Color(0xFFB9EFFF)
                     )
