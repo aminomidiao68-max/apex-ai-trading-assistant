@@ -17,10 +17,14 @@ class AppPreferencesManager(context: Context) {
     fun isRiskAcknowledged(): Boolean = prefs.getBoolean(KEY_RISK_ACK, false)
     fun setRiskAcknowledged(value: Boolean) = prefs.edit().putBoolean(KEY_RISK_ACK, value).apply()
 
+    fun getLanguage(): String = prefs.getString(KEY_LANGUAGE, "fa") ?: "fa"
+    fun setLanguage(value: String) = prefs.edit().putString(KEY_LANGUAGE, value).apply()
+
     companion object {
         private const val KEY_NOTIFICATIONS = "notifications_enabled"
         private const val KEY_AUTO_REFRESH = "auto_refresh_enabled"
         private const val KEY_TESTNET_ONLY = "testnet_only"
         private const val KEY_RISK_ACK = "risk_ack"
+        private const val KEY_LANGUAGE = "language"
     }
 }

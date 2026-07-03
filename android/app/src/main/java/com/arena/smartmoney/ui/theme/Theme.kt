@@ -7,15 +7,20 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 
 private val DarkColors = darkColorScheme(
-    primary = Blue80,
-    secondary = Blue40,
+    primary = CyanAccent,
+    secondary = BlueAccent,
+    tertiary = TealAccent,
+    background = DarkBg,
     surface = CardBg,
-    background = DarkBg
+    surfaceVariant = CardBgElevated,
+    onBackground = SoftText,
+    onSurface = SoftText
 )
 
 private val LightColors = lightColorScheme(
-    primary = Blue40,
-    secondary = Blue80
+    primary = BlueAccent,
+    secondary = CyanAccent,
+    tertiary = TealAccent
 )
 
 @Composable

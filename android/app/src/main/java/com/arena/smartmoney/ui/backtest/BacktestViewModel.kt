@@ -218,7 +218,7 @@ class BacktestViewModel(
             }.onFailure { throwable ->
                 _uiState.value = _uiState.value.copy(
                     loading = false,
-                    error = throwable.message ?: "Walk-forward failed"
+                    error = throwable.message ?: "Walk-forward failed / اجرای واک‌فوروارد ناموفق بود"
                 )
             }
         }

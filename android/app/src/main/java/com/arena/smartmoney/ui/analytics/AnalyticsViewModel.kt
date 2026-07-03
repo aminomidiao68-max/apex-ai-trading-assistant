@@ -34,7 +34,7 @@ class AnalyticsViewModel(
                 .onFailure { throwable ->
                     _uiState.value = AnalyticsUiState(
                         loading = false,
-                        error = throwable.message ?: "Failed to load analytics"
+                        error = throwable.message ?: "Failed to load analytics / خطا در بارگذاری آنالیتیکس"
                     )
                 }
         }

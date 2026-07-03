@@ -20,10 +20,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.arena.smartmoney.ui.i18n.rememberTranslator
 
 @Composable
 fun RiskCalculatorScreen(viewModel: RiskCalculatorViewModel = viewModel()) {
     val state by viewModel.uiState.collectAsState()
+    val t = rememberTranslator()
 
     Column(
         modifier = Modifier
@@ -32,54 +34,54 @@ fun RiskCalculatorScreen(viewModel: RiskCalculatorViewModel = viewModel()) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text("Professional Risk Manager", style = MaterialTheme.typography.headlineSmall)
-        Text("Position size, max loss, breakeven and partial TP planning")
+        Text(t("Professional Risk Manager", "مدیریت حرفه‌ای ریسک"), style = MaterialTheme.typography.headlineSmall)
+        Text(t("Position size, max loss, breakeven and partial TP planning", "محاسبه حجم، حداکثر ضرر، بریک‌اون و برنامه‌ریزی تی‌پی پله‌ای"))
 
         OutlinedTextField(
             value = state.entry,
             onValueChange = viewModel::onEntryChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Entry Price") }
+            label = { Text(t("Entry Price", "قیمت ورود")) }
         )
         OutlinedTextField(
             value = state.stop,
             onValueChange = viewModel::onStopChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Stop Loss") }
+            label = { Text(t("Stop Loss", "حد ضرر")) }
         )
         OutlinedTextField(
             value = state.balance,
             onValueChange = viewModel::onBalanceChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Account Balance") }
+            label = { Text(t("Account Balance", "بالانس حساب")) }
         )
         OutlinedTextField(
             value = state.riskPct,
             onValueChange = viewModel::onRiskPctChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Risk % per Trade") }
+            label = { Text(t("Risk % per Trade", "درصد ریسک هر معامله")) }
         )
 
         Button(onClick = viewModel::calculate, modifier = Modifier.fillMaxWidth()) {
-            Text(if (state.loading) "Calculating..." else "Calculate")
+            Text(if (state.loading) t("Calculating...", "در حال محاسبه...") else t("Calculate", "محاسبه"))
         }
 
         state.error?.let {
-            Text(it)
+            Text(it, color = MaterialTheme.colorScheme.error)
         }
 
         state.result?.let { result ->
             Spacer(Modifier.height(8.dp))
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Trade Allowed: ${result.is_trade_allowed}")
-                    Text("Risk Amount: ${result.risk_amount}")
-                    Text("Position Size Units: ${result.position_size_units}")
-                    Text("Stop Distance: ${result.stop_distance}")
-                    Text("Breakeven RR: ${result.breakeven_rr}")
-                    Text("Partial TPs: ${result.partial_take_profit_rr.joinToString()}")
+                    Text(t("Trade Allowed", "معامله مجاز") + ": ${result.is_trade_allowed}")
+                    Text(t("Risk Amount", "مقدار ریسک") + ": ${result.risk_amount}")
+                    Text(t("Position Size Units", "حجم پوزیشن") + ": ${result.position_size_units}")
+                    Text(t("Stop Distance", "فاصله حد ضرر") + ": ${result.stop_distance}")
+                    Text(t("Breakeven RR", "نسبت بریک‌اون") + ": ${result.breakeven_rr}")
+                    Text(t("Partial TPs", "تی‌پی‌های پله‌ای") + ": ${result.partial_take_profit_rr.joinToString()}")
                     if (result.warnings.isNotEmpty()) {
-                        Text("Warnings: ${result.warnings.joinToString()}")
+                        Text(t("Warnings", "هشدارها") + ": ${result.warnings.joinToString()}")
                     }
                 }
             }

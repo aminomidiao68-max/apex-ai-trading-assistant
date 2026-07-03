@@ -19,6 +19,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,12 +28,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.arena.smartmoney.data.preferences.AppPreferencesManager
 import com.arena.smartmoney.data.session.SessionManager
 import com.arena.smartmoney.push.PushRegistrationHelper
 import com.arena.smartmoney.ui.analytics.AnalyticsScreen
@@ -41,6 +45,8 @@ import com.arena.smartmoney.ui.backtest.BacktestScreen
 import com.arena.smartmoney.ui.broker.BrokerScreen
 import com.arena.smartmoney.ui.chart.ChartScreen
 import com.arena.smartmoney.ui.dashboard.DashboardScreen
+import com.arena.smartmoney.ui.i18n.AppLanguageState
+import com.arena.smartmoney.ui.i18n.rememberTranslator
 import com.arena.smartmoney.ui.journal.JournalScreen
 import com.arena.smartmoney.ui.profile.ProfileScreen
 import com.arena.smartmoney.ui.readiness.ReadinessScreen
@@ -66,8 +72,13 @@ sealed class AppRoute(val route: String, val label: String) {
 fun TradingAiApp() {
     val context = LocalContext.current
     val sessionManager = remember { SessionManager(context) }
+    val prefs = remember { AppPreferencesManager(context) }
     var isLoggedIn by rememberSaveable { mutableStateOf(sessionManager.getToken() != null) }
     RequestNotificationPermissionIfNeeded()
+
+    LaunchedEffect(Unit) {
+        AppLanguageState.current = prefs.getLanguage()
+    }
 
     LaunchedEffect(isLoggedIn) {
         if (isLoggedIn) {
@@ -75,15 +86,19 @@ fun TradingAiApp() {
         }
     }
 
-    if (!isLoggedIn) {
-        AuthScreen(onAuthSuccess = { isLoggedIn = true })
-    } else {
-        TradingMainScaffold(
-            onLogout = {
-                sessionManager.clearSession()
-                isLoggedIn = false
-            }
-        )
+    val layoutDirection = if (AppLanguageState.current == "fa") LayoutDirection.Rtl else LayoutDirection.Ltr
+
+    CompositionLocalProvider(LocalLayoutDirection provides layoutDirection) {
+        if (!isLoggedIn) {
+            AuthScreen(onAuthSuccess = { isLoggedIn = true })
+        } else {
+            TradingMainScaffold(
+                onLogout = {
+                    sessionManager.clearSession()
+                    isLoggedIn = false
+                }
+            )
+        }
     }
 }
 
@@ -94,7 +109,8 @@ private fun RequestNotificationPermissionIfNeeded() {
 
     LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(
+            if (
+                ContextCompat.checkSelfPermission(
                     context,
                     Manifest.permission.POST_NOTIFICATIONS
                 ) != PackageManager.PERMISSION_GRANTED
@@ -108,6 +124,7 @@ private fun RequestNotificationPermissionIfNeeded() {
 @Composable
 private fun TradingMainScaffold(onLogout: () -> Unit) {
     val navController = rememberNavController()
+    val t = rememberTranslator()
     val items = listOf(
         AppRoute.Dashboard,
         AppRoute.Signals,
@@ -122,6 +139,7 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
             NavigationBar {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentDestination = navBackStackEntry?.destination
+
                 items.forEach { route ->
                     val icon = when (route) {
                         AppRoute.Dashboard -> Icons.Default.Dashboard
@@ -136,11 +154,33 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
                         AppRoute.Settings -> Icons.Default.Settings
                         AppRoute.Readiness -> Icons.Default.Settings
                     }
+                    val localizedLabel = when (route) {
+                        AppRoute.Dashboard -> t("Dashboard", "داشبورد")
+                        AppRoute.Signals -> t("Signals", "سیگنال‌ها")
+                        AppRoute.Chart -> t("Chart", "نمودار")
+                        AppRoute.Risk -> t("Risk", "ریسک")
+                        AppRoute.Broker -> t("Broker", "بروکر")
+                        AppRoute.Profile -> t("Profile", "پروفایل")
+                        AppRoute.Journal -> t("Journal", "ژورنال")
+                        AppRoute.Backtest -> t("Backtest", "بک‌تست")
+                        AppRoute.Analytics -> t("Analytics", "آنالیتیکس")
+                        AppRoute.Settings -> t("Settings", "تنظیمات")
+                        AppRoute.Readiness -> t("Readiness", "آمادگی")
+                    }
+
                     NavigationBarItem(
                         selected = currentDestination?.hierarchy?.any { it.route == route.route } == true,
-                        onClick = { navController.navigate(route.route) },
-                        icon = { Icon(icon, contentDescription = route.label) },
-                        label = { Text(route.label) }
+                        onClick = {
+                            navController.navigate(route.route) {
+                                launchSingleTop = true
+                                restoreState = true
+                                popUpTo(navController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                            }
+                        },
+                        icon = { Icon(icon, contentDescription = localizedLabel) },
+                        label = { Text(localizedLabel) }
                     )
                 }
             }
@@ -172,7 +212,9 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
             composable(AppRoute.Journal.route) { JournalScreen() }
             composable(AppRoute.Backtest.route) { BacktestScreen() }
             composable(AppRoute.Analytics.route) { AnalyticsScreen() }
-            composable(AppRoute.Settings.route) { SettingsScreen(onOpenReadiness = { navController.navigate(AppRoute.Readiness.route) }) }
+            composable(AppRoute.Settings.route) {
+                SettingsScreen(onOpenReadiness = { navController.navigate(AppRoute.Readiness.route) })
+            }
             composable(AppRoute.Readiness.route) { ReadinessScreen() }
         }
     }

@@ -99,7 +99,9 @@ class BrokerViewModel(
         val current = _uiState.value
         val qty = current.quantity.toDoubleOrNull()
         if (qty == null || qty <= 0) {
-            _uiState.value = current.copy(error = "Quantity must be a valid positive number")
+            _uiState.value = current.copy(
+                error = "Quantity must be a valid positive number / مقدار باید عدد مثبت معتبر باشد"
+            )
             return
         }
 
@@ -126,7 +128,9 @@ class BrokerViewModel(
         val current = _uiState.value
         val qty = current.quantity.toDoubleOrNull()
         if (qty == null || qty <= 0) {
-            _uiState.value = current.copy(error = "Quantity must be a valid positive number")
+            _uiState.value = current.copy(
+                error = "Quantity must be a valid positive number / مقدار باید عدد مثبت معتبر باشد"
+            )
             return
         }
 

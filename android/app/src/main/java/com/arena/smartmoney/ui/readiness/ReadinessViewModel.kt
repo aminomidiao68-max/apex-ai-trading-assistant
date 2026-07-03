@@ -34,7 +34,7 @@ class ReadinessViewModel(
                 .onFailure { throwable ->
                     _uiState.value = ReadinessUiState(
                         loading = false,
-                        error = throwable.message ?: "Failed to load system readiness"
+                        error = throwable.message ?: "Failed to load system readiness / خطا در بارگذاری آمادگی سیستم"
                     )
                 }
         }

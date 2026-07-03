@@ -44,7 +44,7 @@ class JournalViewModel(
             }.onFailure { throwable ->
                 _uiState.value = _uiState.value.copy(
                     loading = false,
-                    error = throwable.message ?: "Failed to load journal"
+                    error = throwable.message ?: "Failed to load journal / خطا در بارگذاری ژورنال"
                 )
             }
         }
@@ -56,11 +56,11 @@ class JournalViewModel(
 
     fun closeTradeAsWin(trade: TradeJournalItemDto) {
         val exit = trade.take_profit ?: return
-        closeTrade(trade, exit, "Closed at take profit")
+        closeTrade(trade, exit, "Closed at take profit / بسته شد با حد سود")
     }
 
     fun closeTradeAsLoss(trade: TradeJournalItemDto) {
-        closeTrade(trade, trade.stop_loss, "Closed at stop loss")
+        closeTrade(trade, trade.stop_loss, "Closed at stop loss / بسته شد با حد ضرر")
     }
 
     private fun closeTrade(trade: TradeJournalItemDto, exitPrice: Double, note: String) {
@@ -78,11 +78,13 @@ class JournalViewModel(
                 )
             }.onSuccess {
                 refresh()
-                _uiState.value = _uiState.value.copy(message = "Trade #${trade.id} closed")
+                _uiState.value = _uiState.value.copy(
+                    message = "Trade #${trade.id} closed / معامله #${trade.id} بسته شد"
+                )
             }.onFailure { throwable ->
                 _uiState.value = _uiState.value.copy(
                     loading = false,
-                    error = throwable.message ?: "Failed to close trade"
+                    error = throwable.message ?: "Failed to close trade / بستن معامله ناموفق بود"
                 )
             }
         }

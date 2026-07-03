@@ -19,11 +19,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import com.arena.smartmoney.data.repository.TradingRepository
 import com.arena.smartmoney.data.session.SessionManager
 import com.arena.smartmoney.push.PushRegistrationHelper
+import com.arena.smartmoney.ui.i18n.rememberTranslator
 import kotlinx.coroutines.launch
 
 @Composable
@@ -32,6 +33,7 @@ fun ProfileScreen(onLogout: () -> Unit, onOpenSettings: () -> Unit) {
     val repository = remember { TradingRepository() }
     val sessionManager = remember { SessionManager(context) }
     val scope = rememberCoroutineScope()
+    val t = rememberTranslator()
 
     var name by remember { mutableStateOf(sessionManager.getName()) }
     var email by remember { mutableStateOf(sessionManager.getEmail()) }
@@ -53,7 +55,7 @@ fun ProfileScreen(onLogout: () -> Unit, onOpenSettings: () -> Unit) {
                 }
                 .onFailure { throwable ->
                     loading = false
-                    error = throwable.message ?: "Failed to load profile"
+                    error = throwable.message ?: t("Failed to load profile", "بارگذاری پروفایل ناموفق بود")
                 }
         }
     }
@@ -64,48 +66,46 @@ fun ProfileScreen(onLogout: () -> Unit, onOpenSettings: () -> Unit) {
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Profile", style = MaterialTheme.typography.headlineSmall)
+        Text(t("Profile", "پروفایل"), style = MaterialTheme.typography.headlineSmall)
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Name: $name")
-                Text("Email: $email")
-                Text(if (loading) "Status: Syncing profile..." else "Status: Active")
-                error?.let { Text("Error: $it", color = MaterialTheme.colorScheme.error) }
+                Text(t("Name", "نام") + ": $name")
+                Text(t("Email", "ایمیل") + ": $email")
+                Text(if (loading) t("Status: syncing profile...", "وضعیت: همگام‌سازی پروفایل...") else t("Status: active", "وضعیت: فعال"))
+                error?.let { Text(t("Error", "خطا") + ": $it", color = MaterialTheme.colorScheme.error) }
             }
         }
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Security & Access", style = MaterialTheme.typography.titleMedium)
-                Text("• Login required before entering the main app")
-                Text("• Token is stored locally on this device")
-                Text("• Live order execution still remains protected by server-side checks")
-                Text("• FCM registration foundation is enabled for future real push delivery")
+                Text(t("Security & Access", "امنیت و دسترسی"), style = MaterialTheme.typography.titleMedium)
+                Text("• " + t("Login required before entering the main app", "ورود قبل از دسترسی به برنامه اصلی الزامی است"))
+                Text("• " + t("Token is stored locally on this device", "توکن روی همین دستگاه ذخیره می‌شود"))
+                Text("• " + t("Live order execution remains protected by server-side checks", "اجرای زنده سفارش هنوز با کنترل‌های سمت سرور محافظت می‌شود"))
+                Text("• " + t("FCM foundation is enabled for future real push delivery", "زیرساخت FCM برای پوش واقعی در آینده فعال است"))
             }
         }
 
         Button(onClick = { loadProfile() }, modifier = Modifier.fillMaxWidth()) {
-            Text(if (loading) "Refreshing..." else "Refresh Profile")
+            Text(if (loading) t("Refreshing...", "در حال بروزرسانی...") else t("Refresh Profile", "بروزرسانی پروفایل"))
         }
 
         Button(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
-            Text("Open Settings")
+            Text(t("Open Settings", "باز کردن تنظیمات"))
         }
 
         Button(
             onClick = {
                 pushMessage = ""
                 PushRegistrationHelper.registerCurrentDevice(sessionManager)
-                pushMessage = "Device token registration attempted"
+                pushMessage = t("Device token registration attempted", "تلاش برای ثبت توکن دستگاه انجام شد")
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Register Device for Push")
+            Text(t("Register Device for Push", "ثبت دستگاه برای پوش"))
         }
 
         Button(
@@ -122,13 +122,13 @@ fun ProfileScreen(onLogout: () -> Unit, onOpenSettings: () -> Unit) {
                     }.onSuccess { result ->
                         pushMessage = result.message
                     }.onFailure { throwable ->
-                        pushMessage = throwable.message ?: "Failed to trigger test notification"
+                        pushMessage = throwable.message ?: t("Failed to trigger test notification", "ارسال تست نوتیفیکیشن ناموفق بود")
                     }
                 }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Send Test Push Event")
+            Text(t("Send Test Push Event", "ارسال تست نوتیفیکیشن"))
         }
 
         if (pushMessage.isNotBlank()) {
@@ -150,7 +150,7 @@ fun ProfileScreen(onLogout: () -> Unit, onOpenSettings: () -> Unit) {
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Logout")
+            Text(t("Logout", "خروج"))
         }
     }
 }

@@ -154,7 +154,7 @@ class ChartViewModel(
             }.onFailure { throwable ->
                 _uiState.value = _uiState.value.copy(
                     loading = false,
-                    error = throwable.message ?: "Failed to load chart data"
+                    error = throwable.message ?: "Failed to load chart data / خطا در بارگذاری داده نمودار"
                 )
             }
         }

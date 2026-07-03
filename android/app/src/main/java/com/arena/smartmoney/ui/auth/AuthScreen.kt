@@ -1,6 +1,7 @@
 package com.arena.smartmoney.ui.auth
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -27,6 +29,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +39,7 @@ import com.arena.smartmoney.R
 import com.arena.smartmoney.data.repository.TradingRepository
 import com.arena.smartmoney.data.session.SessionManager
 import com.arena.smartmoney.push.PushRegistrationHelper
+import com.arena.smartmoney.ui.i18n.rememberTranslator
 import kotlinx.coroutines.launch
 
 @Composable
@@ -44,6 +48,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     val repository = remember { TradingRepository() }
     val sessionManager = remember { SessionManager(context) }
     val scope = rememberCoroutineScope()
+    val t = rememberTranslator()
 
     var isRegisterMode by rememberSaveable { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
@@ -56,6 +61,11 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
+            .background(
+                Brush.verticalGradient(
+                    listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.surfaceVariant)
+                )
+            )
             .padding(20.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
@@ -68,20 +78,20 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
         Spacer(Modifier.height(16.dp))
         Text("APEX AI", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text(
-            "Crypto & Forex Trading Assistant",
+            t("Crypto & Forex Trading Assistant", "دستیار معاملات کریپتو و فارکس"),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(Modifier.height(20.dp))
 
-        Card(modifier = Modifier.fillMaxWidth()) {
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = { isRegisterMode = false }) { Text("Login") }
-                    TextButton(onClick = { isRegisterMode = true }) { Text("Register") }
+                    TextButton(onClick = { isRegisterMode = false }) { Text(t("Login", "ورود")) }
+                    TextButton(onClick = { isRegisterMode = true }) { Text(t("Register", "ثبت‌نام")) }
                 }
 
                 if (isRegisterMode) {
@@ -89,7 +99,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                         value = name,
                         onValueChange = { name = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Full Name") }
+                        label = { Text(t("Full Name", "نام کامل")) }
                     )
                 }
 
@@ -97,14 +107,14 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                     value = email,
                     onValueChange = { email = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Email") }
+                    label = { Text(t("Email", "ایمیل")) }
                 )
 
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Password") },
+                    label = { Text(t("Password", "رمز عبور")) },
                     visualTransformation = PasswordVisualTransformation()
                 )
 
@@ -137,7 +147,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                                 onAuthSuccess()
                             }.onFailure { throwable ->
                                 loading = false
-                                error = throwable.message ?: "Authentication failed"
+                                error = throwable.message ?: t("Authentication failed", "ورود ناموفق بود")
                             }
                         }
                     },
@@ -146,12 +156,12 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                     if (loading) {
                         CircularProgressIndicator(modifier = Modifier.padding(4.dp))
                     } else {
-                        Text(if (isRegisterMode) "Create Account" else "Enter App")
+                        Text(if (isRegisterMode) t("Create Account", "ایجاد حساب") else t("Enter App", "ورود به برنامه"))
                     }
                 }
 
                 Spacer(Modifier.height(4.dp))
-                Text("Demo account:", fontWeight = FontWeight.SemiBold)
+                Text(t("Demo account:", "حساب دمو:"), fontWeight = FontWeight.SemiBold)
                 Text("Email: demo@apexai.app")
                 Text("Password: Demo12345!")
             }

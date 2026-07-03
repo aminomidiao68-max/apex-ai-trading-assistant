@@ -38,14 +38,14 @@ class SignalsViewModel(
                 .onSuccess { response ->
                     _uiState.value = _uiState.value.copy(
                         loading = false,
-                        items = response.items,
+                        items = response.items.sortedByDescending { it.score },
                         error = null
                     )
                 }
                 .onFailure { throwable ->
                     _uiState.value = _uiState.value.copy(
                         loading = false,
-                        error = throwable.message ?: "Failed to load signal history"
+                        error = throwable.message ?: "Failed to load signal history / خطا در بارگذاری تاریخچه سیگنال"
                     )
                 }
         }
@@ -56,7 +56,7 @@ class SignalsViewModel(
             _uiState.value = _uiState.value.copy(
                 loading = true,
                 error = null,
-                scanMessage = "Scanning $symbol ...",
+                scanMessage = "Scanning $symbol... / در حال اسکن $symbol...",
                 journalMessage = ""
             )
             val request = LiveSignalScanRequestDto(
@@ -84,17 +84,23 @@ class SignalsViewModel(
 
             runCatching { repository.liveScanSignal(request) }
                 .onSuccess { signal ->
+                    val qualityMessage = when {
+                        signal.score >= 80.0 -> "Strong AI setup detected / ستاپ بسیار قوی شناسایی شد"
+                        signal.score >= 65.0 -> "Tradeable setup detected / ستاپ قابل قبول شناسایی شد"
+                        else -> "Weak setup - avoid entry / ستاپ ضعیف است و برای ورود توصیه نمی‌شود"
+                    }
                     _uiState.value = _uiState.value.copy(
                         loading = false,
-                        items = listOf(signal) + _uiState.value.items,
+                        items = (listOf(signal) + _uiState.value.items).sortedByDescending { it.score },
                         notificationSignal = signal,
-                        scanMessage = "Latest scan saved for ${signal.symbol}"
+                        scanMessage = "$qualityMessage • ${signal.symbol}",
+                        error = null
                     )
                 }
                 .onFailure { throwable ->
                     _uiState.value = _uiState.value.copy(
                         loading = false,
-                        error = throwable.message ?: "Signal scan failed",
+                        error = throwable.message ?: "Signal scan failed / خطا در اسکن سیگنال",
                         scanMessage = ""
                     )
                 }
@@ -102,11 +108,19 @@ class SignalsViewModel(
     }
 
     fun createTradeFromSignal(signal: SignalHistoryItemDto) {
+        if (signal.score < 60.0) {
+            _uiState.value = _uiState.value.copy(
+                journalMessage = "Signal too weak for journal entry / این سیگنال کیفیت کافی برای ورود به ژورنال معامله را ندارد"
+            )
+            return
+        }
         val entryLow = signal.entry_low
         val entryHigh = signal.entry_high
         val stopLoss = signal.stop_loss
         if (entryLow == null || entryHigh == null || stopLoss == null) {
-            _uiState.value = _uiState.value.copy(journalMessage = "Signal is missing entry/SL data")
+            _uiState.value = _uiState.value.copy(
+                journalMessage = "Signal is missing entry/SL data / اطلاعات ورود یا حد ضرر ناقص است"
+            )
             return
         }
 
@@ -125,18 +139,18 @@ class SignalsViewModel(
                         stop_loss = stopLoss,
                         take_profit = takeProfit,
                         size = 1.0,
-                        notes = "Created from signal ${signal.id} with score ${signal.score}"
+                        notes = "AI signal ${signal.id} • Score ${signal.score} • Added from Signals screen"
                     )
                 )
             }.onSuccess { trade ->
                 _uiState.value = _uiState.value.copy(
                     loading = false,
-                    journalMessage = "Trade #${trade.id} added to journal"
+                    journalMessage = "Trade #${trade.id} added to journal / معامله #${trade.id} به ژورنال اضافه شد"
                 )
             }.onFailure { throwable ->
                 _uiState.value = _uiState.value.copy(
                     loading = false,
-                    journalMessage = throwable.message ?: "Failed to add trade"
+                    journalMessage = throwable.message ?: "Failed to add trade / افزودن معامله ناموفق بود"
                 )
             }
         }

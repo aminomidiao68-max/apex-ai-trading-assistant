@@ -123,6 +123,19 @@ class SignalEngine:
             else:
                 direction = SignalDirection.neutral
 
+        if direction == SignalDirection.buy and ema20 > ema50 and smc["direction"] == SignalDirection.buy:
+            structure_score = min(structure_score + 4, 25.0)
+            indicator_score = min(indicator_score + 1.5, 10.0)
+            reasons.append("Bullish multi-layer confluence confirmed")
+        elif direction == SignalDirection.sell and ema20 < ema50 and smc["direction"] == SignalDirection.sell:
+            structure_score = min(structure_score + 4, 25.0)
+            indicator_score = min(indicator_score + 1.5, 10.0)
+            reasons.append("Bearish multi-layer confluence confirmed")
+
+        if current_atr > 0 and session["quality"] == "high" and not news["blocked"]:
+            indicator_score = min(indicator_score + 1.0, 10.0)
+            reasons.append("Volatility and session conditions support execution")
+
         entry_low = None
         entry_high = None
         stop_loss = None
