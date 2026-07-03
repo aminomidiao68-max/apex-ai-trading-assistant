@@ -1,6 +1,8 @@
 package com.arena.smartmoney.ui.dashboard
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 import java.util.Locale
+import kotlin.math.abs
 
 @Composable
 fun DashboardScreen(
@@ -52,194 +55,309 @@ fun DashboardScreen(
         }
     } else state.watchlist
 
-    val missingForexFeeds = listToShow.any { it.status == "missing_api_key" }
+    val strongestSymbol = listToShow.filter { it.change_pct != null }.maxByOrNull { abs(it.change_pct ?: 0.0) }
     val streamInFallbackMode = state.streamStatus.contains("404") || state.streamStatus.contains("error", ignoreCase = true)
-    val live = state.liveSnapshot
-    val strongestSymbol = listToShow
-        .filter { it.change_pct != null }
-        .maxByOrNull { kotlin.math.abs(it.change_pct ?: 0.0) }
+    val missingForexFeeds = listToShow.any { it.status == "missing_api_key" }
+    val stats = state.tradeStats
+
     val aiSummary = buildString {
         append(
-            if (state.sessionScore >= 8.0)
-                t("AI sees active market conditions in prime session hours.", "هوش مصنوعی شرایط فعال بازار را در ساعات مهم سشن تشخیص می‌دهد.")
-            else
-                t("AI sees calmer market conditions; select trades more conservatively.", "هوش مصنوعی شرایط آرام‌تری را در بازار تشخیص می‌دهد؛ انتخاب معامله باید محتاطانه‌تر باشد.")
+            if (state.sessionScore >= 8.0) {
+                t(
+                    "AI market engine sees strong session quality and active movement.",
+                    "موتور هوش مصنوعی کیفیت خوب سشن و حرکت فعال بازار را تشخیص می‌دهد."
+                )
+            } else {
+                t(
+                    "AI market engine sees moderate conditions; be more selective.",
+                    "موتور هوش مصنوعی شرایط متوسط بازار را تشخیص می‌دهد؛ انتخاب معامله باید گزینشی‌تر باشد."
+                )
+            }
         )
         strongestSymbol?.let {
             append(" ")
             append(
                 t(
-                    "Top mover: ${it.symbol} with ${String.format(Locale.US, "%.2f", it.change_pct ?: 0.0)}% move.",
-                    "نماد برتر: ${it.symbol} با تغییر ${String.format(Locale.US, "%.2f", it.change_pct ?: 0.0)} درصد."
+                    "Focus symbol: ${it.symbol} (${String.format(Locale.US, "%.2f", it.change_pct ?: 0.0)}%).",
+                    "نماد مهم فعلی: ${it.symbol} (${String.format(Locale.US, "%.2f", it.change_pct ?: 0.0)}%)."
                 )
             )
         }
-        if (missingForexFeeds) {
-            append(" ")
-            append(t("Forex feeds are limited until TwelveData is configured.", "فید فارکس تا زمان تنظیم TwelveData محدود باقی می‌ماند."))
-        }
     }
 
-    LazyColumn(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF050B14),
+                        Color(0xFF08131F),
+                        Color(0xFF0B1D2B),
+                        Color(0xFF050B14)
+                    )
+                )
+            )
     ) {
-        item {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            item {
+                NeonPanel(
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF0B1320), Color(0xFF11263B), Color(0xFF0B1320))
+                    )
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "APEX AI PREMIUM",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = Color(0xFF67ECFF),
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            text = t("AI Market Command Center", "مرکز فرمان هوش مصنوعی بازار"),
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Created by Amin omidi",
+                            color = Color(0xFF9BEFFF),
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Text(
+                            text = aiSummary,
+                            color = Color(0xFFE3F8FF),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            InfoChip(t("Session", "سشن"), state.sessionName)
+                            InfoChip(t("Quality", "کیفیت"), state.marketQuality)
+                            InfoChip(t("Score", "امتیاز"), String.format(Locale.US, "%.1f", state.sessionScore))
+                        }
+                    }
+                }
+            }
+
+            item {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MetricCard(
+                        modifier = Modifier.weight(1f),
+                        title = t("Win Rate", "نرخ برد"),
+                        value = "${stats?.win_rate ?: 0.0}%",
+                        accent = Color(0xFF33E6A6)
+                    )
+                    MetricCard(
+                        modifier = Modifier.weight(1f),
+                        title = t("Open Trades", "معاملات باز"),
+                        value = "${stats?.open_trades ?: 0}",
+                        accent = Color(0xFF59C7FF)
+                    )
+                    MetricCard(
+                        modifier = Modifier.weight(1f),
+                        title = t("Net PnL", "سود خالص"),
+                        value = String.format(Locale.US, "%.2f", stats?.net_pnl ?: 0.0),
+                        accent = if ((stats?.net_pnl ?: 0.0) >= 0) Color(0xFF67ECFF) else Color(0xFFFF7A7A)
+                    )
+                }
+            }
+
+            item {
+                Text(
+                    text = t("Premium AI Modules", "ماژول‌های پرمیوم هوش مصنوعی"),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            item {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ActionCard(
+                        modifier = Modifier.weight(1f),
+                        title = t("Backtest Lab", "آزمایشگاه بک‌تست"),
+                        subtitle = t("Validate setup quality", "اعتبارسنجی کیفیت ستاپ"),
+                        accent = listOf(Color(0xFF1B7CFF), Color(0xFF33D6FF)),
+                        onClick = onOpenBacktest
+                    )
+                    ActionCard(
+                        modifier = Modifier.weight(1f),
+                        title = t("Analytics Center", "مرکز آنالیتیکس"),
+                        subtitle = t("Review signal performance", "بررسی عملکرد سیگنال‌ها"),
+                        accent = listOf(Color(0xFF00C78C), Color(0xFF67ECFF)),
+                        onClick = onOpenAnalytics
+                    )
+                }
+            }
+
+            item {
+                NeonPanel(
+                    brush = Brush.linearGradient(
+                        listOf(Color(0xFF111A29), Color(0xFF13263A), Color(0xFF111A29))
+                    )
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = t("Live Market Stream", "استریم زنده بازار"),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            StreamChip("BTC", onClick = { viewModel.selectStreamSymbol("BTCUSDT") })
+                            StreamChip("ETH", onClick = { viewModel.selectStreamSymbol("ETHUSDT") })
+                            StreamChip("EURUSD", onClick = { viewModel.selectStreamSymbol("EURUSD") })
+                            StreamChip("XAU", onClick = { viewModel.selectStreamSymbol("XAUUSD") })
+                        }
+                        Button(onClick = { viewModel.reconnectStream() }, modifier = Modifier.fillMaxWidth()) {
+                            Text(t("Reconnect Live Feed", "اتصال مجدد فید زنده"))
+                        }
+                        Text(
+                            text = t("Focused symbol", "نماد انتخابی") + ": ${state.streamSymbol}",
+                            color = Color(0xFFB9F3FF)
+                        )
+                        Text(
+                            text = if (streamInFallbackMode) {
+                                t(
+                                    "Realtime websocket is unavailable right now. REST fallback is keeping the dashboard live.",
+                                    "فعلاً وب‌سوکت لحظه‌ای در دسترس نیست اما حالت جایگزین REST داشبورد را زنده نگه داشته است."
+                                )
+                            } else {
+                                t(
+                                    "Realtime stream is connected and feeding the dashboard.",
+                                    "استریم لحظه‌ای متصل است و داده را به داشبورد می‌رساند."
+                                )
+                            },
+                            color = if (streamInFallbackMode) Color(0xFFFFD27A) else Color(0xFF67ECFF)
+                        )
+                        state.liveSnapshot?.let {
+                            Text(
+                                text = t("Live price", "قیمت لحظه‌ای") + ": ${it.last_price ?: "-"} • 24h: ${it.change_pct ?: "-"}%",
+                                color = when {
+                                    (it.change_pct ?: 0.0) > 0 -> Color(0xFF33E6A6)
+                                    (it.change_pct ?: 0.0) < 0 -> Color(0xFFFF7A7A)
+                                    else -> Color.White
+                                },
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (missingForexFeeds) {
+                item {
+                    NeonPanel(
+                        brush = Brush.linearGradient(
+                            listOf(Color(0xFF241915), Color(0xFF322216), Color(0xFF241915))
+                        ),
+                        borderColor = Color(0x55FFB657)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = t("Forex Feed Notice", "هشدار فید فارکس"),
+                                color = Color(0xFFFFD27A),
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = t(
+                                    "Forex and gold remain limited until TwelveData API key is configured on the backend.",
+                                    "داده فارکس و طلا تا زمان تنظیم کلید TwelveData روی بک‌اند محدود باقی می‌ماند."
+                                ),
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                Text(
+                    text = t("Live Watchlist", "واچ‌لیست زنده"),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            items(listToShow) { item ->
+                WatchlistCard(item = item, t = t)
+            }
+        }
+    }
+}
+
+@Composable
+private fun NeonPanel(
+    brush: Brush,
+    borderColor: Color = Color(0x4037E6FF),
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(brush, RoundedCornerShape(28.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(28.dp))
+            .padding(18.dp)
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun MetricCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    accent: Color
+) {
+    Box(
+        modifier = modifier
+            .background(Color(0xCC0E1724), RoundedCornerShape(22.dp))
+            .border(1.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
+            .padding(vertical = 16.dp, horizontal = 12.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, color = Color(0xFFBEEFFF), style = MaterialTheme.typography.labelLarge)
+            Text(value, color = accent, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@Composable
+private fun ActionCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    subtitle: String,
+    accent: List<Color>,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .background(Brush.linearGradient(accent), RoundedCornerShape(24.dp))
+            .padding(1.dp)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick),
+            shape = RoundedCornerShape(24.dp)
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(Color(0xFF091A2F), Color(0xFF0E3150), Color(0xFF102038))
-                        ),
-                        shape = RoundedCornerShape(24.dp)
-                    )
-                    .padding(22.dp)
+                    .background(Color(0xFF0B1320))
+                    .padding(16.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("APEX AI PREMIUM", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        t("Premium AI Market Command Center", "مرکز فرمان پرمیوم هوش مصنوعی بازار"),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Color(0xFFB9EFFF)
-                    )
-                    Text(
-                        "Created by Amin omidi",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = Color(0xFF9ADFFF)
-                    )
-                    Text(
-                        aiSummary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFFE5F8FF)
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        MetricChip(t("Session", "سشن"), state.sessionName)
-                        MetricChip(t("Quality", "کیفیت"), state.marketQuality)
-                        MetricChip(t("Score", "امتیاز"), state.sessionScore.toString())
-                    }
-                }
-            }
-        }
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(t("AI Market Pulse", "نبض بازار هوش مصنوعی"), style = MaterialTheme.typography.titleLarge)
-                    Text(
-                        t(
-                            "The dashboard blends session timing, market movement, crypto watchlist behavior, and journal state to help prioritize stronger setups.",
-                            "داشبورد با ترکیب زمان سشن، حرکت بازار، رفتار واچ‌لیست کریپتو و وضعیت ژورنال، به اولویت‌بندی ستاپ‌های قوی‌تر کمک می‌کند."
-                        )
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { viewModel.refreshAll() }) {
-                            Text(if (state.loading) t("Refreshing...", "در حال بروزرسانی...") else t("Refresh Live Data", "بروزرسانی داده زنده"))
-                        }
-                        Button(onClick = onOpenBacktest) {
-                            Text(t("Backtest Lab", "آزمایشگاه بک‌تست"))
-                        }
-                        Button(onClick = onOpenAnalytics) {
-                            Text(t("Analytics", "آنالیتیکس"))
-                        }
-                    }
-                    state.error?.let {
-                        Text(
-                            t("Dashboard fallback mode: $it", "حالت پشتیبان داشبورد: $it"),
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-            }
-        }
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(t("Live Market Stream", "جریان زنده بازار"), style = MaterialTheme.typography.titleLarge)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { viewModel.selectStreamSymbol("BTCUSDT") }) { Text("BTC") }
-                        Button(onClick = { viewModel.selectStreamSymbol("ETHUSDT") }) { Text("ETH") }
-                        Button(onClick = { viewModel.selectStreamSymbol("EURUSD") }) { Text("EURUSD") }
-                        Button(onClick = { viewModel.selectStreamSymbol("XAUUSD") }) { Text("XAU") }
-                    }
-                    Button(onClick = { viewModel.reconnectStream() }) { Text(t("Reconnect Stream", "اتصال مجدد استریم")) }
-                    Text(t("Focused Symbol", "نماد متمرکز") + ": ${state.streamSymbol}")
-                    Text(
-                        if (streamInFallbackMode)
-                            t("Realtime websocket is unavailable; REST fallback is active.", "استریم لحظه‌ای در دسترس نیست؛ حالت جایگزین REST فعال است.")
-                        else
-                            t("Stream connected and updating.", "استریم متصل و در حال بروزرسانی است.")
-                    )
-                    live?.let {
-                        Text(
-                            t("Live Price", "قیمت لحظه‌ای") + ": ${it.last_price ?: "-"} • 24h: ${it.change_pct ?: "-"}%",
-                            color = when {
-                                (it.change_pct ?: 0.0) > 0 -> Color(0xFF2ECC71)
-                                (it.change_pct ?: 0.0) < 0 -> Color(0xFFE74C3C)
-                                else -> MaterialTheme.colorScheme.onSurface
-                            }
-                        )
-                        it.error?.let { message ->
-                            Text(t("Stream detail", "جزئیات استریم") + ": $message", color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-            }
-        }
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(t("Trading Journal Summary", "خلاصه ژورنال معاملات"), style = MaterialTheme.typography.titleLarge)
-                    val stats = state.tradeStats
-                    Text(t("Total Trades", "کل معاملات") + ": ${stats?.total_trades ?: 0}")
-                    Text(t("Open Trades", "معاملات باز") + ": ${stats?.open_trades ?: 0}")
-                    Text(t("Closed Trades", "معاملات بسته") + ": ${stats?.closed_trades ?: 0}")
-                    Text(t("Wins / Losses", "برد / باخت") + ": ${stats?.wins ?: 0} / ${stats?.losses ?: 0}")
-                    Text(t("Win Rate", "نرخ برد") + ": ${stats?.win_rate ?: 0.0}%")
-                    Text(t("Net PnL", "سود/زیان خالص") + ": ${stats?.net_pnl ?: 0.0}")
-                }
-            }
-        }
-        item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(t("Professional Risk Rules", "قوانین حرفه‌ای مدیریت ریسک"), style = MaterialTheme.typography.titleLarge)
-                    Text("• " + t("Fixed risk per trade", "ریسک ثابت به ازای هر معامله"))
-                    Text("• " + t("Daily loss limit", "حد ضرر روزانه"))
-                    Text("• " + t("Maximum consecutive losses", "حداکثر ضررهای پیاپی"))
-                    Text("• " + t("Maximum simultaneous positions", "حداکثر پوزیشن همزمان"))
-                    Text("• " + t("Breakeven and partial TP planning", "برنامه‌ریزی بریک‌اون و تی‌پی پله‌ای"))
-                }
-            }
-        }
-        if (missingForexFeeds) {
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(t("Forex Feed Notice", "اطلاعیه فید فارکس"), style = MaterialTheme.typography.titleLarge)
-                        Text(t("Forex and gold quotes remain limited until a TwelveData API key is configured on the backend.", "تا زمانی که کلید TwelveData در بک‌اند تنظیم نشود، داده‌های فارکس و طلا محدود باقی می‌مانند."))
-                    }
-                }
-            }
-        }
-        item {
-            Text(t("Live Watchlist", "واچ‌لیست زنده"), style = MaterialTheme.typography.titleLarge)
-        }
-
-        items(listToShow) { item ->
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Row(modifier = Modifier.padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(item.symbol, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        Text("${item.market.uppercase(Locale.getDefault())} • ${item.source}")
-                        Text(t("Status", "وضعیت") + ": ${item.status}")
-                    }
-                    Spacer(Modifier.width(16.dp))
-                    Column {
-                        Text(t("Price", "قیمت") + ": ${item.last_price?.toString() ?: "-"}")
-                        Text("24h: ${item.change_pct?.toString() ?: "-"}%")
-                    }
+                    Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(subtitle, color = Color(0xFFBEEFFF), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
@@ -247,15 +365,65 @@ fun DashboardScreen(
 }
 
 @Composable
-private fun MetricChip(label: String, value: String) {
+private fun InfoChip(label: String, value: String) {
     Box(
         modifier = Modifier
-            .background(Color(0x1FFFFFFF), RoundedCornerShape(16.dp))
+            .background(Color(0x3318D7F0), RoundedCornerShape(18.dp))
+            .border(1.dp, Color(0x4437E6FF), RoundedCornerShape(18.dp))
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Column {
-            Text(label, color = Color(0xFF9ADFFF), style = MaterialTheme.typography.labelSmall)
-            Text(value, color = Color.White, style = MaterialTheme.typography.labelLarge)
+            Text(label, color = Color(0xFF92EFFF), style = MaterialTheme.typography.labelSmall)
+            Text(value, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun StreamChip(title: String, onClick: () -> Unit) {
+    Button(onClick = onClick) {
+        Text(title)
+    }
+}
+
+@Composable
+private fun WatchlistCard(
+    item: com.arena.smartmoney.data.model.MarketOverviewItem,
+    t: (String, String) -> String
+) {
+    val accent = when {
+        (item.change_pct ?: 0.0) > 0 -> Color(0xFF33E6A6)
+        (item.change_pct ?: 0.0) < 0 -> Color(0xFFFF7A7A)
+        else -> Color(0xFF59C7FF)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xCC0E1724), RoundedCornerShape(24.dp))
+            .border(1.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(24.dp))
+            .padding(16.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(item.symbol, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text("${item.market.uppercase(Locale.getDefault())} • ${item.source}", color = Color(0xFFBEEFFF))
+                Text(t("Status", "وضعیت") + ": ${item.status}", color = Color(0xFF8EDFFF))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                Text(
+                    t("Price", "قیمت") + ": ${item.last_price?.toString() ?: "-"}",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "24h: ${item.change_pct?.toString() ?: "-"}%",
+                    color = accent,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }
