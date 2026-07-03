@@ -11,10 +11,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -34,6 +33,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arena.smartmoney.data.model.CandleDto
+import com.arena.smartmoney.ui.components.PremiumGlassCard
+import com.arena.smartmoney.ui.components.PremiumScreenBackground
+import com.arena.smartmoney.ui.components.PremiumSectionHeader
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 import java.util.Locale
 import kotlin.math.max
@@ -48,33 +50,28 @@ fun ChartScreen(viewModel: ChartViewModel = viewModel()) {
     val t = rememberTranslator()
     val restFallbackMode = state.streamStatus.contains("404") || state.streamStatus.contains("error", ignoreCase = true)
 
-    androidx.compose.foundation.lazy.LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text(
-                t("Live Chart", "نمودار زنده"),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text("${state.symbol} • ${state.timeframe}")
-        }
-        item {
-            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+    PremiumScreenBackground {
+        androidx.compose.foundation.lazy.LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                PremiumSectionHeader(
+                    title = t("Live Chart", "نمودار زنده"),
+                    subtitle = "${state.symbol} • ${state.timeframe}"
+                )
+            }
+            item {
+                PremiumGlassCard {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { viewModel.selectAsset("BTCUSDT", "crypto") }, modifier = Modifier.weight(1f)) { Text("BTC") }
                         Button(onClick = { viewModel.selectAsset("ETHUSDT", "crypto") }, modifier = Modifier.weight(1f)) { Text("ETH") }
-                        Button(onClick = { viewModel.selectAsset("EURUSD", "forex") }, modifier = Modifier.weight(1f)) { Text("EURUSD") }
+                        OutlinedButton(onClick = { viewModel.selectAsset("EURUSD", "forex") }, modifier = Modifier.weight(1f)) { Text("EURUSD") }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { viewModel.selectAsset("XAUUSD", "forex") }, modifier = Modifier.weight(1f)) { Text("XAUUSD") }
+                        OutlinedButton(onClick = { viewModel.selectAsset("XAUUSD", "forex") }, modifier = Modifier.weight(1f)) { Text("XAUUSD") }
                         Button(onClick = { viewModel.selectTimeframe("15m") }, modifier = Modifier.weight(1f)) { Text("15m") }
                         Button(onClick = { viewModel.selectTimeframe("1h") }, modifier = Modifier.weight(1f)) { Text("1h") }
                     }
@@ -82,29 +79,28 @@ fun ChartScreen(viewModel: ChartViewModel = viewModel()) {
                         Button(onClick = { viewModel.loadChart() }, modifier = Modifier.weight(1f)) {
                             Text(if (state.loading) t("Loading...", "در حال بارگذاری...") else t("Reload", "بارگذاری مجدد"))
                         }
-                        Button(onClick = { viewModel.reconnectStream() }, modifier = Modifier.weight(1f)) {
+                        OutlinedButton(onClick = { viewModel.reconnectStream() }, modifier = Modifier.weight(1f)) {
                             Text(t("Reconnect", "اتصال مجدد"))
                         }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { viewModel.zoomIn() }, modifier = Modifier.weight(1f)) { Text(t("Zoom +", "بزرگنمایی +")) }
-                        Button(onClick = { viewModel.zoomOut() }, modifier = Modifier.weight(1f)) { Text(t("Zoom -", "بزرگنمایی -")) }
+                        OutlinedButton(onClick = { viewModel.zoomIn() }, modifier = Modifier.weight(1f)) { Text(t("Zoom +", "بزرگنمایی +")) }
+                        OutlinedButton(onClick = { viewModel.zoomOut() }, modifier = Modifier.weight(1f)) { Text(t("Zoom -", "بزرگنمایی -")) }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { viewModel.panLeft() }, modifier = Modifier.weight(1f)) { Text(t("Left", "چپ")) }
-                        Button(onClick = { viewModel.panRight() }, modifier = Modifier.weight(1f)) { Text(t("Right", "راست")) }
+                        OutlinedButton(onClick = { viewModel.panLeft() }, modifier = Modifier.weight(1f)) { Text(t("Left", "چپ")) }
+                        OutlinedButton(onClick = { viewModel.panRight() }, modifier = Modifier.weight(1f)) { Text(t("Right", "راست")) }
                     }
-                    state.error?.let {
-                        Text(t("Error", "خطا") + ": $it", color = MaterialTheme.colorScheme.error)
-                    }
+                    state.error?.let { Text(t("Error", "خطا") + ": $it", color = MaterialTheme.colorScheme.error) }
                     snapshot?.let {
                         Text(
                             t("Live Price", "قیمت لحظه‌ای") + ": ${it.last_price ?: "-"} • 24h: ${it.change_pct ?: "-"}% • ${it.status}",
                             color = when {
-                                (it.change_pct ?: 0.0) > 0 -> Color(0xFF2ECC71)
-                                (it.change_pct ?: 0.0) < 0 -> Color(0xFFE74C3C)
-                                else -> MaterialTheme.colorScheme.onSurface
-                            }
+                                (it.change_pct ?: 0.0) > 0 -> Color(0xFF33E6A6)
+                                (it.change_pct ?: 0.0) < 0 -> Color(0xFFFF7A7A)
+                                else -> Color.White
+                            },
+                            fontWeight = FontWeight.Bold
                         )
                     }
                     Text(
@@ -119,32 +115,19 @@ fun ChartScreen(viewModel: ChartViewModel = viewModel()) {
                                 "استریم لحظه‌ای متصل است و نمودار را بروزرسانی می‌کند."
                             )
                         },
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (restFallbackMode) Color(0xFFFFD27A) else Color(0xFF67ECFF)
                     )
-                    Text(
-                        t("Visible candles", "کندل‌های قابل مشاهده") +
-                            ": ${visibleCandles.size} • ${t("Status", "وضعیت")}: ${state.streamStatus}"
-                    )
-                    Text(
-                        t(
-                            "Gesture: pinch to zoom, drag horizontally to pan, tap a candle for the crosshair.",
-                            "حرکت‌ها: با دو انگشت زوم کن، افقی بکش تا جابه‌جا شوی و روی کندل بزن تا کراس‌هِر فعال شود."
-                        )
-                    )
+                    Text(t("Visible candles", "کندل‌های قابل مشاهده") + ": ${visibleCandles.size} • ${t("Status", "وضعیت")}: ${state.streamStatus}", color = Color(0xFFBCEEFF))
+                    Text(t("Gesture: pinch to zoom, drag horizontally to pan, tap a candle for the crosshair.", "حرکت‌ها: با دو انگشت زوم کن، افقی بکش تا جابه‌جا شوی و روی کندل بزن تا کراس‌هِر فعال شود."), color = Color(0xFFBCEEFF))
                     last?.let {
-                        Text(
-                            t("Last Candle", "آخرین کندل") +
-                                " • O: ${it.open}  H: ${it.high}  L: ${it.low}  C: ${it.close}"
-                        )
+                        Text(t("Last Candle", "آخرین کندل") + " • O: ${it.open}  H: ${it.high}  L: ${it.low}  C: ${it.close}", color = Color.White)
                     }
                     selectedCandle?.let {
-                        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(t("Selected Candle", "کندل انتخاب‌شده"), style = MaterialTheme.typography.titleMedium)
-                                Text(t("Time", "زمان") + ": ${it.timestamp}")
-                                Text("O: ${it.open} • H: ${it.high} • L: ${it.low} • C: ${it.close}")
-                                Text(t("Volume", "حجم") + ": ${it.volume}")
-                            }
+                        PremiumGlassCard(borderColor = Color(0x40FFC857)) {
+                            Text(t("Selected Candle", "کندل انتخاب‌شده"), style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
+                            Text(t("Time", "زمان") + ": ${it.timestamp}", color = Color.White)
+                            Text("O: ${it.open} • H: ${it.high} • L: ${it.low} • C: ${it.close}", color = Color.White)
+                            Text(t("Volume", "حجم") + ": ${it.volume}", color = Color(0xFFFFD27A))
                         }
                     }
                     CandlestickChart(
@@ -170,9 +153,9 @@ private fun CandlestickChart(
 ) {
     val t = rememberTranslator()
 
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
+    PremiumGlassCard {
         if (candles.isEmpty()) {
-            Text(t("No chart data available", "داده‌ای برای نمودار موجود نیست"), modifier = Modifier.padding(16.dp))
+            Text(t("No chart data available", "داده‌ای برای نمودار موجود نیست"), color = Color.White)
         } else {
             var chartWidthPx by remember { mutableIntStateOf(0) }
             val minPrice = candles.minOf { it.low }
@@ -181,8 +164,8 @@ private fun CandlestickChart(
             val selected = selectedIndex.coerceIn(0, candles.size - 1)
             val selectedCandle = candles[selected]
 
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(t("Candlestick View", "نمای کندلی"), style = MaterialTheme.typography.titleMedium)
+            Column {
+                Text(t("Candlestick View", "نمای کندلی"), style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
                 Box(modifier = Modifier.fillMaxWidth()) {
                     Canvas(
                         modifier = Modifier
@@ -222,14 +205,9 @@ private fun CandlestickChart(
                             val openY = size.height - (((candle.open - minPrice) / range).toFloat() * size.height)
                             val closeY = size.height - (((candle.close - minPrice) / range).toFloat() * size.height)
                             val bullish = candle.close >= candle.open
-                            val color = if (bullish) Color(0xFF2ECC71) else Color(0xFFE74C3C)
+                            val color = if (bullish) Color(0xFF33E6A6) else Color(0xFFFF7A7A)
 
-                            drawLine(
-                                color = color,
-                                start = Offset(centerX, highY),
-                                end = Offset(centerX, lowY),
-                                strokeWidth = 2f
-                            )
+                            drawLine(color = color, start = Offset(centerX, highY), end = Offset(centerX, lowY), strokeWidth = 2f)
 
                             val top = minOf(openY, closeY)
                             val bottom = maxOf(openY, closeY)
@@ -243,33 +221,14 @@ private fun CandlestickChart(
 
                         val selectedX = slotWidth * selected + slotWidth / 2f
                         val selectedCloseY = size.height - (((selectedCandle.close - minPrice) / range).toFloat() * size.height)
-                        drawLine(
-                            color = Color(0xFFFFC107),
-                            start = Offset(selectedX, 0f),
-                            end = Offset(selectedX, size.height),
-                            strokeWidth = 2f
-                        )
-                        drawLine(
-                            color = Color(0xFFFFC107),
-                            start = Offset(0f, selectedCloseY),
-                            end = Offset(size.width, selectedCloseY),
-                            strokeWidth = 2f
-                        )
-                        drawCircle(
-                            color = Color(0xFFFFC107),
-                            radius = 6f,
-                            center = Offset(selectedX, selectedCloseY)
-                        )
+                        drawLine(color = Color(0xFFFFC107), start = Offset(selectedX, 0f), end = Offset(selectedX, size.height), strokeWidth = 2f)
+                        drawLine(color = Color(0xFFFFC107), start = Offset(0f, selectedCloseY), end = Offset(size.width, selectedCloseY), strokeWidth = 2f)
+                        drawCircle(color = Color(0xFFFFC107), radius = 6f, center = Offset(selectedX, selectedCloseY))
 
                         livePrice?.let { price ->
                             val priceY = size.height - (((price - minPrice) / range).toFloat() * size.height)
                             if (priceY in 0f..size.height) {
-                                drawLine(
-                                    color = Color(0xFF4DD0E1),
-                                    start = Offset(0f, priceY),
-                                    end = Offset(size.width, priceY),
-                                    strokeWidth = 2f
-                                )
+                                drawLine(color = Color(0xFF4DD0E1), start = Offset(0f, priceY), end = Offset(size.width, priceY), strokeWidth = 2f)
                             }
                         }
                     }
@@ -280,19 +239,13 @@ private fun CandlestickChart(
                         horizontalAlignment = Alignment.End
                     ) {
                         livePrice?.let {
-                            Text(
-                                text = t("Live", "زنده") + " ${String.format(Locale.US, "%.4f", it)}",
-                                color = Color(0xFF4DD0E1)
-                            )
+                            Text(text = t("Live", "زنده") + " ${String.format(Locale.US, "%.4f", it)}", color = Color(0xFF4DD0E1))
                         }
-                        Text(
-                            text = t("Crosshair", "کراس‌هِر") + " ${String.format(Locale.US, "%.4f", selectedCandle.close)}",
-                            color = Color(0xFFFFC107)
-                        )
+                        Text(text = t("Crosshair", "کراس‌هِر") + " ${String.format(Locale.US, "%.4f", selectedCandle.close)}", color = Color(0xFFFFC107))
                     }
                 }
-                Text(t("Low", "کمینه") + ": ${String.format(Locale.US, "%.4f", minPrice)}")
-                Text(t("High", "بیشینه") + ": ${String.format(Locale.US, "%.4f", maxPrice)}")
+                Text(t("Low", "کمینه") + ": ${String.format(Locale.US, "%.4f", minPrice)}", color = Color(0xFFBCEEFF))
+                Text(t("High", "بیشینه") + ": ${String.format(Locale.US, "%.4f", maxPrice)}", color = Color(0xFFBCEEFF))
             }
         }
     }

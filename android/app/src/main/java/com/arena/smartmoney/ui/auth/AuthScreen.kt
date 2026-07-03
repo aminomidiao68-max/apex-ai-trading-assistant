@@ -1,7 +1,6 @@
 package com.arena.smartmoney.ui.auth
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,7 +13,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -29,7 +27,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +37,9 @@ import com.arena.smartmoney.R
 import com.arena.smartmoney.data.repository.TradingRepository
 import com.arena.smartmoney.data.session.SessionManager
 import com.arena.smartmoney.push.PushRegistrationHelper
+import com.arena.smartmoney.ui.components.PremiumGlassCard
+import com.arena.smartmoney.ui.components.PremiumScreenBackground
+import com.arena.smartmoney.ui.components.PremiumSectionHeader
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 import kotlinx.coroutines.launch
 
@@ -57,67 +58,69 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .background(
-                Brush.verticalGradient(
-                    listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.surfaceVariant)
-                )
+    PremiumScreenBackground {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.ic_apex_ai_logo),
+                contentDescription = "APEX AI Logo",
+                modifier = Modifier.fillMaxWidth(0.38f)
             )
-            .padding(20.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Image(
-            painter = painterResource(id = R.drawable.ic_apex_ai_logo),
-            contentDescription = "APEX AI Logo",
-            modifier = Modifier.fillMaxWidth(0.42f)
-        )
-        Spacer(Modifier.height(16.dp))
-        Text("APEX AI", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(
-            t("Crypto & Forex Trading Assistant", "دستیار معاملات کریپتو و فارکس"),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(14.dp))
+            PremiumSectionHeader(
+                title = "APEX AI PREMIUM",
+                subtitle = t("Neon AI trading access portal", "درگاه ورود نئونی هوش مصنوعی معاملات")
+            )
+            Spacer(Modifier.height(18.dp))
 
-        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+            PremiumGlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    TextButton(onClick = { isRegisterMode = false }) { Text(t("Login", "ورود")) }
-                    TextButton(onClick = { isRegisterMode = true }) { Text(t("Register", "ثبت‌نام")) }
+                    TextButton(onClick = { isRegisterMode = false }) {
+                        Text(t("Login", "ورود"), color = if (!isRegisterMode) Color(0xFF67ECFF) else Color.White)
+                    }
+                    TextButton(onClick = { isRegisterMode = true }) {
+                        Text(t("Register", "ثبت‌نام"), color = if (isRegisterMode) Color(0xFF67ECFF) else Color.White)
+                    }
                 }
+
+                Spacer(Modifier.height(8.dp))
 
                 if (isRegisterMode) {
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text(t("Full Name", "نام کامل")) }
+                        label = { Text(t("Full Name", "نام کامل")) },
+                        shape = RoundedCornerShape(18.dp)
                     )
+                    Spacer(Modifier.height(10.dp))
                 }
 
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text(t("Email", "ایمیل")) }
+                    label = { Text(t("Email", "ایمیل")) },
+                    shape = RoundedCornerShape(18.dp)
                 )
+                Spacer(Modifier.height(10.dp))
 
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text(t("Password", "رمز عبور")) },
-                    visualTransformation = PasswordVisualTransformation()
+                    visualTransformation = PasswordVisualTransformation(),
+                    shape = RoundedCornerShape(18.dp)
                 )
 
+                Spacer(Modifier.height(12.dp))
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
                 Button(
@@ -154,16 +157,16 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     if (loading) {
-                        CircularProgressIndicator(modifier = Modifier.padding(4.dp))
+                        CircularProgressIndicator(modifier = Modifier.padding(4.dp), color = Color.White)
                     } else {
                         Text(if (isRegisterMode) t("Create Account", "ایجاد حساب") else t("Enter App", "ورود به برنامه"))
                     }
                 }
 
-                Spacer(Modifier.height(4.dp))
-                Text(t("Demo account:", "حساب دمو:"), fontWeight = FontWeight.SemiBold)
-                Text("Email: demo@apexai.app")
-                Text("Password: Demo12345!")
+                Spacer(Modifier.height(12.dp))
+                Text(t("Demo account:", "حساب دمو:"), color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
+                Text("Email: demo@apexai.app", color = Color.White)
+                Text("Password: Demo12345!", color = Color.White)
             }
         }
     }
