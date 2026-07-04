@@ -385,7 +385,7 @@ private fun InfoChip(label: String, value: String) {
 }
 
 @Composable
-private fun StreamChip(modifier: Modifier = Modifier, title: String, onClick: () -> Unit) {
+private fun StreamChip(title: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Button(onClick = onClick, modifier = modifier) {
         Text(title)
     }
