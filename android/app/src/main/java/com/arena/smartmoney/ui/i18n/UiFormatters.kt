@@ -48,6 +48,7 @@ fun localizeSignalReason(value: String, t: (String, String) -> String): String {
         value.contains("Bullish multi-layer confluence confirmed", ignoreCase = true) -> t("Bullish multi-layer confluence confirmed", "همگرایی چندلایه صعودی تأیید شد")
         value.contains("Bearish multi-layer confluence confirmed", ignoreCase = true) -> t("Bearish multi-layer confluence confirmed", "همگرایی چندلایه نزولی تأیید شد")
         value.contains("Volatility and session conditions support execution", ignoreCase = true) -> t("Volatility and session conditions support execution", "نوسان و شرایط سشن از اجرای معامله حمایت می‌کنند")
+        value.contains("Active trading session", ignoreCase = true) -> t("Active trading session", "سشن معاملاتی فعال")
         else -> value
     }
 }

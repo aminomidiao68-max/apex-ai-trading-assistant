@@ -1,13 +1,17 @@
 package com.arena.smartmoney.ui.signals
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -17,6 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -113,12 +118,18 @@ fun SignalsScreen(
                     "sell" -> Color(0xFFFF7A7A)
                     else -> Color(0xFF67ECFF)
                 }
+                val confidenceProgress = when (signal.confidence.lowercase(Locale.getDefault())) {
+                    "high" -> 0.92f
+                    "medium" -> 0.68f
+                    else -> 0.35f
+                }
 
                 PremiumGlassCard(borderColor = accent.copy(alpha = 0.35f)) {
                     Text(signal.symbol, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Color.White)
                     Text("${signal.direction.uppercase(Locale.getDefault())} • ${t("Score", "امتیاز")} ${signal.score} • ${signal.timeframe}", color = accent, fontWeight = FontWeight.Bold)
                     Text(grade, color = Color(0xFFBCEEFF))
                     Text(t("Confidence", "اطمینان") + ": $confidence • ${t("Session", "سشن")}: ${localizeSessionName(signal.session_name, t)}", color = Color.White)
+                    ConfidenceBar(progress = confidenceProgress, accent = accent, t = t)
                     if (analysisSummary.isNotBlank()) {
                         Text(t("AI Analysis", "تحلیل هوش مصنوعی") + ": $analysisSummary", color = Color(0xFFDDF8FF))
                     }
@@ -141,6 +152,26 @@ fun SignalsScreen(
                     Text(t("Saved At", "زمان ذخیره") + ": ${formatDisplayTimestamp(signal.created_at)}", color = Color(0xFF8EDFFF))
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ConfidenceBar(progress: Float, accent: Color, t: (String, String) -> String) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(t("AI Confidence Meter", "نوار اطمینان هوش مصنوعی"), color = Color(0xFFBCEEFF))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(10.dp)
+                .background(Color(0x331B2B3E), RoundedCornerShape(50))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress.coerceIn(0f, 1f))
+                    .height(10.dp)
+                    .background(Brush.horizontalGradient(listOf(accent, Color(0xFF67ECFF))), RoundedCornerShape(50))
+            )
         }
     }
 }

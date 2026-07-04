@@ -6,9 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +17,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.arena.smartmoney.ui.components.PremiumGlassCard
+import com.arena.smartmoney.ui.components.PremiumScreenBackground
+import com.arena.smartmoney.ui.components.PremiumSectionHeader
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 
 @Composable
@@ -27,31 +28,24 @@ fun ReadinessScreen(viewModel: ReadinessViewModel = viewModel()) {
     val readiness = state.readiness
     val t = rememberTranslator()
 
-    androidx.compose.foundation.lazy.LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item {
-            Text(
-                t("System Readiness", "آمادگی سیستم"),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                t(
-                    "Production readiness, blockers and warnings before real activation.",
-                    "آمادگی نسخه عملیاتی، موانع و هشدارها پیش از فعال‌سازی واقعی."
+    PremiumScreenBackground {
+        androidx.compose.foundation.lazy.LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                PremiumSectionHeader(
+                    title = t("System Readiness", "آمادگی سیستم"),
+                    subtitle = t(
+                        "Production readiness, blockers and warnings before real activation.",
+                        "آمادگی نسخه عملیاتی، موانع و هشدارها پیش از فعال‌سازی واقعی."
+                    )
                 )
-            )
-        }
-        item {
-            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+            }
+            item {
+                PremiumGlassCard(borderColor = Color(0x40FFC857)) {
                     Button(onClick = { viewModel.load() }, modifier = Modifier.fillMaxWidth()) {
                         Text(if (state.loading) t("Refreshing...", "در حال بروزرسانی...") else t("Refresh Readiness", "بروزرسانی آمادگی"))
                     }
@@ -62,38 +56,36 @@ fun ReadinessScreen(viewModel: ReadinessViewModel = viewModel()) {
                         Text(
                             t("Overall Status", "وضعیت کلی") + ": ${localizedStatus(t, it.overall_status)}",
                             color = statusColor(it.overall_status),
-                            style = MaterialTheme.typography.titleLarge
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
                         )
                         Text(
                             t("Ready / Warning / Missing", "آماده / هشدار / کمبود") +
-                                ": ${it.ready_count} / ${it.warning_count} / ${it.missing_count}"
+                                ": ${it.ready_count} / ${it.warning_count} / ${it.missing_count}",
+                            color = Color.White
                         )
                         Text(
                             when (it.overall_status) {
                                 "ready" -> t("System can move toward production with final checks.", "سیستم با انجام بررسی‌های نهایی می‌تواند به سمت نسخه عملیاتی حرکت کند.")
                                 "partial" -> t("Some modules are usable, but several items still need completion.", "بعضی ماژول‌ها قابل استفاده‌اند، اما چند مورد هنوز باید تکمیل شوند.")
                                 else -> t("Critical items are blocking full live readiness right now.", "در حال حاضر موارد مهمی جلوی آمادگی کامل برای استفاده زنده را گرفته‌اند.")
-                            }
+                            },
+                            color = Color(0xFFDDF8FF)
                         )
                     }
                 }
             }
-        }
-        readiness?.let { data ->
-            items(data.items.size) { index ->
-                val item = data.items[index]
-                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(item.key, style = MaterialTheme.typography.titleMedium)
-                        Text(t("Category", "دسته‌بندی") + ": ${item.category}")
+            readiness?.let { data ->
+                items(data.items) { item ->
+                    PremiumGlassCard(borderColor = statusColor(item.status).copy(alpha = 0.35f)) {
+                        Text(item.key, style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text(t("Category", "دسته‌بندی") + ": ${item.category}", color = Color(0xFFDDF8FF))
                         Text(
                             t("Status", "وضعیت") + ": ${localizedStatus(t, item.status)}",
-                            color = statusColor(item.status)
+                            color = statusColor(item.status),
+                            fontWeight = FontWeight.Bold
                         )
-                        Text(item.message)
+                        Text(item.message, color = Color.White)
                     }
                 }
             }
@@ -114,8 +106,8 @@ private fun localizedStatus(t: (String, String) -> String, status: String): Stri
 
 private fun statusColor(status: String): Color {
     return when (status.lowercase()) {
-        "ready" -> Color(0xFF2ECC71)
+        "ready" -> Color(0xFF33E6A6)
         "partial", "warning" -> Color(0xFFFFC857)
-        else -> Color(0xFFE85B5B)
+        else -> Color(0xFFFF7A7A)
     }
 }
