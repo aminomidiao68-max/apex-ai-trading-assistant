@@ -86,16 +86,6 @@ fun PremiumSectionHeader(
 }
 
 @Composable
-fun PremiumAccentText(value: String) {
-    Text(
-        text = value,
-        color = Color(0xFF67ECFF),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold
-    )
-}
-
-@Composable
 fun premiumTextFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = Color.White,
     unfocusedTextColor = Color.White,
