@@ -43,12 +43,17 @@ fun localizeSignalReason(value: String, t: (String, String) -> String): String {
         value.contains("Bearish FVG present", ignoreCase = true) -> t("Bearish imbalance zone detected", "ناحیه عدم تعادل نزولی شناسایی شد")
         value.contains("Bullish FVG present", ignoreCase = true) -> t("Bullish imbalance zone detected", "ناحیه عدم تعادل صعودی شناسایی شد")
         value.contains("Off-session conditions reduce setup quality", ignoreCase = true) -> t("Off-session conditions reduce setup quality", "خارج از سشن بودن کیفیت ستاپ را کاهش می‌دهد")
-        value.contains("Price above EMA20/EMA50 with bullish structure", ignoreCase = true) -> t("Price above EMA20/EMA50 with bullish structure", "قیمت بالای EMA20/EMA50 و ساختار صعودی است")
-        value.contains("Price below EMA20/EMA50 with bearish structure", ignoreCase = true) -> t("Price below EMA20/EMA50 with bearish structure", "قیمت پایین EMA20/EMA50 و ساختار نزولی است")
+        value.contains("Price above EMA20/EMA50 with bullish structure", ignoreCase = true) -> t("Price above EMA20/EMA50 with bullish structure", "قیمت بالای میانگین‌های EMA20 و EMA50 است و ساختار بازار صعودی است")
+        value.contains("Price below EMA20/EMA50 with bearish structure", ignoreCase = true) -> t("Price below EMA20/EMA50 with bearish structure", "قیمت پایین میانگین‌های EMA20 و EMA50 است و ساختار بازار نزولی است")
         value.contains("Bullish multi-layer confluence confirmed", ignoreCase = true) -> t("Bullish multi-layer confluence confirmed", "همگرایی چندلایه صعودی تأیید شد")
         value.contains("Bearish multi-layer confluence confirmed", ignoreCase = true) -> t("Bearish multi-layer confluence confirmed", "همگرایی چندلایه نزولی تأیید شد")
         value.contains("Volatility and session conditions support execution", ignoreCase = true) -> t("Volatility and session conditions support execution", "نوسان و شرایط سشن از اجرای معامله حمایت می‌کنند")
-        value.contains("Active trading session", ignoreCase = true) -> t("Active trading session", "سشن معاملاتی فعال")
+        value.contains("Active trading session:", ignoreCase = true) -> {
+            val session = value.substringAfter(":").trim()
+                .replace("London", "لندن")
+                .replace("New York", "نیویورک")
+            t("Active trading session", "سشن معاملاتی فعال") + ": $session"
+        }
         else -> value
     }
 }

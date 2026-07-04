@@ -8,6 +8,7 @@ import com.arena.smartmoney.data.model.SignalHistoryItemDto
 import com.arena.smartmoney.data.model.TradeJournalCreateRequestDto
 import com.arena.smartmoney.data.model.TradeStatsDto
 import com.arena.smartmoney.data.repository.TradingRepository
+import com.arena.smartmoney.ui.i18n.AppLanguageState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -31,6 +32,8 @@ class SignalsViewModel(
         loadHistory()
     }
 
+    private fun tr(en: String, fa: String): String = if (AppLanguageState.current == "fa") fa else en
+
     fun loadHistory() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loading = true, error = null)
@@ -45,7 +48,7 @@ class SignalsViewModel(
                 .onFailure { throwable ->
                     _uiState.value = _uiState.value.copy(
                         loading = false,
-                        error = throwable.message ?: "Failed to load signal history / خطا در بارگذاری تاریخچه سیگنال"
+                        error = throwable.message ?: tr("Failed to load signal history", "بارگذاری تاریخچه سیگنال ناموفق بود")
                     )
                 }
         }
@@ -56,7 +59,7 @@ class SignalsViewModel(
             _uiState.value = _uiState.value.copy(
                 loading = true,
                 error = null,
-                scanMessage = "Scanning $symbol... / در حال اسکن $symbol...",
+                scanMessage = tr("Scanning $symbol...", "در حال اسکن $symbol..."),
                 journalMessage = ""
             )
             val request = LiveSignalScanRequestDto(
@@ -85,9 +88,9 @@ class SignalsViewModel(
             runCatching { repository.liveScanSignal(request) }
                 .onSuccess { signal ->
                     val qualityMessage = when {
-                        signal.score >= 80.0 -> "Strong AI setup detected / ستاپ بسیار قوی شناسایی شد"
-                        signal.score >= 65.0 -> "Tradeable setup detected / ستاپ قابل قبول شناسایی شد"
-                        else -> "Weak setup - avoid entry / ستاپ ضعیف است و برای ورود توصیه نمی‌شود"
+                        signal.score >= 80.0 -> tr("Elite setup detected", "ستاپ ممتاز شناسایی شد")
+                        signal.score >= 65.0 -> tr("Tradeable setup detected", "ستاپ قابل معامله شناسایی شد")
+                        else -> tr("Weak setup - avoid entry", "ستاپ ضعیف است و برای ورود توصیه نمی‌شود")
                     }
                     _uiState.value = _uiState.value.copy(
                         loading = false,
@@ -100,7 +103,7 @@ class SignalsViewModel(
                 .onFailure { throwable ->
                     _uiState.value = _uiState.value.copy(
                         loading = false,
-                        error = throwable.message ?: "Signal scan failed / خطا در اسکن سیگنال",
+                        error = throwable.message ?: tr("Signal scan failed", "اسکن سیگنال ناموفق بود"),
                         scanMessage = ""
                     )
                 }
@@ -110,7 +113,10 @@ class SignalsViewModel(
     fun createTradeFromSignal(signal: SignalHistoryItemDto) {
         if (signal.score < 60.0) {
             _uiState.value = _uiState.value.copy(
-                journalMessage = "Signal too weak for journal entry / این سیگنال کیفیت کافی برای ورود به ژورنال معامله را ندارد"
+                journalMessage = tr(
+                    "Signal too weak for journal entry",
+                    "این سیگنال کیفیت کافی برای ورود به ژورنال معامله را ندارد"
+                )
             )
             return
         }
@@ -119,13 +125,15 @@ class SignalsViewModel(
         val stopLoss = signal.stop_loss
         if (entryLow == null || entryHigh == null || stopLoss == null) {
             _uiState.value = _uiState.value.copy(
-                journalMessage = "Signal is missing entry/SL data / اطلاعات ورود یا حد ضرر ناقص است"
+                journalMessage = tr("Signal is missing entry/SL data", "اطلاعات ورود یا حد ضرر ناقص است")
             )
             return
         }
 
         val entry = (entryLow + entryHigh) / 2.0
         val takeProfit = signal.take_profits.firstOrNull()
+        val tp2 = signal.take_profits.getOrNull(1)
+        val tp3 = signal.take_profits.getOrNull(2)
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loading = true, journalMessage = "")
@@ -139,18 +147,18 @@ class SignalsViewModel(
                         stop_loss = stopLoss,
                         take_profit = takeProfit,
                         size = 1.0,
-                        notes = "AI signal ${signal.id} • Score ${signal.score} • Added from Signals screen"
+                        notes = "AI signal ${signal.id} • Score ${signal.score} • TP1=${takeProfit ?: "-"} • TP2=${tp2 ?: "-"} • TP3=${tp3 ?: "-"}"
                     )
                 )
             }.onSuccess { trade ->
                 _uiState.value = _uiState.value.copy(
                     loading = false,
-                    journalMessage = "Trade #${trade.id} added to journal / معامله #${trade.id} به ژورنال اضافه شد"
+                    journalMessage = tr("Trade #${trade.id} added to journal", "معامله #${trade.id} به ژورنال اضافه شد")
                 )
             }.onFailure { throwable ->
                 _uiState.value = _uiState.value.copy(
                     loading = false,
-                    journalMessage = throwable.message ?: "Failed to add trade / افزودن معامله ناموفق بود"
+                    journalMessage = throwable.message ?: tr("Failed to add trade", "افزودن معامله ناموفق بود")
                 )
             }
         }
