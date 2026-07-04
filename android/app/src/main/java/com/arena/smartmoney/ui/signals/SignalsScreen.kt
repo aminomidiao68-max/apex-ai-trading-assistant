@@ -25,6 +25,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arena.smartmoney.ui.components.PremiumGlassCard
 import com.arena.smartmoney.ui.components.PremiumScreenBackground
 import com.arena.smartmoney.ui.components.PremiumSectionHeader
+import com.arena.smartmoney.ui.i18n.formatDisplayTimestamp
+import com.arena.smartmoney.ui.i18n.localizeSignalReason
+import com.arena.smartmoney.ui.i18n.localizeSessionName
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 import com.arena.smartmoney.util.NotificationHelper
 import java.util.Locale
@@ -104,7 +107,7 @@ fun SignalsScreen(
                 val tp1 = signal.take_profits.getOrNull(0)
                 val tp2 = signal.take_profits.getOrNull(1)
                 val tp3 = signal.take_profits.getOrNull(2)
-                val analysisSummary = signal.reasons.take(3).joinToString(separator = " • ")
+                val analysisSummary = signal.reasons.take(3).joinToString(separator = " • ") { localizeSignalReason(it, t) }
                 val accent = when (signal.direction.lowercase(Locale.getDefault())) {
                     "buy" -> Color(0xFF33E6A6)
                     "sell" -> Color(0xFFFF7A7A)
@@ -115,17 +118,17 @@ fun SignalsScreen(
                     Text(signal.symbol, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Color.White)
                     Text("${signal.direction.uppercase(Locale.getDefault())} • ${t("Score", "امتیاز")} ${signal.score} • ${signal.timeframe}", color = accent, fontWeight = FontWeight.Bold)
                     Text(grade, color = Color(0xFFBCEEFF))
-                    Text(t("Confidence", "اطمینان") + ": $confidence • ${t("Session", "سشن")}: ${signal.session_name}", color = Color.White)
+                    Text(t("Confidence", "اطمینان") + ": $confidence • ${t("Session", "سشن")}: ${localizeSessionName(signal.session_name, t)}", color = Color.White)
                     if (analysisSummary.isNotBlank()) {
                         Text(t("AI Analysis", "تحلیل هوش مصنوعی") + ": $analysisSummary", color = Color(0xFFDDF8FF))
                     }
                     Text(t("Entry Zone", "محدوده ورود") + ": ${signal.entry_low ?: "-"} - ${signal.entry_high ?: "-"}", color = Color.White)
                     Text(t("Stop Loss", "حد ضرر") + ": ${signal.stop_loss ?: "-"}", color = Color.White)
-                    Text("TP1: ${tp1 ?: "-"}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
-                    Text("TP2: ${tp2 ?: "-"}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
-                    Text("TP3: ${tp3 ?: "-"}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
+                    Text("TP1 • RR 1:1 = ${tp1 ?: "-"}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
+                    Text("TP2 • RR 1:2 = ${tp2 ?: "-"}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
+                    Text("TP3 • RR 1:3 = ${tp3 ?: "-"}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
                     signal.risk_to_reward?.let {
-                        Text(t("Target RR", "نسبت ریسک به بازده هدف") + ": $it", color = Color(0xFFFFD27A))
+                        Text(t("Max Target RR", "بیشترین نسبت بازده هدف") + ": 1:$it", color = Color(0xFFFFD27A))
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { viewModel.createTradeFromSignal(signal) }, modifier = Modifier.weight(1f)) {
@@ -135,7 +138,7 @@ fun SignalsScreen(
                             Text(t("Open Journal", "باز کردن ژورنال"))
                         }
                     }
-                    Text(t("Saved At", "زمان ذخیره") + ": ${signal.created_at}", color = Color(0xFF8EDFFF))
+                    Text(t("Saved At", "زمان ذخیره") + ": ${formatDisplayTimestamp(signal.created_at)}", color = Color(0xFF8EDFFF))
                 }
             }
         }

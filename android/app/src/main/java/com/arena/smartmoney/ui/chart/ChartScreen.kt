@@ -36,6 +36,8 @@ import com.arena.smartmoney.data.model.CandleDto
 import com.arena.smartmoney.ui.components.PremiumGlassCard
 import com.arena.smartmoney.ui.components.PremiumScreenBackground
 import com.arena.smartmoney.ui.components.PremiumSectionHeader
+import com.arena.smartmoney.ui.i18n.formatDisplayTimestamp
+import com.arena.smartmoney.ui.i18n.localizeBackendStatus
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 import java.util.Locale
 import kotlin.math.max
@@ -94,7 +96,7 @@ fun ChartScreen(viewModel: ChartViewModel = viewModel()) {
                     state.error?.let { Text(t("Error", "خطا") + ": $it", color = MaterialTheme.colorScheme.error) }
                     snapshot?.let {
                         Text(
-                            t("Live Price", "قیمت لحظه‌ای") + ": ${it.last_price ?: "-"} • 24h: ${it.change_pct ?: "-"}% • ${it.status}",
+                            t("Live Price", "قیمت لحظه‌ای") + ": ${it.last_price ?: "-"} • 24h: ${it.change_pct ?: "-"}% • ${localizeBackendStatus(it.status, t)}",
                             color = when {
                                 (it.change_pct ?: 0.0) > 0 -> Color(0xFF33E6A6)
                                 (it.change_pct ?: 0.0) < 0 -> Color(0xFFFF7A7A)
@@ -117,7 +119,7 @@ fun ChartScreen(viewModel: ChartViewModel = viewModel()) {
                         },
                         color = if (restFallbackMode) Color(0xFFFFD27A) else Color(0xFF67ECFF)
                     )
-                    Text(t("Visible candles", "کندل‌های قابل مشاهده") + ": ${visibleCandles.size} • ${t("Status", "وضعیت")}: ${state.streamStatus}", color = Color(0xFFBCEEFF))
+                    Text(t("Visible candles", "کندل‌های قابل مشاهده") + ": ${visibleCandles.size} • ${t("Status", "وضعیت")}: ${localizeBackendStatus(state.streamStatus, t)}", color = Color(0xFFBCEEFF))
                     Text(t("Gesture: pinch to zoom, drag horizontally to pan, tap a candle for the crosshair.", "حرکت‌ها: با دو انگشت زوم کن، افقی بکش تا جابه‌جا شوی و روی کندل بزن تا کراس‌هِر فعال شود."), color = Color(0xFFBCEEFF))
                     last?.let {
                         Text(t("Last Candle", "آخرین کندل") + " • O: ${it.open}  H: ${it.high}  L: ${it.low}  C: ${it.close}", color = Color.White)
@@ -125,7 +127,7 @@ fun ChartScreen(viewModel: ChartViewModel = viewModel()) {
                     selectedCandle?.let {
                         PremiumGlassCard(borderColor = Color(0x40FFC857)) {
                             Text(t("Selected Candle", "کندل انتخاب‌شده"), style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
-                            Text(t("Time", "زمان") + ": ${it.timestamp}", color = Color.White)
+                            Text(t("Time", "زمان") + ": ${formatDisplayTimestamp(it.timestamp)}", color = Color.White)
                             Text("O: ${it.open} • H: ${it.high} • L: ${it.low} • C: ${it.close}", color = Color.White)
                             Text(t("Volume", "حجم") + ": ${it.volume}", color = Color(0xFFFFD27A))
                         }

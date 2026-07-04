@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -60,11 +61,28 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    fun isDemoCredentials(): Boolean {
+        return email.trim().equals("demo@apexai.app", ignoreCase = true) && password == "Demo12345!"
+    }
+
+    fun loginLocalDemoMode() {
+        sessionManager.saveSession(
+            token = SessionManager.LOCAL_DEMO_PREFIX + "demo",
+            name = "APEX Demo",
+            email = "demo@apexai.app"
+        )
+        loading = false
+        error = null
+        onAuthSuccess()
+    }
+
     fun humanizeAuthError(raw: String?): String {
         val msg = raw.orEmpty()
         return when {
             "409" in msg || msg.contains("already registered", ignoreCase = true) ->
                 t("This email is already registered. Please log in instead.", "این ایمیل قبلاً ثبت شده است. لطفاً وارد شوید.")
+            "403" in msg ->
+                t("Server denied access. You can use local demo mode below.", "سرور دسترسی را رد کرد. می‌توانید از حالت دمو محلی پایین استفاده کنید.")
             "401" in msg || msg.contains("invalid email or password", ignoreCase = true) ->
                 t("Email or password is incorrect.", "ایمیل یا رمز عبور اشتباه است.")
             msg.isBlank() -> t("Authentication failed", "ورود/ثبت‌نام ناموفق بود")
@@ -187,8 +205,12 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                                 loading = false
                                 onAuthSuccess()
                             }.onFailure { throwable ->
-                                loading = false
-                                error = humanizeAuthError(throwable.message)
+                                if (!isRegisterMode && isDemoCredentials()) {
+                                    loginLocalDemoMode()
+                                } else {
+                                    loading = false
+                                    error = humanizeAuthError(throwable.message)
+                                }
                             }
                         }
                     },
@@ -198,6 +220,13 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                         CircularProgressIndicator(modifier = Modifier.padding(4.dp), color = Color.White)
                     } else {
                         Text(if (isRegisterMode) t("Create Account", "ایجاد حساب") else t("Enter App", "ورود به برنامه"))
+                    }
+                }
+
+                if (!isRegisterMode) {
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(onClick = { loginLocalDemoMode() }, modifier = Modifier.fillMaxWidth()) {
+                        Text(t("Open Local Demo Mode", "ورود به حالت دمو محلی"))
                     }
                 }
 

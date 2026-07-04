@@ -29,6 +29,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.arena.smartmoney.ui.i18n.localizeBackendStatus
+import com.arena.smartmoney.ui.i18n.localizeMarketQuality
+import com.arena.smartmoney.ui.i18n.localizeSessionName
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 import java.util.Locale
 import kotlin.math.abs
@@ -135,8 +138,8 @@ fun DashboardScreen(
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            InfoChip(t("Session", "سشن"), state.sessionName)
-                            InfoChip(t("Quality", "کیفیت"), state.marketQuality)
+                            InfoChip(t("Session", "سشن"), localizeSessionName(state.sessionName, t))
+                            InfoChip(t("Quality", "کیفیت"), localizeMarketQuality(state.marketQuality, t))
                             InfoChip(t("Score", "امتیاز"), String.format(Locale.US, "%.1f", state.sessionScore))
                         }
                     }
@@ -207,11 +210,13 @@ fun DashboardScreen(
                             color = Color.White,
                             fontWeight = FontWeight.Bold
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            StreamChip("BTC", onClick = { viewModel.selectStreamSymbol("BTCUSDT") })
-                            StreamChip("ETH", onClick = { viewModel.selectStreamSymbol("ETHUSDT") })
-                            StreamChip("EURUSD", onClick = { viewModel.selectStreamSymbol("EURUSD") })
-                            StreamChip("XAU", onClick = { viewModel.selectStreamSymbol("XAUUSD") })
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            StreamChip("BTC", modifier = Modifier.weight(1f), onClick = { viewModel.selectStreamSymbol("BTCUSDT") })
+                            StreamChip("ETH", modifier = Modifier.weight(1f), onClick = { viewModel.selectStreamSymbol("ETHUSDT") })
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            StreamChip("EURUSD", modifier = Modifier.weight(1f), onClick = { viewModel.selectStreamSymbol("EURUSD") })
+                            StreamChip("XAU", modifier = Modifier.weight(1f), onClick = { viewModel.selectStreamSymbol("XAUUSD") })
                         }
                         Button(onClick = { viewModel.reconnectStream() }, modifier = Modifier.fillMaxWidth()) {
                             Text(t("Reconnect Live Feed", "اتصال مجدد فید زنده"))
@@ -236,7 +241,7 @@ fun DashboardScreen(
                         )
                         state.liveSnapshot?.let {
                             Text(
-                                text = t("Live price", "قیمت لحظه‌ای") + ": ${it.last_price ?: "-"} • 24h: ${it.change_pct ?: "-"}%",
+                                text = t("Live price", "قیمت لحظه‌ای") + ": ${it.last_price ?: "-"} • 24h: ${it.change_pct ?: "-"}% • ${localizeBackendStatus(it.status, t)}",
                                 color = when {
                                     (it.change_pct ?: 0.0) > 0 -> Color(0xFF33E6A6)
                                     (it.change_pct ?: 0.0) < 0 -> Color(0xFFFF7A7A)
@@ -380,8 +385,8 @@ private fun InfoChip(label: String, value: String) {
 }
 
 @Composable
-private fun StreamChip(title: String, onClick: () -> Unit) {
-    Button(onClick = onClick) {
+private fun StreamChip(modifier: Modifier = Modifier, title: String, onClick: () -> Unit) {
+    Button(onClick = onClick, modifier = modifier) {
         Text(title)
     }
 }
@@ -409,7 +414,7 @@ private fun WatchlistCard(
                 Text(item.symbol, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(4.dp))
                 Text("${item.market.uppercase(Locale.getDefault())} • ${item.source}", color = Color(0xFFBEEFFF))
-                Text(t("Status", "وضعیت") + ": ${item.status}", color = Color(0xFF8EDFFF))
+                Text(t("Status", "وضعیت") + ": ${localizeBackendStatus(item.status, t)}", color = Color(0xFF8EDFFF))
             }
             Spacer(Modifier.width(12.dp))
             Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {

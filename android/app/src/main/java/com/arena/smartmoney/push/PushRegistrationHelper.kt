@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 object PushRegistrationHelper {
     fun registerCurrentDevice(sessionManager: SessionManager, repository: TradingRepository = TradingRepository()) {
         val authToken = sessionManager.getToken() ?: return
+        if (sessionManager.isLocalDemoSession()) return
         runCatching {
             FirebaseMessaging.getInstance().token.addOnSuccessListener { fcmToken ->
                 CoroutineScope(Dispatchers.IO).launch {

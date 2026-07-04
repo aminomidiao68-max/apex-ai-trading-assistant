@@ -16,6 +16,7 @@ class SessionManager(context: Context) {
     fun getToken(): String? = prefs.getString(KEY_TOKEN, null)
     fun getName(): String = prefs.getString(KEY_NAME, "Trader") ?: "Trader"
     fun getEmail(): String = prefs.getString(KEY_EMAIL, "") ?: ""
+    fun isLocalDemoSession(): Boolean = getToken()?.startsWith(LOCAL_DEMO_PREFIX) == true
 
     fun clearSession() {
         prefs.edit().clear().apply()
@@ -25,5 +26,6 @@ class SessionManager(context: Context) {
         private const val KEY_TOKEN = "token"
         private const val KEY_NAME = "name"
         private const val KEY_EMAIL = "email"
+        const val LOCAL_DEMO_PREFIX = "LOCAL_DEMO_"
     }
 }

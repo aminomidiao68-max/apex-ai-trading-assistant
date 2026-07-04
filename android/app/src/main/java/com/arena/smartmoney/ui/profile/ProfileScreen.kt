@@ -20,9 +20,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalContext
 import com.arena.smartmoney.data.repository.TradingRepository
 import com.arena.smartmoney.data.session.SessionManager
 import com.arena.smartmoney.push.PushRegistrationHelper
@@ -48,6 +48,13 @@ fun ProfileScreen(onLogout: () -> Unit, onOpenSettings: () -> Unit) {
 
     fun loadProfile() {
         val token = sessionManager.getToken() ?: return
+        if (sessionManager.isLocalDemoSession()) {
+            name = sessionManager.getName()
+            email = sessionManager.getEmail()
+            loading = false
+            error = null
+            return
+        }
         loading = true
         error = null
         scope.launch {
@@ -86,7 +93,11 @@ fun ProfileScreen(onLogout: () -> Unit, onOpenSettings: () -> Unit) {
                 Text(t("Name", "نام") + ": $name", color = Color.White)
                 Text(t("Email", "ایمیل") + ": $email", color = Color.White)
                 Text(
-                    if (loading) t("Status: syncing profile...", "وضعیت: همگام‌سازی پروفایل...") else t("Status: active", "وضعیت: فعال"),
+                    when {
+                        loading -> t("Status: syncing profile...", "وضعیت: همگام‌سازی پروفایل...")
+                        sessionManager.isLocalDemoSession() -> t("Status: local demo mode", "وضعیت: حالت دمو محلی")
+                        else -> t("Status: active", "وضعیت: فعال")
+                    },
                     color = Color(0xFF67ECFF),
                     fontWeight = FontWeight.Bold
                 )
@@ -125,6 +136,10 @@ fun ProfileScreen(onLogout: () -> Unit, onOpenSettings: () -> Unit) {
                     val token = sessionManager.getToken() ?: return@Button
                     pushMessage = ""
                     scope.launch {
+                        if (sessionManager.isLocalDemoSession()) {
+                            pushMessage = t("Local demo mode does not send remote push tests.", "در حالت دمو محلی، تست پوش از راه دور ارسال نمی‌شود.")
+                            return@launch
+                        }
                         runCatching {
                             repository.sendTestNotification(
                                 authorization = "Bearer $token",
@@ -156,7 +171,9 @@ fun ProfileScreen(onLogout: () -> Unit, onOpenSettings: () -> Unit) {
                     val token = sessionManager.getToken()
                     scope.launch {
                         runCatching {
-                            if (token != null) repository.logout("Bearer $token")
+                            if (token != null && !sessionManager.isLocalDemoSession()) {
+                                repository.logout("Bearer $token")
+                            }
                         }
                         sessionManager.clearSession()
                         onLogout()
