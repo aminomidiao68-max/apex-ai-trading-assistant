@@ -18,12 +18,12 @@ def evaluate_session(now_utc: datetime | None = None) -> dict:
 
     if overlap:
         return {
-            "session_name": "London-NewYork Overlap",
+            "session_name": "London-New York Overlap",
             "quality": "high",
             "score": 10.0,
         }
     if london_open:
         return {"session_name": "London", "quality": "high", "score": 8.0}
     if new_york_open:
-        return {"session_name": "NewYork", "quality": "high", "score": 8.0}
+        return {"session_name": "New York", "quality": "high", "score": 8.0}
     return {"session_name": "Off Session", "quality": "low", "score": 3.0}

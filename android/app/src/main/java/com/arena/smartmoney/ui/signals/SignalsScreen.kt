@@ -101,7 +101,13 @@ fun SignalsScreen(
                     if (state.scanMessage.isNotBlank()) Text(state.scanMessage, color = Color(0xFF33E6A6))
                     if (state.journalMessage.isNotBlank()) Text(state.journalMessage, color = Color(0xFF67ECFF))
                     state.error?.let { Text(t("Error", "خطا") + ": $it", color = MaterialTheme.colorScheme.error) }
-                    Text(t("Forex live scan still needs a TwelveData API key on the backend.", "اسکن زنده فارکس هنوز به کلید TwelveData روی بک‌اند نیاز دارد."), color = Color(0xFFFFD27A))
+                    Text(
+                        t(
+                            "Live engine uses institutional confluence across crypto, forex and gold feeds.",
+                            "موتور زنده از همگرایی حرفه‌ای روی فیدهای کریپتو، فارکس و طلا استفاده می‌کند."
+                        ),
+                        color = Color(0xFFFFD27A)
+                    )
                 }
             }
             items(state.items) { signal ->

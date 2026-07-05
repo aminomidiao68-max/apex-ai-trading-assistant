@@ -46,7 +46,7 @@ from app.services.session_engine import evaluate_session
 from app.services.signal_engine import SignalEngine
 from app.services.storage_service import StorageService
 
-app = FastAPI(title=settings.app_name, version="0.7.0")
+app = FastAPI(title=settings.app_name, version="0.8.0")
 engine = SignalEngine()
 backtest_service = BacktestService(engine)
 market_data = MarketDataService()

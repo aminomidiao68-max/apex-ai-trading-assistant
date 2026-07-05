@@ -101,6 +101,41 @@ def _context_summary(candles: list[Candle]) -> dict:
     }
 
 
+def _direction_from_bias(bull_bias: float, bear_bias: float, gap: float = 0.4) -> SignalDirection:
+    if bull_bias > bear_bias + gap:
+        return SignalDirection.buy
+    if bear_bias > bull_bias + gap:
+        return SignalDirection.sell
+    return SignalDirection.neutral
+
+
+def _zone_for_direction(smc: dict, direction: SignalDirection) -> dict | None:
+    fvg = smc.get("fvg") if isinstance(smc.get("fvg"), dict) else None
+    if direction == SignalDirection.buy:
+        if isinstance(smc.get("bullish_ob"), dict):
+            return smc["bullish_ob"]
+        if fvg and fvg.get("type") == "bullish":
+            return fvg
+    elif direction == SignalDirection.sell:
+        if isinstance(smc.get("bearish_ob"), dict):
+            return smc["bearish_ob"]
+        if fvg and fvg.get("type") == "bearish":
+            return fvg
+    return None
+
+
+def _dedupe_reasons(reasons: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in reasons:
+        clean = item.strip()
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        ordered.append(clean)
+    return ordered
+
+
 class SignalEngine:
     def analyze(self, request: SignalRequest) -> SignalResponse:
         closes = [c.close for c in request.candles]
@@ -131,12 +166,12 @@ class SignalEngine:
         if ema20 > ema50 and last_price > ema20:
             structure_score += 16
             indicator_score += 5
-            bull_bias += 1.5
+            bull_bias += 1.6
             reasons.append("Price above EMA20/EMA50 with bullish structure")
         elif ema20 < ema50 and last_price < ema20:
             structure_score += 16
             indicator_score += 5
-            bear_bias += 1.5
+            bear_bias += 1.6
             reasons.append("Price below EMA20/EMA50 with bearish structure")
         else:
             structure_score += 8
@@ -144,25 +179,28 @@ class SignalEngine:
 
         if bullish_stack:
             structure_score += 3
-            bull_bias += 0.8
+            bull_bias += 0.9
             reasons.append("Fast EMA stack confirms bullish continuation")
         elif bearish_stack:
             structure_score += 3
-            bear_bias += 0.8
+            bear_bias += 0.9
             reasons.append("Fast EMA stack confirms bearish continuation")
 
-        if trend_strength > 0.35:
-            structure_score += 2
+        if trend_strength > 0.55:
+            structure_score += 2.5
             reasons.append("EMA spread shows strong directional separation")
+        elif trend_strength > 0.35:
+            structure_score += 1.5
+            reasons.append("EMA spread shows directional commitment")
 
         if 45 <= current_rsi <= 65:
             indicator_score += 3
         elif current_rsi > 65:
-            bull_bias += 0.8
+            bull_bias += 0.9
             indicator_score += 4
             reasons.append("RSI supports bullish momentum")
         elif current_rsi < 35:
-            bear_bias += 0.8
+            bear_bias += 0.9
             indicator_score += 4
             reasons.append("RSI supports bearish momentum")
 
@@ -174,11 +212,11 @@ class SignalEngine:
             indicator_score += 2
 
         if bull_pressure > bear_pressure + 0.6:
-            bull_bias += 0.7
+            bull_bias += 0.8
             indicator_score += 1.5
             reasons.append("Recent candle pressure favors buyers")
         elif bear_pressure > bull_pressure + 0.6:
-            bear_bias += 0.7
+            bear_bias += 0.8
             indicator_score += 1.5
             reasons.append("Recent candle pressure favors sellers")
 
@@ -187,11 +225,56 @@ class SignalEngine:
 
         smc = detect_smc_features(request.candles)
         smc_score = smc["score"]
+        liquidity_score = smc.get("liquidity_score", 0.0)
         reasons.extend(smc["reasons"])
+
         if smc["direction"] == SignalDirection.buy:
             bull_bias += 1.6
         elif smc["direction"] == SignalDirection.sell:
             bear_bias += 1.6
+
+        if smc.get("equal_highs") and smc.get("sweep") == "sell_side_liquidity_swept":
+            smc_score = min(smc_score + 2.0, 25.0)
+            bear_bias += 0.5
+            reasons.append("Equal-high liquidity was engineered before bearish rejection")
+        if smc.get("equal_lows") and smc.get("sweep") == "buy_side_liquidity_swept":
+            smc_score = min(smc_score + 2.0, 25.0)
+            bull_bias += 0.5
+            reasons.append("Equal-low liquidity was engineered before bullish reclaim")
+
+        if smc.get("displacement") == "bullish":
+            smc_score = min(smc_score + 2.0, 25.0)
+            bull_bias += 0.5
+            reasons.append("Displacement confirms institutional intent")
+        elif smc.get("displacement") == "bearish":
+            smc_score = min(smc_score + 2.0, 25.0)
+            bear_bias += 0.5
+            reasons.append("Displacement confirms institutional intent")
+
+        if smc.get("choch") == "bullish":
+            smc_score = min(smc_score + 2.5, 25.0)
+            bull_bias += 0.5
+            reasons.append("Market structure shift improves reversal credibility")
+        elif smc.get("choch") == "bearish":
+            smc_score = min(smc_score + 2.5, 25.0)
+            bear_bias += 0.5
+            reasons.append("Market structure shift improves reversal credibility")
+
+        directional_candidate = _direction_from_bias(bull_bias, bear_bias)
+        if smc.get("premium_discount") == "discount" and directional_candidate == SignalDirection.buy:
+            smc_score = min(smc_score + 1.5, 25.0)
+            bull_bias += 0.3
+            reasons.append("Buy setup sits in discount zone")
+        elif smc.get("premium_discount") == "premium" and directional_candidate == SignalDirection.sell:
+            smc_score = min(smc_score + 1.5, 25.0)
+            bear_bias += 0.3
+            reasons.append("Sell setup sits in premium zone")
+        elif smc.get("premium_discount") == "premium" and directional_candidate == SignalDirection.buy:
+            quality_gate_penalty += 1.5
+            reasons.append("Buy setup is entering from premium zone")
+        elif smc.get("premium_discount") == "discount" and directional_candidate == SignalDirection.sell:
+            quality_gate_penalty += 1.5
+            reasons.append("Sell setup is entering from discount zone")
 
         order_flow_score = 8.0
         if request.order_flow:
@@ -232,28 +315,31 @@ class SignalEngine:
         news_score = news["score"]
         reasons.extend(news["warnings"])
 
-        if news["blocked"]:
-            direction = SignalDirection.neutral
-        else:
-            if bull_bias > bear_bias + 0.4:
-                direction = SignalDirection.buy
-            elif bear_bias > bull_bias + 0.4:
-                direction = SignalDirection.sell
-            else:
-                direction = SignalDirection.neutral
-
         higher_direction = higher_tf_ctx["direction"]
+        base_direction = _direction_from_bias(bull_bias, bear_bias)
         if higher_direction != SignalDirection.neutral:
-            if higher_direction == direction and direction != SignalDirection.neutral:
+            if base_direction == SignalDirection.neutral:
+                if higher_direction == SignalDirection.buy:
+                    bull_bias += 0.45
+                else:
+                    bear_bias += 0.45
+                reasons.append(f"Higher timeframe bias is sponsoring {higher_direction.value} continuation")
+            elif higher_direction == base_direction:
                 structure_score = min(structure_score + 3.0, 25.0)
                 indicator_score = min(indicator_score + 1.0, 10.0)
-                reasons.append(f"Higher timeframe bias confirms {direction.value} continuation")
-            elif direction != SignalDirection.neutral and higher_direction != direction:
+                if higher_direction == SignalDirection.buy:
+                    bull_bias += 0.45
+                else:
+                    bear_bias += 0.45
+                reasons.append(f"Higher timeframe bias confirms {base_direction.value} continuation")
+            else:
                 quality_gate_penalty += 6.0
                 reasons.append("Higher timeframe trend disagrees with local setup")
 
+        direction = _direction_from_bias(bull_bias, bear_bias)
         if direction == SignalDirection.buy:
             if lower_tf_ctx["bull_pressure"] > lower_tf_ctx["bear_pressure"] + 0.35:
+                bull_bias += 0.35
                 indicator_score = min(indicator_score + 1.5, 10.0)
                 reasons.append("Lower timeframe execution momentum supports buy continuation")
             elif lower_tf_ctx["bear_pressure"] > lower_tf_ctx["bull_pressure"] + 0.5:
@@ -261,12 +347,14 @@ class SignalEngine:
                 reasons.append("Lower timeframe sellers are still pressing against entry")
         elif direction == SignalDirection.sell:
             if lower_tf_ctx["bear_pressure"] > lower_tf_ctx["bull_pressure"] + 0.35:
+                bear_bias += 0.35
                 indicator_score = min(indicator_score + 1.5, 10.0)
                 reasons.append("Lower timeframe execution momentum supports sell continuation")
             elif lower_tf_ctx["bull_pressure"] > lower_tf_ctx["bear_pressure"] + 0.5:
                 quality_gate_penalty += 2.5
                 reasons.append("Lower timeframe buyers are still pressing against entry")
 
+        direction = _direction_from_bias(bull_bias, bear_bias)
         if direction != SignalDirection.neutral and higher_direction == direction and lower_tf_ctx["direction"] in (direction, SignalDirection.neutral):
             structure_score = min(structure_score + 2.0, 25.0)
             reasons.append("Multi-timeframe confluence boosts conviction")
@@ -301,6 +389,10 @@ class SignalEngine:
             indicator_score = min(indicator_score + 1.0, 10.0)
             reasons.append("Volatility and session conditions support execution")
 
+        if liquidity_score < 4.0 and timeframe_minutes <= 5:
+            quality_gate_penalty += 1.0
+            reasons.append("Liquidity map is still shallow for lower timeframe execution")
+
         if timeframe_minutes <= 1:
             if session["quality"] != "high":
                 session_score = max(session_score - 4.0, 0.0)
@@ -328,6 +420,11 @@ class SignalEngine:
                 quality_gate_penalty += 1.0
                 reasons.append("Short timeframe volatility is compressed")
 
+        if news["blocked"]:
+            direction = SignalDirection.neutral
+        else:
+            direction = _direction_from_bias(bull_bias, bear_bias)
+
         entry_low = None
         entry_high = None
         stop_loss = None
@@ -335,25 +432,30 @@ class SignalEngine:
         rr = None
 
         if direction == SignalDirection.buy:
-            zone = smc.get("bullish_ob") or smc.get("fvg")
-            entry_low = (zone or {}).get("low", last_price - current_atr * 0.2)
-            entry_high = (zone or {}).get("high", last_price)
-            stop_loss = min(smc.get("recent_low", last_price - current_atr), entry_low - current_atr * 0.2)
+            zone = _zone_for_direction(smc, direction) or {}
+            entry_low = zone.get("low", last_price - current_atr * 0.2)
+            entry_high = zone.get("high", last_price)
+            stop_anchor = smc.get("recent_low", last_price - current_atr)
+            stop_loss = min(stop_anchor, entry_low - current_atr * 0.2)
             risk = max(((entry_low + entry_high) / 2) - stop_loss, current_atr * 0.5)
             mid_entry = (entry_low + entry_high) / 2
             take_profits = [round(mid_entry + risk * n, 6) for n in (1, 2, 3)]
             rr = 3.0
         elif direction == SignalDirection.sell:
-            zone = smc.get("bearish_ob") or smc.get("fvg")
-            entry_low = (zone or {}).get("low", last_price)
-            entry_high = (zone or {}).get("high", last_price + current_atr * 0.2)
-            stop_loss = max(smc.get("recent_high", last_price + current_atr), entry_high + current_atr * 0.2)
+            zone = _zone_for_direction(smc, direction) or {}
+            entry_low = zone.get("low", last_price)
+            entry_high = zone.get("high", last_price + current_atr * 0.2)
+            stop_anchor = smc.get("recent_high", last_price + current_atr)
+            stop_loss = max(stop_anchor, entry_high + current_atr * 0.2)
             risk = max(stop_loss - ((entry_low + entry_high) / 2), current_atr * 0.5)
             mid_entry = (entry_low + entry_high) / 2
             take_profits = [round(mid_entry - risk * n, 6) for n in (1, 2, 3)]
             rr = 3.0
 
-        total_score = round(structure_score + smc_score + order_flow_score + session_score + news_score + indicator_score - quality_gate_penalty, 2)
+        total_score = round(
+            structure_score + smc_score + order_flow_score + session_score + news_score + indicator_score - quality_gate_penalty,
+            2,
+        )
         total_score = max(0.0, min(total_score, 100.0))
 
         confidence = "low"
@@ -382,6 +484,8 @@ class SignalEngine:
             )
             if not risk_plan.is_trade_allowed:
                 reasons.extend(risk_plan.warnings)
+
+        reasons = _dedupe_reasons(reasons)
 
         breakdown = ScoreBreakdown(
             structure=round(structure_score, 2),
