@@ -190,6 +190,29 @@ fun DashboardScreen(
         t = t
     )
 
+    val supremeState = supremeStateLabel(
+        executiveHealth = executiveHealth,
+        quantReadiness = quantReadiness,
+        riskPressure = riskPressure,
+        t = t
+    )
+    val commandShield = commandShieldLabel(
+        capitalDefense = capitalDefense,
+        riskPressure = riskPressure,
+        t = t
+    )
+    val globalPulseState = globalPulseStateLabel(
+        risingAssets = risingAssets,
+        fallingAssets = fallingAssets,
+        strongestMove = strongestMove,
+        t = t
+    )
+    val pulseVelocity = pulseVelocityLabel(
+        strongestMove = strongestMove,
+        sessionScore = state.sessionScore,
+        t = t
+    )
+
     val aiSummary = buildString {
         append(
             if (state.sessionScore >= 8.0) {
@@ -278,6 +301,25 @@ fun DashboardScreen(
                     missionStatus = missionStatus,
                     commandPriority = commandPriority,
                     executionClimate = executionClimate,
+                    t = t
+                )
+            }
+
+            item {
+                SupremeControlLayerBoard(
+                    supremeState = supremeState,
+                    commandShield = commandShield,
+                    pulseVelocity = pulseVelocity,
+                    t = t
+                )
+            }
+
+            item {
+                GlobalMarketPulseBoard(
+                    globalPulseState = globalPulseState,
+                    strongestSymbol = strongestSymbol?.symbol ?: "-",
+                    strongestMove = strongestMove,
+                    allocationBias = allocationBias,
                     t = t
                 )
             }
@@ -584,6 +626,58 @@ private fun MissionControlBoard(
             FocusChip(t("Priority", "اولویت"), commandPriority, Modifier.weight(1f))
             FocusChip(t("Climate", "فضای اجرا"), executionClimate, Modifier.weight(1f))
         }
+    }
+}
+
+@Composable
+private fun SupremeControlLayerBoard(
+    supremeState: String,
+    commandShield: String,
+    pulseVelocity: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
+        Text(t("Supreme Control Layer", "لایه کنترل برتر"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "Supreme layer fuses protection state with market pulse and command posture.",
+                "لایه کنترل برتر وضعیت حفاظت، پالس بازار و حالت فرمان را با هم ترکیب می‌کند."
+            ),
+            color = Color(0xFFDDF8FF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("State", "وضعیت"), supremeState, Modifier.weight(1f))
+            FocusChip(t("Shield", "شیلد"), commandShield, Modifier.weight(1f))
+            FocusChip(t("Velocity", "سرعت"), pulseVelocity, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun GlobalMarketPulseBoard(
+    globalPulseState: String,
+    strongestSymbol: String,
+    strongestMove: Double,
+    allocationBias: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+        Text(t("Global Market Pulse", "پالس بازار جهانی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "Pulse board summarizes dominant pressure, strongest symbol and capital bias.",
+                "برد پالس، فشار غالب، قوی‌ترین نماد و سوگیری سرمایه را خلاصه می‌کند."
+            ),
+            color = Color(0xFFBCEEFF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Pulse", "پالس"), globalPulseState, Modifier.weight(1f))
+            FocusChip(t("Bias", "سوگیری"), allocationBias, Modifier.weight(1f))
+        }
+        Text(
+            t("Pulse Leader", "رهبر پالس") + ": $strongestSymbol • ${String.format(Locale.US, "%.2f", strongestMove)}%",
+            color = Color.White
+        )
     }
 }
 
@@ -1447,5 +1541,57 @@ private fun tacticalDefenseLabel(
         capitalDefense == t("Defend", "دفاع") || riskPressure == t("High", "بالا") -> t("High Guard", "دفاع بالا")
         capitalDefense == t("Managed", "مدیریت‌شده") -> t("Medium Guard", "دفاع متوسط")
         else -> t("Low Guard", "دفاع پایین")
+    }
+}
+
+private fun supremeStateLabel(
+    executiveHealth: String,
+    quantReadiness: String,
+    riskPressure: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        executiveHealth == t("Prime", "درجه یک") && quantReadiness == t("Prime", "درجه یک") && riskPressure != t("High", "بالا") -> t("Supreme", "برتر")
+        executiveHealth == t("Strong", "قوی") || quantReadiness == t("Ready", "آماده") -> t("Command", "فرمان")
+        else -> t("Guarded", "محافظت‌شده")
+    }
+}
+
+private fun commandShieldLabel(
+    capitalDefense: String,
+    riskPressure: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        capitalDefense == t("Defend", "دفاع") || riskPressure == t("High", "بالا") -> t("Heavy", "سنگین")
+        capitalDefense == t("Managed", "مدیریت‌شده") -> t("Medium", "متوسط")
+        else -> t("Light", "سبک")
+    }
+}
+
+private fun globalPulseStateLabel(
+    risingAssets: Int,
+    fallingAssets: Int,
+    strongestMove: Double,
+    t: (String, String) -> String,
+): String {
+    return when {
+        strongestMove >= 1.0 && risingAssets > fallingAssets -> t("Risk-On", "ریسک‌پذیر")
+        strongestMove >= 1.0 && fallingAssets > risingAssets -> t("Risk-Off", "ریسک‌گریز")
+        strongestMove >= 0.35 -> t("Active", "فعال")
+        else -> t("Quiet", "آرام")
+    }
+}
+
+private fun pulseVelocityLabel(
+    strongestMove: Double,
+    sessionScore: Double,
+    t: (String, String) -> String,
+): String {
+    return when {
+        strongestMove >= 1.0 && sessionScore >= 8.0 -> t("Explosive", "انفجاری")
+        strongestMove >= 0.5 -> t("Fast", "سریع")
+        strongestMove > 0.0 -> t("Measured", "کنترل‌شده")
+        else -> t("Slow", "آهسته")
     }
 }
