@@ -138,6 +138,36 @@ fun DashboardScreen(
     val actionBias = actionBiasLabel(commandPriority, riskPressure, t)
     val confirmationLayer = confirmationLayerLabel(focusHealth, breadthHealth, streamInFallbackMode, t)
 
+    val primeCockpitState = primeCockpitStateLabel(
+        sessionScore = state.sessionScore,
+        strongestMove = strongestMove,
+        streamFallback = streamInFallbackMode,
+        t = t
+    )
+    val executionWindow = executionWindowLabel(
+        sessionScore = state.sessionScore,
+        strongestMove = strongestMove,
+        t = t
+    )
+    val signalRadarBias = signalRadarBiasLabel(
+        risingAssets = risingAssets,
+        fallingAssets = fallingAssets,
+        strongestMove = strongestMove,
+        t = t
+    )
+    val signalRadarReadiness = signalRadarReadinessLabel(
+        sessionScore = state.sessionScore,
+        strongestMove = strongestMove,
+        streamFallback = streamInFallbackMode,
+        breadthHealth = breadthHealth,
+        t = t
+    )
+    val signalPressure = signalPressureLabel(
+        openTrades = stats?.open_trades ?: 0,
+        riskPressure = riskPressure,
+        t = t
+    )
+
     val aiSummary = buildString {
         append(
             if (state.sessionScore >= 8.0) {
@@ -226,6 +256,25 @@ fun DashboardScreen(
                     missionStatus = missionStatus,
                     commandPriority = commandPriority,
                     executionClimate = executionClimate,
+                    t = t
+                )
+            }
+
+            item {
+                PrimeAICockpitBoard(
+                    primeCockpitState = primeCockpitState,
+                    executionWindow = executionWindow,
+                    signalPressure = signalPressure,
+                    t = t
+                )
+            }
+
+            item {
+                ExecutiveSignalRadarBoard(
+                    signalRadarBias = signalRadarBias,
+                    signalRadarReadiness = signalRadarReadiness,
+                    commandPriority = commandPriority,
+                    strongestSymbol = strongestSymbol?.symbol ?: "-",
                     t = t
                 )
             }
@@ -498,6 +547,56 @@ private fun MissionControlBoard(
 }
 
 @Composable
+private fun PrimeAICockpitBoard(
+    primeCockpitState: String,
+    executionWindow: String,
+    signalPressure: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
+        Text(t("Prime AI Cockpit", "کابین حرفه‌ای AI"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "Prime cockpit monitors readiness, active window and signal pressure before execution.",
+                "کابین حرفه‌ای آمادگی، پنجره اجرا و فشار سیگنال را قبل از تصمیم بررسی می‌کند."
+            ),
+            color = Color(0xFFDDF8FF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("State", "وضعیت"), primeCockpitState, Modifier.weight(1f))
+            FocusChip(t("Window", "پنجره"), executionWindow, Modifier.weight(1f))
+            FocusChip(t("Pressure", "فشار"), signalPressure, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun ExecutiveSignalRadarBoard(
+    signalRadarBias: String,
+    signalRadarReadiness: String,
+    commandPriority: String,
+    strongestSymbol: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+        Text(t("Executive Signal Radar", "رادار اجرایی سیگنال"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "Signal radar summarizes directional bias, readiness and lead symbol in one glance.",
+                "رادار سیگنال، سوگیری جهت‌دار، آمادگی و نماد رهبر را در یک نگاه خلاصه می‌کند."
+            ),
+            color = Color(0xFFBCEEFF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Bias", "سوگیری"), signalRadarBias, Modifier.weight(1f))
+            FocusChip(t("Ready", "آمادگی"), signalRadarReadiness, Modifier.weight(1f))
+            FocusChip(t("Priority", "اولویت"), commandPriority, Modifier.weight(1f))
+        }
+        Text(t("Radar Leader", "رهبر رادار") + ": $strongestSymbol", color = Color.White)
+    }
+}
+
+@Composable
 private fun ExecutiveOverviewBoard(
     executiveHealth: String,
     commandPriority: String,
@@ -545,7 +644,7 @@ private fun QuantOpsCenterBoard(
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FocusChip(t("Readiness", "آمادگی"), quantReadiness, Modifier.weight(1f))
-            FocusChip(t("Edge", "لبه") + " $edgeScore", edgeScore, Modifier.weight(1f))
+            FocusChip(t("Edge", "لبه"), edgeScore, Modifier.weight(1f))
             FocusChip(t("Volatility", "نوسان"), volatilityState, Modifier.weight(1f))
         }
     }
@@ -1140,5 +1239,71 @@ private fun confirmationLayerLabel(
         !streamInFallbackMode && focusHealth == t("Elite", "ممتاز") && breadthHealth != t("Mixed", "ترکیبی") -> t("Confirmed", "تأییدشده")
         !streamInFallbackMode -> t("Partial", "نیمه‌تأیید")
         else -> t("Protected", "محافظت‌شده")
+    }
+}
+
+private fun primeCockpitStateLabel(
+    sessionScore: Double,
+    strongestMove: Double,
+    streamFallback: Boolean,
+    t: (String, String) -> String,
+): String {
+    return when {
+        sessionScore >= 8.0 && strongestMove >= 0.75 && !streamFallback -> t("Prime", "درجه یک")
+        sessionScore >= 6.5 && strongestMove >= 0.35 -> t("Armed", "مسلح")
+        streamFallback -> t("Protected", "محافظت‌شده")
+        else -> t("Building", "در حال ساخت")
+    }
+}
+
+private fun executionWindowLabel(
+    sessionScore: Double,
+    strongestMove: Double,
+    t: (String, String) -> String,
+): String {
+    return when {
+        sessionScore >= 8.0 && strongestMove >= 0.75 -> t("Fast", "سریع")
+        sessionScore >= 6.5 && strongestMove >= 0.35 -> t("Active", "فعال")
+        strongestMove > 0.0 -> t("Selective", "انتخابی")
+        else -> t("Quiet", "آرام")
+    }
+}
+
+private fun signalRadarBiasLabel(
+    risingAssets: Int,
+    fallingAssets: Int,
+    strongestMove: Double,
+    t: (String, String) -> String,
+): String {
+    return when {
+        strongestMove >= 0.5 && risingAssets > fallingAssets -> t("Bull Dominant", "غلبه خریداران")
+        strongestMove >= 0.5 && fallingAssets > risingAssets -> t("Bear Dominant", "غلبه فروشندگان")
+        else -> t("Two-Way", "دوطرفه")
+    }
+}
+
+private fun signalRadarReadinessLabel(
+    sessionScore: Double,
+    strongestMove: Double,
+    streamFallback: Boolean,
+    breadthHealth: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        sessionScore >= 8.0 && strongestMove >= 0.75 && !streamFallback && breadthHealth != t("Mixed", "ترکیبی") -> t("Ready", "آماده")
+        !streamFallback -> t("Tracking", "در حال ردیابی")
+        else -> t("Protected", "محافظت‌شده")
+    }
+}
+
+private fun signalPressureLabel(
+    openTrades: Int,
+    riskPressure: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        openTrades >= 3 || riskPressure == t("High", "بالا") -> t("Elevated", "بالارفته")
+        openTrades >= 1 -> t("Managed", "مدیریت‌شده")
+        else -> t("Light", "سبک")
     }
 }
