@@ -74,6 +74,10 @@ class SignalRequest(BaseModel):
     market: MarketType
     timeframe: str
     candles: List[Candle] = Field(min_length=20)
+    higher_timeframe: Optional[str] = None
+    higher_timeframe_candles: List[Candle] = Field(default_factory=list)
+    lower_timeframe: Optional[str] = None
+    lower_timeframe_candles: List[Candle] = Field(default_factory=list)
     order_flow: Optional[OrderFlowData] = None
     news: List[NewsEvent] = Field(default_factory=list)
     risk_settings: Optional[RiskSettings] = None
