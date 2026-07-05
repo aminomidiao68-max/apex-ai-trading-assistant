@@ -58,6 +58,7 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
                         OutlinedButton(onClick = { viewModel.selectAsset("XAUUSD", "forex") }, modifier = Modifier.weight(1f)) { Text("XAUUSD") }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { viewModel.selectTimeframe("1m") }, modifier = Modifier.weight(1f)) { Text("1m") }
                         Button(onClick = { viewModel.selectTimeframe("15m") }, modifier = Modifier.weight(1f)) { Text("15m") }
                         OutlinedButton(onClick = { viewModel.selectTimeframe("1h") }, modifier = Modifier.weight(1f)) { Text("1h") }
                     }
@@ -163,7 +164,7 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
                         Text(t("Step", "گام") + " ${item.step_index}", style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
                         Text(t("Train", "آموزش") + ": ${item.train_start_time} → ${item.train_end_time}", color = Color.White)
                         Text(t("Test", "تست") + ": ${item.test_start_time} → ${item.test_end_time}", color = Color.White)
-                        Text(t("Selected Params", "پارامترهای انتخاب‌شده") + ": W${item.selected_window_size} / L${item.selected_lookahead_candles} / T${item.selected_score_threshold} / TP${item.selected_take_profit_index + 1}", color = Color(0xFFDDF8FF))
+                        Text(t("Selected Params", "پارامترهای انتخاب‌شده") + ": W${item.selected_window_size} / L${item.selected_lookahead_candles} / T${item.selected_score_threshold} / TP${item.selected_take_profitIndex + 1}", color = Color(0xFFDDF8FF))
                         Text(t("Training RR / WR", "RR / WR آموزش") + ": ${item.training_net_rr} / ${item.training_win_rate}%", color = Color(0xFF67ECFF))
                         Text(t("Test WR / Net RR / Exp", "WR / RR خالص / امیدریاضی تست") + ": ${item.test_win_rate}% / ${item.test_net_rr} / ${item.test_expectancy_rr}", color = Color.White)
                     }

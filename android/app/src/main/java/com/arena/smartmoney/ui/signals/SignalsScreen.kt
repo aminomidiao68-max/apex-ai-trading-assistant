@@ -79,6 +79,13 @@ fun SignalsScreen(
                 PremiumGlassCard {
                     Text(t("Quick Live Scan", "اسکن سریع زنده"), color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(t("Scan stronger setups and send only cleaner trade ideas to the journal.", "ستاپ‌های قوی‌تر را اسکن کن و فقط ایده‌های تمیزتر را به ژورنال بفرست."), color = Color(0xFFBCEEFF))
+                    Text(t("Selected timeframe", "تایم‌فریم انتخابی") + ": ${state.selectedTimeframe}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TimeframeButton("1m", state.selectedTimeframe == "1m") { viewModel.selectTimeframe("1m") }
+                        TimeframeButton("5m", state.selectedTimeframe == "5m") { viewModel.selectTimeframe("5m") }
+                        TimeframeButton("15m", state.selectedTimeframe == "15m") { viewModel.selectTimeframe("15m") }
+                        TimeframeButton("1h", state.selectedTimeframe == "1h") { viewModel.selectTimeframe("1h") }
+                    }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { viewModel.scanMarket("BTCUSDT", "crypto") }, modifier = Modifier.weight(1f)) { Text("BTC") }
                         Button(onClick = { viewModel.scanMarket("ETHUSDT", "crypto") }, modifier = Modifier.weight(1f)) { Text("ETH") }
@@ -173,5 +180,14 @@ private fun ConfidenceBar(progress: Float, accent: Color, t: (String, String) ->
                     .background(Brush.horizontalGradient(listOf(accent, Color(0xFF67ECFF))), RoundedCornerShape(50))
             )
         }
+    }
+}
+
+@Composable
+private fun TimeframeButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    if (selected) {
+        Button(onClick = onClick, modifier = Modifier.weight(1f)) { Text(label) }
+    } else {
+        OutlinedButton(onClick = onClick, modifier = Modifier.weight(1f)) { Text(label) }
     }
 }

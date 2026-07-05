@@ -19,7 +19,8 @@ data class SignalsUiState(
     val error: String? = null,
     val notificationSignal: SignalHistoryItemDto? = null,
     val scanMessage: String = "",
-    val journalMessage: String = ""
+    val journalMessage: String = "",
+    val selectedTimeframe: String = "15m"
 )
 
 class SignalsViewModel(
@@ -33,6 +34,10 @@ class SignalsViewModel(
     }
 
     private fun tr(en: String, fa: String): String = if (AppLanguageState.current == "fa") fa else en
+
+    fun selectTimeframe(timeframe: String) {
+        _uiState.value = _uiState.value.copy(selectedTimeframe = timeframe)
+    }
 
     fun loadHistory() {
         viewModelScope.launch {
@@ -54,12 +59,12 @@ class SignalsViewModel(
         }
     }
 
-    fun scanMarket(symbol: String, market: String, timeframe: String = "15m") {
+    fun scanMarket(symbol: String, market: String, timeframe: String = _uiState.value.selectedTimeframe) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 loading = true,
                 error = null,
-                scanMessage = tr("Scanning $symbol...", "در حال اسکن $symbol..."),
+                scanMessage = tr("Scanning $symbol on $timeframe...", "در حال اسکن $symbol روی $timeframe..."),
                 journalMessage = ""
             )
             val request = LiveSignalScanRequestDto(
@@ -96,7 +101,7 @@ class SignalsViewModel(
                         loading = false,
                         items = (listOf(signal) + _uiState.value.items).sortedByDescending { it.score },
                         notificationSignal = signal,
-                        scanMessage = "$qualityMessage • ${signal.symbol}",
+                        scanMessage = "$qualityMessage • ${signal.symbol} • ${signal.timeframe}",
                         error = null
                     )
                 }
@@ -147,7 +152,7 @@ class SignalsViewModel(
                         stop_loss = stopLoss,
                         take_profit = takeProfit,
                         size = 1.0,
-                        notes = "AI signal ${signal.id} • Score ${signal.score} • TP1=${takeProfit ?: "-"} • TP2=${tp2 ?: "-"} • TP3=${tp3 ?: "-"}"
+                        notes = "AI signal ${signal.id} • TF=${signal.timeframe} • Score ${signal.score} • TP1=${takeProfit ?: "-"} • TP2=${tp2 ?: "-"} • TP3=${tp3 ?: "-"}"
                     )
                 )
             }.onSuccess { trade ->
