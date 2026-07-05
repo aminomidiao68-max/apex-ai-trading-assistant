@@ -246,6 +246,32 @@ fun DashboardScreen(
         t = t
     )
 
+    val supremeDecisionState = supremeDecisionLabel(
+        sessionScore = state.sessionScore,
+        strongestMove = strongestMove,
+        openTrades = stats?.open_trades ?: 0,
+        streamFallback = streamInFallbackMode,
+        t = t
+    )
+    val marketVelocity = omniPulseLabel(
+        risingAssets = risingAssets,
+        fallingAssets = fallingAssets,
+        strongestMove = strongestMove,
+        streamFallback = streamInFallbackMode,
+        t = t
+    )
+    val capitalHeat = capitalHeatLabel(
+        openTrades = stats?.open_trades ?: 0,
+        netPnl = stats?.net_pnl ?: 0.0,
+        t = t
+    )
+    val deploymentRisk = deploymentRiskLabel(
+        openTrades = stats?.open_trades ?: 0,
+        strongestMove = strongestMove,
+        missingForexFeeds = missingForexFeeds,
+        t = t
+    )
+
     val aiSummary = buildString {
         append(
             if (state.sessionScore >= 8.0) {
@@ -526,6 +552,27 @@ fun DashboardScreen(
                     intradayAlert = intradayAlert,
                     macroAlert = macroAlert,
                     t = t,
+                )
+            }
+
+            item {
+                UltimateDecisionStackBoard(
+                    supremeDecisionState = supremeDecisionState,
+                    marketVelocity = marketVelocity,
+                    capitalHeat = capitalHeat,
+                    t = t
+                )
+            }
+
+            item {
+                OmniMarketCommandBoard(
+                    strongestSymbol = strongestSymbol?.symbol ?: "-",
+                    strongestMove = strongestMove,
+                    deploymentRisk = deploymentRisk,
+                    coverageCrypto = cryptoAssets,
+                    coverageForex = forexAssets,
+                    coverageAll = listToShow.size,
+                    t = t
                 )
             }
 
@@ -1134,5 +1181,125 @@ private fun executiveAlignmentLabel(
         focusHealth == t("Elite", "ممتاز") && breadthHealth != t("Mixed", "ترکیبی") && confirmationLayer == t("Confirmed", "تأییدشده") -> t("Aligned", "همسو")
         confirmationLayer == t("Partial", "نیمه‌تأیید") -> t("Partial", "نیمه‌همسو")
         else -> t("Unclear", "نامشخص")
+    }
+}
+
+
+@Composable
+private fun UltimateDecisionStackBoard(
+    supremeDecisionState: String,
+    marketVelocity: String,
+    capitalHeat: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
+        Text(t("Ultimate Decision Stack", "پشته نهایی تصمیم"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "This layer compresses action urgency, directional force and capital stress into one compact decision stack.",
+                "این لایه فوریت اجرا، قدرت جهت‌دار و فشار سرمایه را در یک پشته تصمیم فشرده می‌کند."
+            ),
+            color = Color(0xFFDDF8FF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("State", "وضعیت"), supremeDecisionState, Modifier.weight(1f))
+            FocusChip(t("Velocity", "سرعت"), marketVelocity, Modifier.weight(1f))
+            FocusChip(t("Heat", "حرارت"), capitalHeat, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun OmniMarketCommandBoard(
+    strongestSymbol: String,
+    strongestMove: Double,
+    deploymentRisk: String,
+    coverageCrypto: Int,
+    coverageForex: Int,
+    coverageAll: Int,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+        Text(t("Omni Market Command", "فرمان همه‌جانبه بازار"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "Omni command summarizes coverage breadth, active leader and deployment risk in one panel.",
+                "فرمان همه‌جانبه، پوشش بازار، نماد رهبر و ریسک استقرار را در یک پنل خلاصه می‌کند."
+            ),
+            color = Color(0xFFBCEEFF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Leader", "رهبر"), strongestSymbol, Modifier.weight(1f))
+            FocusChip(t("Risk", "ریسک"), deploymentRisk, Modifier.weight(1f))
+        }
+        Text(
+            t("Coverage", "پوشش") + ": " +
+                t("Crypto", "کریپتو") + "=$coverageCrypto • " +
+                t("Forex", "فارکس") + "=$coverageForex • " +
+                t("All", "همه") + "=$coverageAll",
+            color = Color.White
+        )
+        Text(
+            t("Strongest Move", "قوی‌ترین حرکت") + ": ${String.format(Locale.US, "%.2f", strongestMove)}%",
+            color = Color(0xFF67ECFF),
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+private fun supremeDecisionLabel(
+    sessionScore: Double,
+    strongestMove: Double,
+    openTrades: Int,
+    streamFallback: Boolean,
+    t: (String, String) -> String,
+): String {
+    return when {
+        sessionScore >= 8.0 && strongestMove >= 0.75 && openTrades <= 1 && !streamFallback -> t("Execute", "آماده اجرا")
+        sessionScore >= 6.5 && strongestMove >= 0.35 && !streamFallback -> t("Prepared", "آماده‌سازی")
+        streamFallback -> t("Protected", "محافظت‌شده")
+        else -> t("Observe", "مشاهده")
+    }
+}
+
+private fun omniPulseLabel(
+    risingAssets: Int,
+    fallingAssets: Int,
+    strongestMove: Double,
+    streamFallback: Boolean,
+    t: (String, String) -> String,
+): String {
+    return when {
+        streamFallback -> t("Shielded", "پوشش‌داده‌شده")
+        strongestMove >= 1.0 && risingAssets > fallingAssets -> t("Explosive Up", "انفجار صعودی")
+        strongestMove >= 1.0 && fallingAssets > risingAssets -> t("Explosive Down", "انفجار نزولی")
+        strongestMove >= 0.4 -> t("Active", "فعال")
+        else -> t("Calm", "آرام")
+    }
+}
+
+private fun capitalHeatLabel(
+    openTrades: Int,
+    netPnl: Double,
+    t: (String, String) -> String,
+): String {
+    return when {
+        openTrades >= 3 || netPnl < 0 -> t("Hot", "داغ")
+        openTrades >= 1 -> t("Warm", "گرم")
+        else -> t("Cool", "خنک")
+    }
+}
+
+private fun deploymentRiskLabel(
+    openTrades: Int,
+    strongestMove: Double,
+    missingForexFeeds: Boolean,
+    t: (String, String) -> String,
+): String {
+    return when {
+        missingForexFeeds -> t("Constrained", "محدود")
+        strongestMove >= 1.0 && openTrades == 0 -> t("Opportunity", "فرصت")
+        openTrades >= 3 -> t("Crowded", "شلوغ")
+        else -> t("Controlled", "کنترل‌شده")
     }
 }
