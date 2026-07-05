@@ -97,6 +97,42 @@ async def fetch_live_snapshot(symbol: str, market: str):
     raise HTTPException(status_code=400, detail="market must be crypto or forex")
 
 
+def resolve_timeframe_context(timeframe: str) -> tuple[str | None, str | None]:
+    timeframe = timeframe.lower()
+    mapping = {
+        "1m": ("5m", None),
+        "5m": ("15m", "1m"),
+        "15m": ("1h", "5m"),
+        "1h": ("4h", "15m"),
+    }
+    return mapping.get(timeframe, (None, None))
+
+
+async def build_multi_timeframe_context(symbol: str, market: str, timeframe: str) -> dict:
+    higher_tf, lower_tf = resolve_timeframe_context(timeframe)
+    higher_candles = []
+    lower_candles = []
+
+    if higher_tf:
+        try:
+            higher_candles = await fetch_live_candles(symbol=symbol, market=market, timeframe=higher_tf)
+        except Exception:
+            higher_candles = []
+
+    if lower_tf:
+        try:
+            lower_candles = await fetch_live_candles(symbol=symbol, market=market, timeframe=lower_tf)
+        except Exception:
+            lower_candles = []
+
+    return {
+        "higher_timeframe": higher_tf,
+        "higher_timeframe_candles": higher_candles,
+        "lower_timeframe": lower_tf,
+        "lower_timeframe_candles": lower_candles,
+    }
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "app": settings.app_name, "env": settings.app_env}
@@ -261,12 +297,22 @@ async def live_scan_signal(request: LiveSignalScanRequest):
     if len(candles) < 20:
         raise HTTPException(status_code=400, detail="Not enough candles available for live scan")
 
+    mtf_context = await build_multi_timeframe_context(
+        symbol=request.symbol,
+        market=request.market.value,
+        timeframe=request.timeframe,
+    )
+
     signal = engine.analyze(
         SignalRequest(
             symbol=request.symbol.upper(),
             market=request.market,
             timeframe=request.timeframe,
             candles=candles,
+            higher_timeframe=mtf_context["higher_timeframe"],
+            higher_timeframe_candles=mtf_context["higher_timeframe_candles"],
+            lower_timeframe=mtf_context["lower_timeframe"],
+            lower_timeframe_candles=mtf_context["lower_timeframe_candles"],
             risk_settings=request.risk_settings,
             trade_stats=request.trade_stats,
             now_utc=datetime.now(timezone.utc),
@@ -340,6 +386,15 @@ def trade_stats():
 def close_trade(trade_id: int, request: TradeJournalCloseRequest):
     try:
         return storage.close_trade(trade_id, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.delete("/api/v1/trades/{trade_id}", response_model=MessageResponse)
+def delete_trade(trade_id: int):
+    try:
+        storage.delete_trade(trade_id)
+        return MessageResponse(message=f"Trade {trade_id} deleted")
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
