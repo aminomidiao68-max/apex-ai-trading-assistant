@@ -114,6 +114,11 @@ fun DashboardScreen(
         t = t
     )
 
+    val allocationBias = allocationBiasLabel(cryptoAssets, forexAssets, t)
+    val exposureState = exposureStateLabel(stats?.open_trades ?: 0, listToShow.size, t)
+    val rotationBias = rotationBiasLabel(risingAssets, fallingAssets, strongestMove, t)
+    val capitalDefense = capitalDefenseLabel(stats?.net_pnl ?: 0.0, stats?.open_trades ?: 0, t)
+
     val aiSummary = buildString {
         append(
             if (state.sessionScore >= 8.0) {
@@ -214,6 +219,29 @@ fun DashboardScreen(
                     portfolioHealth = portfolioHealth,
                     breadthHealth = breadthHealth,
                     t = t,
+                )
+            }
+
+            item {
+                ElitePortfolioFlowBoard(
+                    risingAssets = risingAssets,
+                    fallingAssets = fallingAssets,
+                    neutralAssets = neutralAssets,
+                    exposureState = exposureState,
+                    rotationBias = rotationBias,
+                    strongestSymbol = strongestSymbol?.symbol ?: "-",
+                    t = t
+                )
+            }
+
+            item {
+                CapitalAllocationBoard(
+                    allocationBias = allocationBias,
+                    capitalDefense = capitalDefense,
+                    cryptoAssets = cryptoAssets,
+                    forexAssets = forexAssets,
+                    assetsTracked = listToShow.size,
+                    t = t
                 )
             }
 
@@ -458,6 +486,68 @@ private fun ExecutiveOverviewBoard(
             FocusChip(t("Focus", "تمرکز"), focusHealth, Modifier.weight(1f))
             FocusChip(t("Portfolio", "پرتفوی"), portfolioHealth, Modifier.weight(1f))
             FocusChip(t("Breadth", "پهنای بازار"), breadthHealth, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun ElitePortfolioFlowBoard(
+    risingAssets: Int,
+    fallingAssets: Int,
+    neutralAssets: Int,
+    exposureState: String,
+    rotationBias: String,
+    strongestSymbol: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4033E6A6)) {
+        Text(t("Elite Portfolio Flow", "جریان حرفه‌ای پرتفوی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "This board tracks directional flow and pressure across the full portfolio map.",
+                "این برد جریان جهت‌دار و فشار بازار را در کل نقشه پرتفوی دنبال می‌کند."
+            ),
+            color = Color(0xFFDDF8FF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Exposure", "اکسپوژر"), exposureState, Modifier.weight(1f))
+            FocusChip(t("Rotation", "چرخش"), rotationBias, Modifier.weight(1f))
+            FocusChip(t("Leader", "رهبر"), strongestSymbol, Modifier.weight(1f))
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Rising", "صعودی"), risingAssets.toString(), Modifier.weight(1f))
+            FocusChip(t("Falling", "نزولی"), fallingAssets.toString(), Modifier.weight(1f))
+            FocusChip(t("Neutral", "خنثی"), neutralAssets.toString(), Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun CapitalAllocationBoard(
+    allocationBias: String,
+    capitalDefense: String,
+    cryptoAssets: Int,
+    forexAssets: Int,
+    assetsTracked: Int,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+        Text(t("Capital Allocation", "تخصیص سرمایه"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "Allocation board shows where portfolio attention is concentrated between crypto and forex.",
+                "برد تخصیص سرمایه نشان می‌دهد تمرکز پرتفوی بین کریپتو و فارکس کجا قرار گرفته است."
+            ),
+            color = Color(0xFFBCEEFF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Bias", "سوگیری"), allocationBias, Modifier.weight(1f))
+            FocusChip(t("Defense", "دفاع"), capitalDefense, Modifier.weight(1f))
+            FocusChip(t("Tracked", "تحت رصد"), assetsTracked.toString(), Modifier.weight(1f))
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Crypto", "کریپتو"), cryptoAssets.toString(), Modifier.weight(1f))
+            FocusChip(t("Forex", "فارکس"), forexAssets.toString(), Modifier.weight(1f))
         }
     }
 }
@@ -835,5 +925,57 @@ private fun executionClimateLabel(
         strongestMove >= 0.75 && focusHealth == t("Elite", "ممتاز") && riskPressure != t("High", "بالا") -> t("Aggressive", "تهاجمی")
         strongestMove >= 0.35 -> t("Balanced", "متعادل")
         else -> t("Conservative", "محافظه‌کار")
+    }
+}
+
+private fun allocationBiasLabel(
+    cryptoAssets: Int,
+    forexAssets: Int,
+    t: (String, String) -> String,
+): String {
+    return when {
+        cryptoAssets > forexAssets -> t("Crypto Led", "کریپتو‌محور")
+        forexAssets > cryptoAssets -> t("Forex Led", "فارکس‌محور")
+        cryptoAssets == 0 && forexAssets == 0 -> t("Idle", "بدون داده")
+        else -> t("Balanced", "متعادل")
+    }
+}
+
+private fun exposureStateLabel(
+    openTrades: Int,
+    assetsTracked: Int,
+    t: (String, String) -> String,
+): String {
+    return when {
+        openTrades >= 3 -> t("Loaded", "سنگین")
+        openTrades >= 1 && assetsTracked >= 3 -> t("Engaged", "درگیر")
+        assetsTracked > 0 -> t("Light", "سبک")
+        else -> t("Idle", "بدون داده")
+    }
+}
+
+private fun rotationBiasLabel(
+    risingAssets: Int,
+    fallingAssets: Int,
+    strongestMove: Double,
+    t: (String, String) -> String,
+): String {
+    return when {
+        strongestMove >= 1.0 && risingAssets > fallingAssets -> t("Risk-On", "ریسک‌پذیر")
+        strongestMove >= 1.0 && fallingAssets > risingAssets -> t("Risk-Off", "ریسک‌گریز")
+        risingAssets == fallingAssets -> t("Balanced", "متعادل")
+        else -> t("Transition", "در حال چرخش")
+    }
+}
+
+private fun capitalDefenseLabel(
+    netPnl: Double,
+    openTrades: Int,
+    t: (String, String) -> String,
+): String {
+    return when {
+        netPnl < 0 && openTrades >= 2 -> t("Defend", "دفاع")
+        netPnl >= 0 && openTrades <= 1 -> t("Preserved", "حفظ‌شده")
+        else -> t("Managed", "مدیریت‌شده")
     }
 }
