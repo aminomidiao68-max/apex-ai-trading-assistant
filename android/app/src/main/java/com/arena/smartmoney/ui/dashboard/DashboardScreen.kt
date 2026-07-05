@@ -68,6 +68,23 @@ fun DashboardScreen(
     val intradayAlert = alertStateLabel(state.sessionScore >= 6.5 && strongestMove >= 0.35, t)
     val macroAlert = alertStateLabel(strongestMove >= 1.0 || missingForexFeeds, t)
 
+    val cryptoAssets = listToShow.count { it.market.equals("crypto", ignoreCase = true) }
+    val forexAssets = listToShow.count { it.market.equals("forex", ignoreCase = true) }
+    val risingAssets = listToShow.count { (it.change_pct ?: 0.0) > 0.0 }
+    val fallingAssets = listToShow.count { (it.change_pct ?: 0.0) < 0.0 }
+    val neutralAssets = listToShow.size - risingAssets - fallingAssets
+    val portfolioHealth = portfolioHealthLabel(
+        winRate = stats?.win_rate ?: 0.0,
+        openTrades = stats?.open_trades ?: 0,
+        netPnl = stats?.net_pnl ?: 0.0,
+        assetsTracked = listToShow.size
+    )
+    val riskPressure = riskPressureLabel(
+        openTrades = stats?.open_trades ?: 0,
+        netPnl = stats?.net_pnl ?: 0.0,
+        t = t
+    )
+
     val aiSummary = buildString {
         append(
             if (state.sessionScore >= 8.0) {
@@ -172,6 +189,28 @@ fun DashboardScreen(
                         accent = if ((stats?.net_pnl ?: 0.0) >= 0) Color(0xFF67ECFF) else Color(0xFFFF7A7A)
                     )
                 }
+            }
+
+            item {
+                PortfolioCommandBoard(
+                    assetsTracked = listToShow.size,
+                    cryptoAssets = cryptoAssets,
+                    forexAssets = forexAssets,
+                    portfolioHealth = portfolioHealth,
+                    riskPressure = riskPressure,
+                    t = t
+                )
+            }
+
+            item {
+                MultiAssetIntelligenceBoard(
+                    risingAssets = risingAssets,
+                    fallingAssets = fallingAssets,
+                    neutralAssets = neutralAssets,
+                    strongestSymbol = strongestSymbol?.symbol ?: "-",
+                    strongestMove = strongestMove,
+                    t = t
+                )
             }
 
             item {
@@ -317,6 +356,66 @@ fun DashboardScreen(
                 WatchlistCard(item = item, t = t)
             }
         }
+    }
+}
+
+@Composable
+private fun PortfolioCommandBoard(
+    assetsTracked: Int,
+    cryptoAssets: Int,
+    forexAssets: Int,
+    portfolioHealth: String,
+    riskPressure: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4033E6A6)) {
+        Text(t("Portfolio Command", "فرماندهی پرتفوی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Health", "سلامت"), portfolioHealth, Modifier.weight(1f))
+            FocusChip(t("Risk", "ریسک"), riskPressure, Modifier.weight(1f))
+            FocusChip(t("Tracked", "تحت رصد"), assetsTracked.toString(), Modifier.weight(1f))
+        }
+        Text(
+            t(
+                "Portfolio board keeps an eye on asset mix and execution pressure before the next trading decision.",
+                "برد پرتفوی قبل از تصمیم معاملاتی بعدی، ترکیب دارایی‌ها و فشار اجرایی را زیر نظر می‌گیرد."
+            ),
+            color = Color(0xFFDDF8FF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Crypto", "کریپتو"), cryptoAssets.toString(), Modifier.weight(1f))
+            FocusChip(t("Forex", "فارکس"), forexAssets.toString(), Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun MultiAssetIntelligenceBoard(
+    risingAssets: Int,
+    fallingAssets: Int,
+    neutralAssets: Int,
+    strongestSymbol: String,
+    strongestMove: Double,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+        Text(t("Multi-Asset Intelligence", "هوش چنددارایی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "This board compares momentum breadth across your tracked markets.",
+                "این برد پهنای مومنتوم را بین بازارهای تحت رصد مقایسه می‌کند."
+            ),
+            color = Color(0xFFBCEEFF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Rising", "صعودی"), risingAssets.toString(), Modifier.weight(1f))
+            FocusChip(t("Falling", "نزولی"), fallingAssets.toString(), Modifier.weight(1f))
+            FocusChip(t("Neutral", "خنثی"), neutralAssets.toString(), Modifier.weight(1f))
+        }
+        Text(
+            t("Strongest move", "قوی‌ترین حرکت") + ": $strongestSymbol • ${String.format(Locale.US, "%.2f", strongestMove)}%",
+            color = Color.White
+        )
     }
 }
 
@@ -537,4 +636,30 @@ private fun focusHealthLabel(sessionScore: Double, strongestMove: Double, stream
 
 private fun alertStateLabel(isReady: Boolean, t: (String, String) -> String): String {
     return if (isReady) t("Armed", "مسلح") else t("Standby", "آماده‌باش")
+}
+
+private fun portfolioHealthLabel(
+    winRate: Double,
+    openTrades: Int,
+    netPnl: Double,
+    assetsTracked: Int,
+): String {
+    return when {
+        winRate >= 58.0 && netPnl > 0 && assetsTracked >= 4 -> "Elite"
+        winRate >= 48.0 && assetsTracked >= 3 -> "Strong"
+        openTrades > 0 || assetsTracked > 0 -> "Developing"
+        else -> "Idle"
+    }
+}
+
+private fun riskPressureLabel(
+    openTrades: Int,
+    netPnl: Double,
+    t: (String, String) -> String,
+): String {
+    return when {
+        openTrades >= 3 || netPnl < 0 -> t("High", "بالا")
+        openTrades >= 1 -> t("Moderate", "متوسط")
+        else -> t("Low", "پایین")
+    }
 }
