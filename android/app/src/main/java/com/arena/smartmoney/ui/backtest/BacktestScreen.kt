@@ -1,12 +1,17 @@
 package com.arena.smartmoney.ui.backtest
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -15,10 +20,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.arena.smartmoney.data.model.BacktestSummaryDto
+import com.arena.smartmoney.data.model.BacktestSweepSummaryDto
+import com.arena.smartmoney.data.model.WalkForwardSummaryDto
 import com.arena.smartmoney.ui.components.PremiumGlassCard
 import com.arena.smartmoney.ui.components.PremiumScreenBackground
 import com.arena.smartmoney.ui.components.PremiumSectionHeader
@@ -31,7 +40,7 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
     val t = rememberTranslator()
 
     PremiumScreenBackground {
-        androidx.compose.foundation.lazy.LazyColumn(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp),
@@ -39,10 +48,10 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
         ) {
             item {
                 PremiumSectionHeader(
-                    title = t("Backtest Lab", "آزمایشگاه بک‌تست"),
+                    title = t("Backtest Pro Lab", "لابراتوار حرفه‌ای بک‌تست"),
                     subtitle = t(
-                        "Run historical simulations, parameter sweep and walk-forward validation on live-fetched candles.",
-                        "شبیه‌سازی تاریخی، سوییپ پارامترها و اعتبارسنجی واک‌فوروارد را روی کندل‌های زنده اجرا کن."
+                        "Run historical simulations, parameter sweep and walk-forward validation with institutional reporting.",
+                        "بک‌تست تاریخی، سوییپ پارامترها و واک‌فوروارد را با گزارش حرفه‌ای و نهادی اجرا کن."
                     )
                 )
             }
@@ -58,22 +67,18 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
                         OutlinedButton(onClick = { viewModel.selectAsset("XAUUSD", "forex") }, modifier = Modifier.weight(1f)) { Text("XAUUSD") }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { viewModel.selectTimeframe("1m") }, modifier = Modifier.weight(1f)) { Text("1m") }
-                        Button(onClick = { viewModel.selectTimeframe("15m") }, modifier = Modifier.weight(1f)) { Text("15m") }
-                        OutlinedButton(onClick = { viewModel.selectTimeframe("1h") }, modifier = Modifier.weight(1f)) { Text("1h") }
+                        BacktestTimeframeButton("1m", state.timeframe == "1m", modifier = Modifier.weight(1f)) { viewModel.selectTimeframe("1m") }
+                        BacktestTimeframeButton("15m", state.timeframe == "15m", modifier = Modifier.weight(1f)) { viewModel.selectTimeframe("15m") }
+                        BacktestTimeframeButton("1h", state.timeframe == "1h", modifier = Modifier.weight(1f)) { viewModel.selectTimeframe("1h") }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { viewModel.runBacktest() }, modifier = Modifier.weight(1f)) {
                             Text(if (state.loading) t("Running...", "در حال اجرا...") else t("Run", "اجرا"))
                         }
-                        OutlinedButton(onClick = { viewModel.runSweep() }, modifier = Modifier.weight(1f)) {
-                            Text(t("Sweep", "سوییپ"))
-                        }
-                        OutlinedButton(onClick = { viewModel.runWalkForward() }, modifier = Modifier.weight(1f)) {
-                            Text(t("Walk", "واک"))
-                        }
+                        OutlinedButton(onClick = { viewModel.runSweep() }, modifier = Modifier.weight(1f)) { Text(t("Sweep", "سوییپ")) }
+                        OutlinedButton(onClick = { viewModel.runWalkForward() }, modifier = Modifier.weight(1f)) { Text(t("Walk", "واک")) }
                     }
-                    Text(t("Asset", "دارایی") + ": ${state.symbol} • ${state.timeframe}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
+                    Text(t("Asset", "دارایی") + ": ${state.symbol} • ${state.timeframe} • TP${state.takeProfitIndex + 1}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
                     ParameterRow(t("Window Size", "اندازه پنجره"), state.windowSize.toString(), { viewModel.adjustWindowSize(-5) }, { viewModel.adjustWindowSize(5) })
                     ParameterRow(t("Lookahead", "تعداد کندل آینده"), state.lookaheadCandles.toString(), { viewModel.adjustLookahead(-1) }, { viewModel.adjustLookahead(1) })
                     ParameterRow(t("Max Signals", "حداکثر سیگنال‌ها"), state.maxSignals.toString(), { viewModel.adjustMaxSignals(-5) }, { viewModel.adjustMaxSignals(5) })
@@ -86,6 +91,14 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
                     }
                     state.error?.let { Text(t("Error", "خطا") + ": $it", color = MaterialTheme.colorScheme.error) }
                 }
+            }
+            item {
+                StrategyCoachCard(
+                    summary = state.summary,
+                    sweep = state.sweepSummary,
+                    walkForward = state.walkForwardSummary,
+                    t = t,
+                )
             }
             state.analytics?.let { analytics ->
                 item {
@@ -101,42 +114,20 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
                 }
             }
             state.summary?.let { summary ->
-                item {
-                    PremiumGlassCard(borderColor = Color(0x4033E6A6)) {
-                        Text(t("Backtest Summary", "خلاصه بک‌تست"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-                        MetricLine(t("Signals / Tested Candles", "سیگنال‌ها / کندل‌های تست‌شده"), "${summary.evaluated_signals} / ${summary.tested_candles}")
-                        MetricLine(t("Wins / Losses / Unclosed", "برد / باخت / بازمانده"), "${summary.wins} / ${summary.losses} / ${summary.unclosed}")
-                        MetricLine(t("Win Rate", "نرخ برد"), "${summary.win_rate}%")
-                        MetricLine(t("Average Score", "میانگین امتیاز"), summary.average_score.toString())
-                        MetricLine(t("Net RR", "RR خالص"), summary.net_rr.toString())
-                        MetricLine(t("Expectancy RR", "امیدریاضی RR"), summary.expectancy_rr.toString())
-                        MetricLine(t("Profit Factor", "فاکتور سود"), summary.profit_factor.toString())
-                    }
-                }
+                item { BacktestSummaryCard(summary = summary, t = t) }
                 items(summary.items) { item ->
                     PremiumGlassCard {
                         Text("${item.direction.uppercase(Locale.getDefault())} • ${item.score}", style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
                         Text(t("Signal Time", "زمان سیگنال") + ": ${item.signal_time}", color = Color(0xFFDDF8FF))
                         Text(t("Entry / SL / TP", "ورود / حد ضرر / حد سود") + ": ${item.entry_price} / ${item.stop_loss} / ${item.take_profit}", color = Color.White)
-                        Text(t("Outcome", "نتیجه") + ": ${item.outcome}", color = Color.White)
+                        Text(t("Outcome", "نتیجه") + ": ${localizeOutcome(item.outcome, t)}", color = Color.White)
                         Text(t("Realized RR", "RR محقق‌شده") + ": ${item.rr_realized}", color = Color(0xFF67ECFF))
                         Text(t("Bars Held", "تعداد کندل نگهداری") + ": ${item.bars_held}", color = Color.White)
                     }
                 }
             }
             state.sweepSummary?.let { sweep ->
-                item {
-                    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
-                        Text(t("Parameter Sweep", "سوییپ پارامترها"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-                        MetricLine(t("Combinations Tested", "ترکیب‌های تست‌شده"), sweep.combinations_tested.toString())
-                        sweep.best_by_net_rr?.let {
-                            Text(t("Best Net RR", "بهترین RR خالص") + " → W:${it.window_size} • L:${it.lookahead_candles} • T:${it.score_threshold} • TP${it.take_profit_index + 1} • RR:${it.net_rr}", color = Color(0xFFDDF8FF))
-                        }
-                        sweep.best_by_win_rate?.let {
-                            Text(t("Best Win Rate", "بهترین نرخ برد") + " → W:${it.window_size} • L:${it.lookahead_candles} • T:${it.score_threshold} • TP${it.take_profit_index + 1} • WR:${it.win_rate}%", color = Color(0xFFDDF8FF))
-                        }
-                    }
-                }
+                item { SweepInsightCard(sweep = sweep, t = t) }
                 items(sweep.items) { item ->
                     PremiumGlassCard {
                         Text("W:${item.window_size} • L:${item.lookahead_candles} • T:${item.score_threshold} • TP${item.take_profit_index + 1}", style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
@@ -149,16 +140,7 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
                 }
             }
             state.walkForwardSummary?.let { wf ->
-                item {
-                    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
-                        Text(t("Walk-Forward Summary", "خلاصه واک‌فوروارد"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-                        MetricLine(t("Steps / Test Signals", "گام‌ها / سیگنال‌های تست"), "${wf.steps_executed} / ${wf.total_test_signals}")
-                        MetricLine(t("Wins / Losses / Unclosed", "برد / باخت / بازمانده"), "${wf.total_wins} / ${wf.total_losses} / ${wf.total_unclosed}")
-                        MetricLine(t("Aggregate Win Rate", "نرخ برد تجمیعی"), "${wf.aggregate_win_rate}%")
-                        MetricLine(t("Aggregate Net RR", "RR خالص تجمیعی"), wf.aggregate_net_rr.toString())
-                        MetricLine(t("Average Step Expectancy", "میانگین امیدریاضی هر گام"), wf.average_step_expectancy_rr.toString())
-                    }
-                }
+                item { WalkForwardInsightCard(wf = wf, t = t) }
                 items(wf.items) { item ->
                     PremiumGlassCard {
                         Text(t("Step", "گام") + " ${item.step_index}", style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
@@ -170,6 +152,123 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun StrategyCoachCard(
+    summary: BacktestSummaryDto?,
+    sweep: BacktestSweepSummaryDto?,
+    walkForward: WalkForwardSummaryDto?,
+    t: (String, String) -> String,
+) {
+    val headline = when {
+        walkForward != null && walkForward.aggregate_net_rr > 0 && walkForward.aggregate_win_rate >= 55 -> t("Walk-forward is stable enough for live watchlist promotion.", "واک‌فوروارد به اندازه کافی پایدار است و می‌تواند وارد واچ‌لیست زنده شود.")
+        sweep?.best_by_net_rr != null && sweep.best_by_net_rr.net_rr > 0 -> t("Parameter sweep found a profitable pocket. Use the best net-RR setup as your primary template.", "سوییپ پارامترها یک ناحیه سودده پیدا کرده است. از بهترین تنظیم RR خالص به عنوان الگوی اصلی استفاده کن.")
+        summary != null && summary.net_rr > 0 -> t("Backtest is positive, but confirm with sweep and walk-forward before trusting it in live execution.", "بک‌تست مثبت است، اما قبل از اعتماد در اجرای زنده آن را با سوییپ و واک‌فوروارد تأیید کن.")
+        else -> t("Current setup is still exploratory. Tighten thresholds or move to a stronger session.", "ستاپ فعلی هنوز اکتشافی است. آستانه‌ها را سخت‌تر کن یا به سشن قوی‌تر برو.")
+    }
+
+    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
+        Text(t("Strategy Coach", "مربی استراتژی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(headline, color = Color(0xFFFFE6A3))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            InsightChip(
+                title = t("Backtest", "بک‌تست"),
+                value = summary?.let { if (it.net_rr > 0) t("Positive", "مثبت") else t("Weak", "ضعیف") } ?: t("Idle", "بدون داده"),
+                modifier = Modifier.weight(1f)
+            )
+            InsightChip(
+                title = t("Sweep", "سوییپ"),
+                value = sweep?.best_by_net_rr?.let { "RR ${it.net_rr}" } ?: t("Idle", "بدون داده"),
+                modifier = Modifier.weight(1f)
+            )
+            InsightChip(
+                title = t("Walk", "واک"),
+                value = walkForward?.let { "WR ${it.aggregate_win_rate}%" } ?: t("Idle", "بدون داده"),
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun BacktestSummaryCard(summary: BacktestSummaryDto, t: (String, String) -> String) {
+    PremiumGlassCard(borderColor = Color(0x4033E6A6)) {
+        Text(t("Backtest Summary", "خلاصه بک‌تست"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            InsightChip(t("Win Rate", "نرخ برد"), "${summary.win_rate}%", Modifier.weight(1f))
+            InsightChip(t("Net RR", "RR خالص"), summary.net_rr.toString(), Modifier.weight(1f))
+            InsightChip(t("Profit Factor", "فاکتور سود"), summary.profit_factor.toString(), Modifier.weight(1f))
+        }
+        MetricLine(t("Signals / Tested Candles", "سیگنال‌ها / کندل‌های تست‌شده"), "${summary.evaluated_signals} / ${summary.tested_candles}")
+        MetricLine(t("Wins / Losses / Unclosed", "برد / باخت / بازمانده"), "${summary.wins} / ${summary.losses} / ${summary.unclosed}")
+        MetricLine(t("Average Score", "میانگین امتیاز"), summary.average_score.toString())
+        MetricLine(t("Average Win RR", "میانگین RR برد"), summary.average_win_rr.toString())
+        MetricLine(t("Average Loss RR", "میانگین RR باخت"), summary.average_loss_rr.toString())
+        MetricLine(t("Expectancy RR", "امیدریاضی RR"), summary.expectancy_rr.toString())
+        MetricLine(t("Win / Loss Streak", "رشته برد / باخت"), "${summary.longest_win_streak} / ${summary.longest_loss_streak}")
+    }
+}
+
+@Composable
+private fun SweepInsightCard(sweep: BacktestSweepSummaryDto, t: (String, String) -> String) {
+    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
+        Text(t("Parameter Sweep", "سوییپ پارامترها"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        MetricLine(t("Combinations Tested", "ترکیب‌های تست‌شده"), sweep.combinations_tested.toString())
+        sweep.best_by_net_rr?.let {
+            Text(t("Best Net RR", "بهترین RR خالص") + " → W:${it.window_size} • L:${it.lookahead_candles} • T:${it.score_threshold} • TP${it.take_profit_index + 1} • RR:${it.net_rr}", color = Color(0xFFDDF8FF))
+        }
+        sweep.best_by_win_rate?.let {
+            Text(t("Best Win Rate", "بهترین نرخ برد") + " → W:${it.window_size} • L:${it.lookahead_candles} • T:${it.score_threshold} • TP${it.take_profit_index + 1} • WR:${it.win_rate}%", color = Color(0xFFDDF8FF))
+        }
+    }
+}
+
+@Composable
+private fun WalkForwardInsightCard(wf: WalkForwardSummaryDto, t: (String, String) -> String) {
+    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+        Text(t("Walk-Forward Summary", "خلاصه واک‌فوروارد"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            InsightChip(t("Steps", "گام‌ها"), wf.steps_executed.toString(), Modifier.weight(1f))
+            InsightChip(t("WR", "نرخ برد"), "${wf.aggregate_win_rate}%", Modifier.weight(1f))
+            InsightChip(t("Net RR", "RR خالص"), wf.aggregate_net_rr.toString(), Modifier.weight(1f))
+        }
+        MetricLine(t("Total Test Signals", "کل سیگنال‌های تست"), wf.total_test_signals.toString())
+        MetricLine(t("Wins / Losses / Unclosed", "برد / باخت / بازمانده"), "${wf.total_wins} / ${wf.total_losses} / ${wf.total_unclosed}")
+        MetricLine(t("Average Step Expectancy", "میانگین امیدریاضی هر گام"), wf.average_step_expectancy_rr.toString())
+        MetricLine(t("Best / Worst Step", "بهترین / بدترین گام"), "${wf.best_step_index ?: "-"} / ${wf.worst_step_index ?: "-"}")
+    }
+}
+
+@Composable
+private fun BacktestTimeframeButton(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    if (selected) {
+        Button(onClick = onClick, modifier = modifier) { Text(label) }
+    } else {
+        OutlinedButton(onClick = onClick, modifier = modifier) { Text(label) }
+    }
+}
+
+@Composable
+private fun InsightChip(title: String, value: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(
+                Brush.linearGradient(listOf(Color(0x2611D9FF), Color(0x2217FFB3))),
+                RoundedCornerShape(16.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, color = Color(0xFFBCEEFF), style = MaterialTheme.typography.bodySmall)
+            Text(value, color = Color.White, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -196,3 +295,13 @@ private fun MetricLine(label: String, value: String) {
         Text(value, color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
     }
 }
+
+private fun localizeOutcome(value: String, t: (String, String) -> String): String {
+    return when (value.lowercase(Locale.getDefault())) {
+        "win" -> t("Win", "برد")
+        "loss" -> t("Loss", "باخت")
+        "unclosed" -> t("Unclosed", "بازمانده")
+        else -> value
+    }
+}
+"}
