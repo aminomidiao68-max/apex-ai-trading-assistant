@@ -213,6 +213,39 @@ fun DashboardScreen(
         t = t
     )
 
+    val finalReadiness = finalReadinessLabel(
+        executiveHealth = executiveHealth,
+        quantReadiness = quantReadiness,
+        signalRadarReadiness = signalRadarReadiness,
+        t = t
+    )
+    val commandPosture = commandPostureLabel(
+        commandPriority = commandPriority,
+        actionBias = actionBias,
+        t = t
+    )
+    val signalGovernance = signalGovernanceLabel(
+        signalPressure = signalPressure,
+        riskPressure = riskPressure,
+        t = t
+    )
+    val marketRegime = marketRegimeLabel(
+        breadthHealth = breadthHealth,
+        globalPulseState = globalPulseState,
+        t = t
+    )
+    val capitalStability = capitalStabilityLabel(
+        portfolioHealth = portfolioHealth,
+        capitalDefense = capitalDefense,
+        t = t
+    )
+    val executiveAlignment = executiveAlignmentLabel(
+        focusHealth = focusHealth,
+        breadthHealth = breadthHealth,
+        confirmationLayer = confirmationLayer,
+        t = t
+    )
+
     val aiSummary = buildString {
         append(
             if (state.sessionScore >= 8.0) {
@@ -320,6 +353,24 @@ fun DashboardScreen(
                     strongestSymbol = strongestSymbol?.symbol ?: "-",
                     strongestMove = strongestMove,
                     allocationBias = allocationBias,
+                    t = t
+                )
+            }
+
+            item {
+                InstitutionalAIMatrixBoard(
+                    finalReadiness = finalReadiness,
+                    commandPosture = commandPosture,
+                    signalGovernance = signalGovernance,
+                    t = t
+                )
+            }
+
+            item {
+                FinalExecutiveLayerBoard(
+                    marketRegime = marketRegime,
+                    capitalStability = capitalStability,
+                    executiveAlignment = executiveAlignment,
                     t = t
                 )
             }
@@ -600,590 +651,6 @@ fun DashboardScreen(
 
             items(listToShow) { item ->
                 WatchlistCard(item = item, t = t)
-            }
-        }
-    }
-}
-
-@Composable
-private fun MissionControlBoard(
-    missionStatus: String,
-    commandPriority: String,
-    executionClimate: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
-        Text(t("Mission Control Board", "برد مرکز عملیات"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "Mission Control compresses urgency, execution climate and decision posture into one command layer.",
-                "مرکز عملیات فوریت، فضای اجرا و حالت تصمیم‌گیری را در یک لایه فرماندهی خلاصه می‌کند."
-            ),
-            color = Color(0xFFDDF8FF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Status", "وضعیت"), missionStatus, Modifier.weight(1f))
-            FocusChip(t("Priority", "اولویت"), commandPriority, Modifier.weight(1f))
-            FocusChip(t("Climate", "فضای اجرا"), executionClimate, Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun SupremeControlLayerBoard(
-    supremeState: String,
-    commandShield: String,
-    pulseVelocity: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
-        Text(t("Supreme Control Layer", "لایه کنترل برتر"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "Supreme layer fuses protection state with market pulse and command posture.",
-                "لایه کنترل برتر وضعیت حفاظت، پالس بازار و حالت فرمان را با هم ترکیب می‌کند."
-            ),
-            color = Color(0xFFDDF8FF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("State", "وضعیت"), supremeState, Modifier.weight(1f))
-            FocusChip(t("Shield", "شیلد"), commandShield, Modifier.weight(1f))
-            FocusChip(t("Velocity", "سرعت"), pulseVelocity, Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun GlobalMarketPulseBoard(
-    globalPulseState: String,
-    strongestSymbol: String,
-    strongestMove: Double,
-    allocationBias: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
-        Text(t("Global Market Pulse", "پالس بازار جهانی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "Pulse board summarizes dominant pressure, strongest symbol and capital bias.",
-                "برد پالس، فشار غالب، قوی‌ترین نماد و سوگیری سرمایه را خلاصه می‌کند."
-            ),
-            color = Color(0xFFBCEEFF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Pulse", "پالس"), globalPulseState, Modifier.weight(1f))
-            FocusChip(t("Bias", "سوگیری"), allocationBias, Modifier.weight(1f))
-        }
-        Text(
-            t("Pulse Leader", "رهبر پالس") + ": $strongestSymbol • ${String.format(Locale.US, "%.2f", strongestMove)}%",
-            color = Color.White
-        )
-    }
-}
-
-@Composable
-private fun PrimeAICockpitBoard(
-    primeCockpitState: String,
-    executionWindow: String,
-    signalPressure: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
-        Text(t("Prime AI Cockpit", "کابین حرفه‌ای AI"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "Prime cockpit monitors readiness, active window and signal pressure before execution.",
-                "کابین حرفه‌ای آمادگی، پنجره اجرا و فشار سیگنال را قبل از تصمیم بررسی می‌کند."
-            ),
-            color = Color(0xFFDDF8FF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("State", "وضعیت"), primeCockpitState, Modifier.weight(1f))
-            FocusChip(t("Window", "پنجره"), executionWindow, Modifier.weight(1f))
-            FocusChip(t("Pressure", "فشار"), signalPressure, Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun ExecutiveSignalRadarBoard(
-    signalRadarBias: String,
-    signalRadarReadiness: String,
-    commandPriority: String,
-    strongestSymbol: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
-        Text(t("Executive Signal Radar", "رادار اجرایی سیگنال"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "Signal radar summarizes directional bias, readiness and lead symbol in one glance.",
-                "رادار سیگنال، سوگیری جهت‌دار، آمادگی و نماد رهبر را در یک نگاه خلاصه می‌کند."
-            ),
-            color = Color(0xFFBCEEFF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Bias", "سوگیری"), signalRadarBias, Modifier.weight(1f))
-            FocusChip(t("Ready", "آمادگی"), signalRadarReadiness, Modifier.weight(1f))
-            FocusChip(t("Priority", "اولویت"), commandPriority, Modifier.weight(1f))
-        }
-        Text(t("Radar Leader", "رهبر رادار") + ": $strongestSymbol", color = Color.White)
-    }
-}
-
-@Composable
-private fun InstitutionalOverviewGrid(
-    institutionalState: String,
-    allocationBias: String,
-    breadthHealth: String,
-    focusHealth: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x4033E6A6)) {
-        Text(t("Institutional Overview Grid", "گرید نمای نهادی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "Institutional grid aligns macro state, allocation structure and market breadth in one board.",
-                "گرید نهادی، وضعیت کلان، ساختار تخصیص و پهنای بازار را در یک برد هم‌راستا می‌کند."
-            ),
-            color = Color(0xFFDDF8FF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("State", "وضعیت"), institutionalState, Modifier.weight(1f))
-            FocusChip(t("Allocation", "تخصیص"), allocationBias, Modifier.weight(1f))
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Breadth", "پهنای بازار"), breadthHealth, Modifier.weight(1f))
-            FocusChip(t("Focus", "تمرکز"), focusHealth, Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun TacticalResponseBoard(
-    tacticalResponse: String,
-    tacticalTempo: String,
-    tacticalDefense: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
-        Text(t("Tactical Response Board", "برد پاسخ تاکتیکی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "Tactical board shows how fast and defensive the current decision posture should be.",
-                "برد تاکتیکی نشان می‌دهد سرعت و حالت دفاعی تصمیم فعلی باید چگونه باشد."
-            ),
-            color = Color(0xFFBCEEFF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Response", "پاسخ"), tacticalResponse, Modifier.weight(1f))
-            FocusChip(t("Tempo", "ریتم"), tacticalTempo, Modifier.weight(1f))
-            FocusChip(t("Defense", "دفاع"), tacticalDefense, Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun ExecutiveOverviewBoard(
-    executiveHealth: String,
-    commandPriority: String,
-    focusHealth: String,
-    portfolioHealth: String,
-    breadthHealth: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
-        Text(t("Executive Overview", "نمای اجرایی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "Mission Control compresses market, portfolio and execution quality into one executive snapshot.",
-                "مرکز عملیات کیفیت بازار، پرتفوی و اجرا را در یک نمای مدیریتی خلاصه می‌کند."
-            ),
-            color = Color(0xFFDDF8FF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Health", "سلامت"), executiveHealth, Modifier.weight(1f))
-            FocusChip(t("Priority", "اولویت"), commandPriority, Modifier.weight(1f))
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Focus", "تمرکز"), focusHealth, Modifier.weight(1f))
-            FocusChip(t("Portfolio", "پرتفوی"), portfolioHealth, Modifier.weight(1f))
-            FocusChip(t("Breadth", "پهنای بازار"), breadthHealth, Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun QuantOpsCenterBoard(
-    quantReadiness: String,
-    edgeScore: String,
-    volatilityState: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x4033E6A6)) {
-        Text(t("Quant Ops Center", "مرکز عملیات کوانت"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "Quant Ops compresses readiness, edge quality and volatility regime into one fast decision layer.",
-                "مرکز عملیات کوانت آمادگی، کیفیت لبه معاملاتی و رژیم نوسان را در یک لایه تصمیم‌گیری سریع خلاصه می‌کند."
-            ),
-            color = Color(0xFFDDF8FF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Readiness", "آمادگی"), quantReadiness, Modifier.weight(1f))
-            FocusChip(t("Edge", "لبه"), edgeScore, Modifier.weight(1f))
-            FocusChip(t("Volatility", "نوسان"), volatilityState, Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun AdvancedDecisionMatrixBoard(
-    decisionBias: String,
-    actionBias: String,
-    confirmationLayer: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
-        Text(t("Advanced Decision Matrix", "ماتریس تصمیم پیشرفته"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "Decision Matrix aligns directional bias with action posture and confirmation quality.",
-                "ماتریس تصمیم، سوگیری جهت‌دار را با حالت اجرا و کیفیت تأیید هم‌راستا می‌کند."
-            ),
-            color = Color(0xFFBCEEFF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Bias", "سوگیری"), decisionBias, Modifier.weight(1f))
-            FocusChip(t("Action", "اقدام"), actionBias, Modifier.weight(1f))
-            FocusChip(t("Confirm", "تأیید"), confirmationLayer, Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun ElitePortfolioFlowBoard(
-    risingAssets: Int,
-    fallingAssets: Int,
-    neutralAssets: Int,
-    exposureState: String,
-    rotationBias: String,
-    strongestSymbol: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x4033E6A6)) {
-        Text(t("Elite Portfolio Flow", "جریان حرفه‌ای پرتفوی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "This board tracks directional flow and pressure across the full portfolio map.",
-                "این برد جریان جهت‌دار و فشار بازار را در کل نقشه پرتفوی دنبال می‌کند."
-            ),
-            color = Color(0xFFDDF8FF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Exposure", "اکسپوژر"), exposureState, Modifier.weight(1f))
-            FocusChip(t("Rotation", "چرخش"), rotationBias, Modifier.weight(1f))
-            FocusChip(t("Leader", "رهبر"), strongestSymbol, Modifier.weight(1f))
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Rising", "صعودی"), risingAssets.toString(), Modifier.weight(1f))
-            FocusChip(t("Falling", "نزولی"), fallingAssets.toString(), Modifier.weight(1f))
-            FocusChip(t("Neutral", "خنثی"), neutralAssets.toString(), Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun CapitalAllocationBoard(
-    allocationBias: String,
-    capitalDefense: String,
-    cryptoAssets: Int,
-    forexAssets: Int,
-    assetsTracked: Int,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
-        Text(t("Capital Allocation", "تخصیص سرمایه"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "Allocation board shows where portfolio attention is concentrated between crypto and forex.",
-                "برد تخصیص سرمایه نشان می‌دهد تمرکز پرتفوی بین کریپتو و فارکس کجا قرار گرفته است."
-            ),
-            color = Color(0xFFBCEEFF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Bias", "سوگیری"), allocationBias, Modifier.weight(1f))
-            FocusChip(t("Defense", "دفاع"), capitalDefense, Modifier.weight(1f))
-            FocusChip(t("Tracked", "تحت رصد"), assetsTracked.toString(), Modifier.weight(1f))
-        }
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Crypto", "کریپتو"), cryptoAssets.toString(), Modifier.weight(1f))
-            FocusChip(t("Forex", "فارکس"), forexAssets.toString(), Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun PortfolioCommandBoard(
-    assetsTracked: Int,
-    cryptoAssets: Int,
-    forexAssets: Int,
-    portfolioHealth: String,
-    riskPressure: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x4033E6A6)) {
-        Text(t("Portfolio Command", "فرماندهی پرتفوی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Health", "سلامت"), portfolioHealth, Modifier.weight(1f))
-            FocusChip(t("Risk", "ریسک"), riskPressure, Modifier.weight(1f))
-            FocusChip(t("Tracked", "تحت رصد"), assetsTracked.toString(), Modifier.weight(1f))
-        }
-        Text(
-            t(
-                "Portfolio board keeps an eye on asset mix and execution pressure before the next trading decision.",
-                "برد پرتفوی قبل از تصمیم معاملاتی بعدی، ترکیب دارایی‌ها و فشار اجرایی را زیر نظر می‌گیرد."
-            ),
-            color = Color(0xFFDDF8FF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Crypto", "کریپتو"), cryptoAssets.toString(), Modifier.weight(1f))
-            FocusChip(t("Forex", "فارکس"), forexAssets.toString(), Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun MultiAssetIntelligenceBoard(
-    risingAssets: Int,
-    fallingAssets: Int,
-    neutralAssets: Int,
-    strongestSymbol: String,
-    strongestMove: Double,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
-        Text(t("Multi-Asset Intelligence", "هوش چنددارایی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "This board compares momentum breadth across your tracked markets.",
-                "این برد پهنای مومنتوم را بین بازارهای تحت رصد مقایسه می‌کند."
-            ),
-            color = Color(0xFFBCEEFF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Rising", "صعودی"), risingAssets.toString(), Modifier.weight(1f))
-            FocusChip(t("Falling", "نزولی"), fallingAssets.toString(), Modifier.weight(1f))
-            FocusChip(t("Neutral", "خنثی"), neutralAssets.toString(), Modifier.weight(1f))
-        }
-        Text(
-            t("Strongest move", "قوی‌ترین حرکت") + ": $strongestSymbol • ${String.format(Locale.US, "%.2f", strongestMove)}%",
-            color = Color.White
-        )
-    }
-}
-
-@Composable
-private fun MarketFocusBoard(
-    strongestSymbol: com.arena.smartmoney.data.model.MarketOverviewItem?,
-    focusHealth: String,
-    streamInFallbackMode: Boolean,
-    missingForexFeeds: Boolean,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
-        Text(t("Market Focus Board", "برد تمرکز بازار"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            strongestSymbol?.let {
-                t(
-                    "Highest active displacement is coming from ${it.symbol} with ${String.format(Locale.US, "%.2f", it.change_pct ?: 0.0)}% movement.",
-                    "بیشترین جابه‌جایی فعال فعلاً از ${it.symbol} با حرکت ${String.format(Locale.US, "%.2f", it.change_pct ?: 0.0)}٪ می‌آید."
-                )
-            } ?: t(
-                "Focus board is waiting for fresh market movement data.",
-                "برد تمرکز بازار منتظر داده تازه برای تشخیص حرکت است."
-            ),
-            color = Color(0xFFE7FAFF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Health", "سلامت"), focusHealth, Modifier.weight(1f))
-            FocusChip(t("Stream", "استریم"), if (streamInFallbackMode) t("Fallback", "جایگزین") else t("Realtime", "لحظه‌ای"), Modifier.weight(1f))
-            FocusChip(t("Forex", "فارکس"), if (missingForexFeeds) t("Limited", "محدود") else t("Ready", "آماده"), Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun SmartAlertsBoard(
-    scalpAlert: String,
-    intradayAlert: String,
-    macroAlert: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
-        Text(t("Smart Alerts Pro", "اسمارت الرتس پرو"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "These labels show how close the market is to producing actionable alert conditions.",
-                "این برچسب‌ها نشان می‌دهند بازار چقدر به ساخت شرایط هشدار قابل اجرا نزدیک شده است."
-            ),
-            color = Color(0xFFBCEEFF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Scalp", "اسکالپ"), scalpAlert, Modifier.weight(1f))
-            FocusChip(t("Intraday", "درون‌روزی"), intradayAlert, Modifier.weight(1f))
-            FocusChip(t("Macro", "ماکرو"), macroAlert, Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun NeonPanel(
-    brush: Brush,
-    borderColor: Color = Color(0x4037E6FF),
-    content: @Composable () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(brush, RoundedCornerShape(28.dp))
-            .border(1.dp, borderColor, RoundedCornerShape(28.dp))
-            .padding(18.dp)
-    ) {
-        content()
-    }
-}
-
-@Composable
-private fun MetricCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    value: String,
-    accent: Color
-) {
-    Box(
-        modifier = modifier
-            .background(Color(0xCC0E1724), RoundedCornerShape(22.dp))
-            .border(1.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
-            .padding(vertical = 16.dp, horizontal = 12.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(title, color = Color(0xFFBEEFFF), style = MaterialTheme.typography.labelLarge)
-            Text(value, color = accent, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
-        }
-    }
-}
-
-@Composable
-private fun ActionCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    subtitle: String,
-    accent: List<Color>,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = modifier
-            .background(Brush.linearGradient(accent), RoundedCornerShape(24.dp))
-            .padding(1.dp)
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick),
-            shape = RoundedCornerShape(24.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF0B1320))
-                    .padding(16.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(subtitle, color = Color(0xFFBEEFFF), style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun InfoChip(label: String, value: String) {
-    Box(
-        modifier = Modifier
-            .background(Color(0x3318D7F0), RoundedCornerShape(18.dp))
-            .border(1.dp, Color(0x4437E6FF), RoundedCornerShape(18.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-    ) {
-        Column {
-            Text(label, color = Color(0xFF92EFFF), style = MaterialTheme.typography.labelSmall)
-            Text(value, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-private fun FocusChip(label: String, value: String, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .background(
-                Brush.linearGradient(listOf(Color(0x2611D9FF), Color(0x2217FFB3))),
-                RoundedCornerShape(16.dp)
-            )
-            .padding(horizontal = 12.dp, vertical = 10.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(label, color = Color(0xFFBCEEFF), style = MaterialTheme.typography.bodySmall)
-            Text(value, color = Color.White, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-private fun StreamChip(title: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Button(onClick = onClick, modifier = modifier) {
-        Text(title)
-    }
-}
-
-@Composable
-private fun WatchlistCard(
-    item: com.arena.smartmoney.data.model.MarketOverviewItem,
-    t: (String, String) -> String
-) {
-    val accent = when {
-        (item.change_pct ?: 0.0) > 0 -> Color(0xFF33E6A6)
-        (item.change_pct ?: 0.0) < 0 -> Color(0xFFFF7A7A)
-        else -> Color(0xFF59C7FF)
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xCC0E1724), RoundedCornerShape(24.dp))
-            .border(1.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(24.dp))
-            .padding(16.dp)
-    ) {
-        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(item.symbol, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                Text("${item.market.uppercase(Locale.getDefault())} • ${item.source}", color = Color(0xFFBEEFFF))
-                Text(t("Status", "وضعیت") + ": ${localizeBackendStatus(item.status, t)}", color = Color(0xFF8EDFFF))
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
-                Text(
-                    t("Price", "قیمت") + ": ${item.last_price?.toString() ?: "-"}",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "24h: ${item.change_pct?.toString() ?: "-"}%",
-                    color = accent,
-                    fontWeight = FontWeight.Bold
-                )
             }
         }
     }
@@ -1593,5 +1060,79 @@ private fun pulseVelocityLabel(
         strongestMove >= 0.5 -> t("Fast", "سریع")
         strongestMove > 0.0 -> t("Measured", "کنترل‌شده")
         else -> t("Slow", "آهسته")
+    }
+}
+
+private fun finalReadinessLabel(
+    executiveHealth: String,
+    quantReadiness: String,
+    signalRadarReadiness: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        executiveHealth == t("Prime", "درجه یک") && quantReadiness == t("Prime", "درجه یک") && signalRadarReadiness == t("Ready", "آماده") -> t("Ready", "آماده")
+        quantReadiness == t("Ready", "آماده") || signalRadarReadiness == t("Tracking", "در حال ردیابی") -> t("Near Ready", "نزدیک به آماده")
+        else -> t("Building", "در حال ساخت")
+    }
+}
+
+private fun commandPostureLabel(
+    commandPriority: String,
+    actionBias: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        commandPriority == t("Deploy", "استقرار") && actionBias == t("Execute", "اجرا") -> t("Aggressive", "تهاجمی")
+        commandPriority == t("Monitor", "پایش") -> t("Adaptive", "تطبیقی")
+        else -> t("Defensive", "دفاعی")
+    }
+}
+
+private fun signalGovernanceLabel(
+    signalPressure: String,
+    riskPressure: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        signalPressure == t("Elevated", "بالارفته") || riskPressure == t("High", "بالا") -> t("Tight", "سخت‌گیرانه")
+        signalPressure == t("Managed", "مدیریت‌شده") -> t("Balanced", "متعادل")
+        else -> t("Light", "سبک")
+    }
+}
+
+private fun marketRegimeLabel(
+    breadthHealth: String,
+    globalPulseState: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        breadthHealth == t("Bullish", "صعودی") && globalPulseState == t("Risk-On", "ریسک‌پذیر") -> t("Expansion", "گسترش")
+        breadthHealth == t("Bearish", "نزولی") && globalPulseState == t("Risk-Off", "ریسک‌گریز") -> t("Contraction", "انقباض")
+        else -> t("Transition", "گذار")
+    }
+}
+
+private fun capitalStabilityLabel(
+    portfolioHealth: String,
+    capitalDefense: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        portfolioHealth == t("Elite", "ممتاز") && capitalDefense == t("Preserved", "حفظ‌شده") -> t("Stable", "پایدار")
+        capitalDefense == t("Managed", "مدیریت‌شده") -> t("Controlled", "کنترل‌شده")
+        else -> t("Fragile", "شکننده")
+    }
+}
+
+private fun executiveAlignmentLabel(
+    focusHealth: String,
+    breadthHealth: String,
+    confirmationLayer: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        focusHealth == t("Elite", "ممتاز") && breadthHealth != t("Mixed", "ترکیبی") && confirmationLayer == t("Confirmed", "تأییدشده") -> t("Aligned", "همسو")
+        confirmationLayer == t("Partial", "نیمه‌تأیید") -> t("Partial", "نیمه‌همسو")
+        else -> t("Unclear", "نامشخص")
     }
 }
