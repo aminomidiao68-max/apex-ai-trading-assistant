@@ -168,6 +168,28 @@ fun DashboardScreen(
         t = t
     )
 
+    val institutionalState = institutionalStateLabel(
+        portfolioHealth = portfolioHealth,
+        breadthHealth = breadthHealth,
+        streamFallback = streamInFallbackMode,
+        t = t
+    )
+    val tacticalResponse = tacticalResponseLabel(
+        commandPriority = commandPriority,
+        riskPressure = riskPressure,
+        t = t
+    )
+    val tacticalTempo = tacticalTempoLabel(
+        sessionScore = state.sessionScore,
+        strongestMove = strongestMove,
+        t = t
+    )
+    val tacticalDefense = tacticalDefenseLabel(
+        capitalDefense = capitalDefense,
+        riskPressure = riskPressure,
+        t = t
+    )
+
     val aiSummary = buildString {
         append(
             if (state.sessionScore >= 8.0) {
@@ -275,6 +297,25 @@ fun DashboardScreen(
                     signalRadarReadiness = signalRadarReadiness,
                     commandPriority = commandPriority,
                     strongestSymbol = strongestSymbol?.symbol ?: "-",
+                    t = t
+                )
+            }
+
+            item {
+                InstitutionalOverviewGrid(
+                    institutionalState = institutionalState,
+                    allocationBias = allocationBias,
+                    breadthHealth = breadthHealth,
+                    focusHealth = focusHealth,
+                    t = t
+                )
+            }
+
+            item {
+                TacticalResponseBoard(
+                    tacticalResponse = tacticalResponse,
+                    tacticalTempo = tacticalTempo,
+                    tacticalDefense = tacticalDefense,
                     t = t
                 )
             }
@@ -593,6 +634,58 @@ private fun ExecutiveSignalRadarBoard(
             FocusChip(t("Priority", "اولویت"), commandPriority, Modifier.weight(1f))
         }
         Text(t("Radar Leader", "رهبر رادار") + ": $strongestSymbol", color = Color.White)
+    }
+}
+
+@Composable
+private fun InstitutionalOverviewGrid(
+    institutionalState: String,
+    allocationBias: String,
+    breadthHealth: String,
+    focusHealth: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4033E6A6)) {
+        Text(t("Institutional Overview Grid", "گرید نمای نهادی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "Institutional grid aligns macro state, allocation structure and market breadth in one board.",
+                "گرید نهادی، وضعیت کلان، ساختار تخصیص و پهنای بازار را در یک برد هم‌راستا می‌کند."
+            ),
+            color = Color(0xFFDDF8FF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("State", "وضعیت"), institutionalState, Modifier.weight(1f))
+            FocusChip(t("Allocation", "تخصیص"), allocationBias, Modifier.weight(1f))
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Breadth", "پهنای بازار"), breadthHealth, Modifier.weight(1f))
+            FocusChip(t("Focus", "تمرکز"), focusHealth, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun TacticalResponseBoard(
+    tacticalResponse: String,
+    tacticalTempo: String,
+    tacticalDefense: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+        Text(t("Tactical Response Board", "برد پاسخ تاکتیکی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "Tactical board shows how fast and defensive the current decision posture should be.",
+                "برد تاکتیکی نشان می‌دهد سرعت و حالت دفاعی تصمیم فعلی باید چگونه باشد."
+            ),
+            color = Color(0xFFBCEEFF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Response", "پاسخ"), tacticalResponse, Modifier.weight(1f))
+            FocusChip(t("Tempo", "ریتم"), tacticalTempo, Modifier.weight(1f))
+            FocusChip(t("Defense", "دفاع"), tacticalDefense, Modifier.weight(1f))
+        }
     }
 }
 
@@ -1305,5 +1398,54 @@ private fun signalPressureLabel(
         openTrades >= 3 || riskPressure == t("High", "بالا") -> t("Elevated", "بالارفته")
         openTrades >= 1 -> t("Managed", "مدیریت‌شده")
         else -> t("Light", "سبک")
+    }
+}
+
+private fun institutionalStateLabel(
+    portfolioHealth: String,
+    breadthHealth: String,
+    streamFallback: Boolean,
+    t: (String, String) -> String,
+): String {
+    return when {
+        !streamFallback && portfolioHealth == t("Elite", "ممتاز") && breadthHealth != t("Mixed", "ترکیبی") -> t("Aligned", "همسو")
+        !streamFallback -> t("Stable", "پایدار")
+        else -> t("Protected", "محافظت‌شده")
+    }
+}
+
+private fun tacticalResponseLabel(
+    commandPriority: String,
+    riskPressure: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        commandPriority == t("Deploy", "استقرار") && riskPressure != t("High", "بالا") -> t("Push", "پیشروی")
+        commandPriority == t("Defend", "دفاع") || riskPressure == t("High", "بالا") -> t("Shield", "حفاظت")
+        else -> t("Track", "ردیابی")
+    }
+}
+
+private fun tacticalTempoLabel(
+    sessionScore: Double,
+    strongestMove: Double,
+    t: (String, String) -> String,
+): String {
+    return when {
+        sessionScore >= 8.0 && strongestMove >= 0.75 -> t("Fast", "سریع")
+        sessionScore >= 6.5 && strongestMove >= 0.35 -> t("Measured", "کنترل‌شده")
+        else -> t("Slow", "آهسته")
+    }
+}
+
+private fun tacticalDefenseLabel(
+    capitalDefense: String,
+    riskPressure: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        capitalDefense == t("Defend", "دفاع") || riskPressure == t("High", "بالا") -> t("High Guard", "دفاع بالا")
+        capitalDefense == t("Managed", "مدیریت‌شده") -> t("Medium Guard", "دفاع متوسط")
+        else -> t("Low Guard", "دفاع پایین")
     }
 }
