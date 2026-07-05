@@ -51,6 +51,17 @@ fun SignalsScreen(
     val context = LocalContext.current
     val t = rememberTranslator()
 
+    val eliteCount = state.items.count { (it.setup_grade ?: "C").uppercase(Locale.getDefault()) in listOf("A+", "A") }
+    val readyCount = state.items.count { (it.execution_label ?: "observe").lowercase(Locale.getDefault()) in listOf("execution_ready", "scalp_ready") }
+    val blockedCount = state.items.count { (it.execution_label ?: "").lowercase(Locale.getDefault()) == "blocked" }
+    val focusSignal = state.items.maxByOrNull { it.score }
+    val strategyHealth = when {
+        eliteCount >= 2 && readyCount >= 1 -> t("Elite", "ممتاز")
+        eliteCount >= 1 || readyCount >= 1 -> t("Strong", "قوی")
+        state.items.isNotEmpty() -> t("Developing", "در حال شکل‌گیری")
+        else -> t("Idle", "بدون داده")
+    }
+
     LaunchedEffect(state.notificationSignal?.id) {
         val signal = state.notificationSignal ?: return@LaunchedEffect
         if (signal.direction.lowercase(Locale.getDefault()) != "neutral" && signal.score >= 70.0) {
@@ -75,83 +86,76 @@ fun SignalsScreen(
                 PremiumSectionHeader(
                     title = t("Signal Center", "مرکز سیگنال"),
                     subtitle = t(
-                        "AI live scan, confluence grading, execution labels and TP1 / TP2 / TP3 workflow.",
-                        "اسکن زنده هوش مصنوعی، گرید همگرایی، برچسب اجرای معامله و جریان TP1 / TP2 / TP3."
+                        "AI Strategy Lab, elite scanner grading and TP1 / TP2 / TP3 execution workflow.",
+                        "آزمایشگاه استراتژی AI، اسکنر ممتاز و جریان اجرایی TP1 / TP2 / TP3."
                     )
                 )
             }
             item {
-                PremiumGlassCard {
+                PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+                    Text(t("Elite Scanner Board", "برد اسکنر ممتاز"), color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(
-                        t("Quick Live Scan", "اسکن سریع زنده"),
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        t(
-                            "Scan stronger setups and send only cleaner trade ideas to the journal.",
-                            "ستاپ‌های قوی‌تر را اسکن کن و فقط ایده‌های تمیزتر را به ژورنال بفرست."
+                        focusSignal?.let {
+                            t(
+                                "Top setup right now is ${it.symbol} on ${it.timeframe} with score ${it.score}.",
+                                "بهترین ستاپ فعلی ${it.symbol} روی ${it.timeframe} با امتیاز ${it.score} است."
+                            )
+                        } ?: t(
+                            "Scanner board is waiting for fresh live scans.",
+                            "برد اسکنر منتظر اسکن زنده جدید است."
                         ),
-                        color = Color(0xFFBCEEFF)
+                        color = Color(0xFFDDF8FF)
                     )
-                    Text(
-                        t("Selected timeframe", "تایم‌فریم انتخابی") + ": ${state.selectedTimeframe}",
-                        color = Color(0xFF67ECFF),
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ScannerChip(t("Health", "سلامت"), strategyHealth, Modifier.weight(1f))
+                        ScannerChip(t("Elite", "ممتاز"), eliteCount.toString(), Modifier.weight(1f))
+                        ScannerChip(t("Ready", "آماده"), readyCount.toString(), Modifier.weight(1f))
+                        ScannerChip(t("Blocked", "مسدود"), blockedCount.toString(), Modifier.weight(1f))
+                    }
+                }
+            }
+            item {
+                PremiumGlassCard {
+                    Text(t("AI Strategy Lab", "آزمایشگاه استراتژی AI"), color = Color.White, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(t("Use scanner presets to move quickly between scalp, intraday and macro behavior.", "با پریست‌های اسکنر سریع بین حالت اسکالپ، درون‌روزی و ماکرو جابه‌جا شو."), color = Color(0xFFBCEEFF))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        StrategyButton(t("Scalp", "اسکالپ"), state.selectedStrategy == "scalp", Modifier.weight(1f)) { viewModel.applyStrategyPreset("scalp") }
+                        StrategyButton(t("Intraday", "درون‌روزی"), state.selectedStrategy == "intraday", Modifier.weight(1f)) { viewModel.applyStrategyPreset("intraday") }
+                        StrategyButton(t("Macro", "ماکرو"), state.selectedStrategy == "macro", Modifier.weight(1f)) { viewModel.applyStrategyPreset("macro") }
+                    }
+                    Text(t("Selected strategy", "استراتژی انتخابی") + ": ${state.selectedStrategy.uppercase(Locale.getDefault())} • ${state.selectedTimeframe}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TimeframeButton("1m", state.selectedTimeframe == "1m", modifier = Modifier.weight(1f)) { viewModel.selectTimeframe("1m") }
                         TimeframeButton("5m", state.selectedTimeframe == "5m", modifier = Modifier.weight(1f)) { viewModel.selectTimeframe("5m") }
                         TimeframeButton("15m", state.selectedTimeframe == "15m", modifier = Modifier.weight(1f)) { viewModel.selectTimeframe("15m") }
                         TimeframeButton("1h", state.selectedTimeframe == "1h", modifier = Modifier.weight(1f)) { viewModel.selectTimeframe("1h") }
                     }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { viewModel.scanMarket("BTCUSDT", "crypto") }, modifier = Modifier.weight(1f)) { Text("BTC") }
                         Button(onClick = { viewModel.scanMarket("ETHUSDT", "crypto") }, modifier = Modifier.weight(1f)) { Text("ETH") }
                         OutlinedButton(onClick = { viewModel.scanMarket("EURUSD", "forex") }, modifier = Modifier.weight(1f)) { Text("EURUSD") }
                     }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { viewModel.scanMarket("XAUUSD", "forex") }, modifier = Modifier.weight(1f)) { Text("XAUUSD") }
                         Button(onClick = { viewModel.loadHistory() }, modifier = Modifier.weight(1f)) {
                             Text(if (state.loading) t("Loading...", "در حال بارگذاری...") else t("Refresh", "بروزرسانی"))
                         }
                         Button(onClick = onOpenJournal, modifier = Modifier.weight(1f)) { Text(t("Journal", "ژورنال")) }
                     }
-
                     if (state.scanMessage.isNotBlank()) Text(state.scanMessage, color = Color(0xFF33E6A6))
                     if (state.journalMessage.isNotBlank()) Text(state.journalMessage, color = Color(0xFF67ECFF))
                     state.error?.let { Text(t("Error", "خطا") + ": $it", color = MaterialTheme.colorScheme.error) }
-
                     Text(
                         t(
-                            "Live engine now exposes institutional grade, entry model and confluence tags.",
-                            "موتور زنده حالا گرید حرفه‌ای، مدل ورود و تگ‌های همگرایی را هم نشان می‌دهد."
+                            "Live engine now exposes grade, execution labels, confluence tags and elite strategy presets.",
+                            "موتور زنده حالا گرید، برچسب اجرا، تگ‌های همگرایی و پریست‌های استراتژی ممتاز را هم نشان می‌دهد."
                         ),
                         color = Color(0xFFFFD27A)
                     )
                 }
             }
-
             items(state.items) { signal ->
-                SignalCard(
-                    signal = signal,
-                    onOpenJournal = onOpenJournal,
-                    onAddToJournal = { viewModel.createTradeFromSignal(signal) },
-                    t = t
-                )
+                SignalCard(signal = signal, onOpenJournal = onOpenJournal, onAddToJournal = { viewModel.createTradeFromSignal(signal) }, t = t)
             }
         }
     }
@@ -170,79 +174,44 @@ private fun SignalCard(
         signal.score >= 68 -> "B"
         else -> "C"
     }
-
     val confidence = when (signal.confidence.lowercase(Locale.getDefault())) {
         "high" -> t("High", "بالا")
         "medium" -> t("Medium", "متوسط")
         else -> t("Low", "پایین")
     }
-
     val tp1 = signal.take_profits.getOrNull(0)
     val tp2 = signal.take_profits.getOrNull(1)
     val tp3 = signal.take_profits.getOrNull(2)
     val analysisSummary = signal.reasons.take(3).joinToString(separator = " • ") { localizeSignalReason(it, t) }
-
     val accent = when (signal.direction.lowercase(Locale.getDefault())) {
         "buy" -> Color(0xFF33E6A6)
         "sell" -> Color(0xFFFF7A7A)
         else -> Color(0xFF67ECFF)
     }
-
     val confidenceProgress = when (signal.confidence.lowercase(Locale.getDefault())) {
         "high" -> 0.92f
         "medium" -> 0.68f
         else -> 0.35f
     }
-
     val executionLabel = localizeExecutionLabel(signal.execution_label ?: "observe", t)
     val entryModel = localizeEntryModel(signal.entry_model ?: "No Trade", t)
     val confluenceTags = (signal.confluence_tags ?: emptyList()).take(6)
     val riskFlags = signal.risk_flags ?: emptyList()
 
     PremiumGlassCard(borderColor = accent.copy(alpha = 0.35f)) {
-        Text(
-            signal.symbol,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.ExtraBold,
-            color = Color.White
-        )
-
-        Text(
-            "${signal.direction.uppercase(Locale.getDefault())} • ${t("Score", "امتیاز")} ${signal.score} • ${signal.timeframe}",
-            color = accent,
-            fontWeight = FontWeight.Bold
-        )
-
+        Text(signal.symbol, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Color.White)
+        Text("${signal.direction.uppercase(Locale.getDefault())} • ${t("Score", "امتیاز")} ${signal.score} • ${signal.timeframe}", color = accent, fontWeight = FontWeight.Bold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            InfoChip(
-                label = "Grade $grade",
-                background = accent.copy(alpha = 0.18f),
-                color = accent
-            )
-            InfoChip(
-                label = executionLabel,
-                background = Color(0x2611D9FF),
-                color = Color(0xFF8EEBFF)
-            )
+            InfoChip(label = "Grade $grade", background = accent.copy(alpha = 0.18f), color = accent)
+            InfoChip(label = executionLabel, background = Color(0x2611D9FF), color = Color(0xFF8EEBFF))
         }
-
-        Text(
-            t("Confidence", "اطمینان") + ": $confidence • ${t("Session", "سشن")}: ${localizeSessionName(signal.session_name, t)}",
-            color = Color.White
-        )
-
-        Text(
-            t("Entry Model", "مدل ورود") + ": $entryModel",
-            color = Color(0xFFFFD27A),
-            fontWeight = FontWeight.SemiBold
-        )
-
+        Text(t("Confidence", "اطمینان") + ": $confidence • ${t("Session", "سشن")}: ${localizeSessionName(signal.session_name, t)}", color = Color.White)
+        Text(t("Entry Model", "مدل ورود") + ": $entryModel", color = Color(0xFFFFD27A), fontWeight = FontWeight.SemiBold)
         ConfidenceBar(progress = confidenceProgress, accent = accent, t = t)
 
         signal.ai_summary?.takeIf { it.isNotBlank() }?.let {
             Text(t("AI Summary", "خلاصه هوش مصنوعی") + ": $it", color = Color(0xFFDDF8FF))
         }
-
         if (analysisSummary.isNotBlank()) {
             Text(t("AI Analysis", "تحلیل هوش مصنوعی") + ": $analysisSummary", color = Color(0xFFBCEEFF))
         }
@@ -267,7 +236,6 @@ private fun SignalCard(
         Text("TP1 • RR 1:1 = ${tp1 ?: "-"}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
         Text("TP2 • RR 1:2 = ${tp2 ?: "-"}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
         Text("TP3 • RR 1:3 = ${tp3 ?: "-"}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
-
         signal.risk_to_reward?.let {
             Text(t("Max Target RR", "بیشترین نسبت بازده هدف") + ": 1:$it", color = Color(0xFFFFD27A))
         }
@@ -277,10 +245,7 @@ private fun SignalCard(
             Text(riskFlags.joinToString(" • ") { localizeRiskFlag(it, t) }, color = Color(0xFFFFD27A))
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = onAddToJournal, modifier = Modifier.weight(1f)) {
                 Text(t("Add to Journal", "افزودن به ژورنال"))
             }
@@ -288,8 +253,38 @@ private fun SignalCard(
                 Text(t("Open Journal", "باز کردن ژورنال"))
             }
         }
-
         Text(t("Saved At", "زمان ذخیره") + ": ${formatDisplayTimestamp(signal.created_at)}", color = Color(0xFF8EDFFF))
+    }
+}
+
+@Composable
+private fun ScannerChip(title: String, value: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(
+                Brush.linearGradient(listOf(Color(0x2611D9FF), Color(0x2217FFB3))),
+                RoundedCornerShape(16.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, color = Color(0xFFBCEEFF), style = MaterialTheme.typography.bodySmall)
+            Text(value, color = Color.White, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun StrategyButton(
+    title: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    if (selected) {
+        Button(onClick = onClick, modifier = modifier) { Text(title) }
+    } else {
+        OutlinedButton(onClick = onClick, modifier = modifier) { Text(title) }
     }
 }
 
@@ -363,12 +358,7 @@ private fun InfoChip(
             .background(background, RoundedCornerShape(14.dp))
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
-        Text(
-            label,
-            color = color,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.Bold
-        )
+        Text(label, color = color, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
     }
 }
 

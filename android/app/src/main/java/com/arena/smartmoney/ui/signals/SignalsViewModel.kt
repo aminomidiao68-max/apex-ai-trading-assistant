@@ -20,7 +20,8 @@ data class SignalsUiState(
     val notificationSignal: SignalHistoryItemDto? = null,
     val scanMessage: String = "",
     val journalMessage: String = "",
-    val selectedTimeframe: String = "15m"
+    val selectedTimeframe: String = "15m",
+    val selectedStrategy: String = "intraday"
 )
 
 class SignalsViewModel(
@@ -37,6 +38,19 @@ class SignalsViewModel(
 
     fun selectTimeframe(timeframe: String) {
         _uiState.value = _uiState.value.copy(selectedTimeframe = timeframe)
+    }
+
+    fun applyStrategyPreset(strategy: String) {
+        val timeframe = when (strategy.lowercase()) {
+            "scalp" -> "1m"
+            "intraday" -> "15m"
+            "macro" -> "1h"
+            else -> _uiState.value.selectedTimeframe
+        }
+        _uiState.value = _uiState.value.copy(
+            selectedStrategy = strategy.lowercase(),
+            selectedTimeframe = timeframe
+        )
     }
 
     fun loadHistory() {
@@ -103,11 +117,14 @@ class SignalsViewModel(
                         signal.score >= 68.0 -> "B"
                         else -> "C"
                     }
+                    val execution = signal.execution_label ?: "observe"
                     _uiState.value = _uiState.value.copy(
                         loading = false,
-                        items = (listOf(signal) + _uiState.value.items).sortedByDescending { it.score },
+                        items = (listOf(signal) + _uiState.value.items)
+                            .distinctBy { it.id }
+                            .sortedByDescending { it.score },
                         notificationSignal = signal,
-                        scanMessage = "$qualityMessage • ${signal.symbol} • ${signal.timeframe} • Grade $grade",
+                        scanMessage = "$qualityMessage • ${signal.symbol} • ${signal.timeframe} • Grade $grade • ${execution.uppercase()}",
                         error = null
                     )
                 }
@@ -158,7 +175,7 @@ class SignalsViewModel(
                         stop_loss = stopLoss,
                         take_profit = takeProfit,
                         size = 1.0,
-                        notes = "AI signal ${signal.id} • TF=${signal.timeframe} • Score ${signal.score} • TP1=${takeProfit ?: "-"} • TP2=${tp2 ?: "-"} • TP3=${tp3 ?: "-"}"
+                        notes = "AI signal ${signal.id} • TF=${signal.timeframe} • Score ${signal.score} • Grade=${signal.setup_grade ?: "-"} • Exec=${signal.execution_label ?: "-"} • TP1=${takeProfit ?: "-"} • TP2=${tp2 ?: "-"} • TP3=${tp3 ?: "-"}"
                     )
                 )
             }.onSuccess { trade ->
