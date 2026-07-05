@@ -59,9 +59,14 @@ fun DashboardScreen(
     } else state.watchlist
 
     val strongestSymbol = listToShow.filter { it.change_pct != null }.maxByOrNull { abs(it.change_pct ?: 0.0) }
+    val strongestMove = abs(strongestSymbol?.change_pct ?: 0.0)
     val streamInFallbackMode = state.streamStatus.contains("404") || state.streamStatus.contains("error", ignoreCase = true)
     val missingForexFeeds = listToShow.any { it.status == "missing_api_key" }
     val stats = state.tradeStats
+    val focusHealth = focusHealthLabel(state.sessionScore, strongestMove, streamInFallbackMode)
+    val scalpAlert = alertStateLabel(state.sessionScore >= 8.0 && strongestMove >= 0.75 && !streamInFallbackMode, t)
+    val intradayAlert = alertStateLabel(state.sessionScore >= 6.5 && strongestMove >= 0.35, t)
+    val macroAlert = alertStateLabel(strongestMove >= 1.0 || missingForexFeeds, t)
 
     val aiSummary = buildString {
         append(
@@ -170,6 +175,25 @@ fun DashboardScreen(
             }
 
             item {
+                MarketFocusBoard(
+                    strongestSymbol = strongestSymbol,
+                    focusHealth = focusHealth,
+                    streamInFallbackMode = streamInFallbackMode,
+                    missingForexFeeds = missingForexFeeds,
+                    t = t,
+                )
+            }
+
+            item {
+                SmartAlertsBoard(
+                    scalpAlert = scalpAlert,
+                    intradayAlert = intradayAlert,
+                    macroAlert = macroAlert,
+                    t = t,
+                )
+            }
+
+            item {
                 Text(
                     text = t("Premium AI Modules", "ماژول‌های پرمیوم هوش مصنوعی"),
                     style = MaterialTheme.typography.titleLarge,
@@ -210,13 +234,11 @@ fun DashboardScreen(
                             color = Color.White,
                             fontWeight = FontWeight.Bold
                         )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            StreamChip("BTC", modifier = Modifier.weight(1f), onClick = { viewModel.selectStreamSymbol("BTCUSDT") })
-                            StreamChip("ETH", modifier = Modifier.weight(1f), onClick = { viewModel.selectStreamSymbol("ETHUSDT") })
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                            StreamChip("EURUSD", modifier = Modifier.weight(1f), onClick = { viewModel.selectStreamSymbol("EURUSD") })
-                            StreamChip("XAU", modifier = Modifier.weight(1f), onClick = { viewModel.selectStreamSymbol("XAUUSD") })
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            StreamChip("BTC", onClick = { viewModel.selectStreamSymbol("BTCUSDT") })
+                            StreamChip("ETH", onClick = { viewModel.selectStreamSymbol("ETHUSDT") })
+                            StreamChip("EURUSD", onClick = { viewModel.selectStreamSymbol("EURUSD") })
+                            StreamChip("XAU", onClick = { viewModel.selectStreamSymbol("XAUUSD") })
                         }
                         Button(onClick = { viewModel.reconnectStream() }, modifier = Modifier.fillMaxWidth()) {
                             Text(t("Reconnect Live Feed", "اتصال مجدد فید زنده"))
@@ -294,6 +316,60 @@ fun DashboardScreen(
             items(listToShow) { item ->
                 WatchlistCard(item = item, t = t)
             }
+        }
+    }
+}
+
+@Composable
+private fun MarketFocusBoard(
+    strongestSymbol: com.arena.smartmoney.data.model.MarketOverviewItem?,
+    focusHealth: String,
+    streamInFallbackMode: Boolean,
+    missingForexFeeds: Boolean,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
+        Text(t("Market Focus Board", "برد تمرکز بازار"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            strongestSymbol?.let {
+                t(
+                    "Highest active displacement is coming from ${it.symbol} with ${String.format(Locale.US, "%.2f", it.change_pct ?: 0.0)}% movement.",
+                    "بیشترین جابه‌جایی فعال فعلاً از ${it.symbol} با حرکت ${String.format(Locale.US, "%.2f", it.change_pct ?: 0.0)}٪ می‌آید."
+                )
+            } ?: t(
+                "Focus board is waiting for fresh market movement data.",
+                "برد تمرکز بازار منتظر داده تازه برای تشخیص حرکت است."
+            ),
+            color = Color(0xFFE7FAFF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Health", "سلامت"), focusHealth, Modifier.weight(1f))
+            FocusChip(t("Stream", "استریم"), if (streamInFallbackMode) t("Fallback", "جایگزین") else t("Realtime", "لحظه‌ای"), Modifier.weight(1f))
+            FocusChip(t("Forex", "فارکس"), if (missingForexFeeds) t("Limited", "محدود") else t("Ready", "آماده"), Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun SmartAlertsBoard(
+    scalpAlert: String,
+    intradayAlert: String,
+    macroAlert: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+        Text(t("Smart Alerts Pro", "اسمارت الرتس پرو"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "These labels show how close the market is to producing actionable alert conditions.",
+                "این برچسب‌ها نشان می‌دهند بازار چقدر به ساخت شرایط هشدار قابل اجرا نزدیک شده است."
+            ),
+            color = Color(0xFFBCEEFF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Scalp", "اسکالپ"), scalpAlert, Modifier.weight(1f))
+            FocusChip(t("Intraday", "درون‌روزی"), intradayAlert, Modifier.weight(1f))
+            FocusChip(t("Macro", "ماکرو"), macroAlert, Modifier.weight(1f))
         }
     }
 }
@@ -385,6 +461,23 @@ private fun InfoChip(label: String, value: String) {
 }
 
 @Composable
+private fun FocusChip(label: String, value: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(
+                Brush.linearGradient(listOf(Color(0x2611D9FF), Color(0x2217FFB3))),
+                RoundedCornerShape(16.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, color = Color(0xFFBCEEFF), style = MaterialTheme.typography.bodySmall)
+            Text(value, color = Color.White, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
 private fun StreamChip(title: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Button(onClick = onClick, modifier = modifier) {
         Text(title)
@@ -431,4 +524,17 @@ private fun WatchlistCard(
             }
         }
     }
+}
+
+private fun focusHealthLabel(sessionScore: Double, strongestMove: Double, streamFallback: Boolean): String {
+    return when {
+        sessionScore >= 8.0 && strongestMove >= 0.75 && !streamFallback -> "Elite"
+        sessionScore >= 6.5 && strongestMove >= 0.35 -> "Strong"
+        sessionScore >= 5.0 -> "Developing"
+        else -> "Weak"
+    }
+}
+
+private fun alertStateLabel(isReady: Boolean, t: (String, String) -> String): String {
+    return if (isReady) t("Armed", "مسلح") else t("Standby", "آماده‌باش")
 }

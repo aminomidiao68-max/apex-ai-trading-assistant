@@ -1,11 +1,14 @@
 package com.arena.smartmoney.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -17,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +52,13 @@ fun SettingsScreen(onOpenReadiness: () -> Unit) {
         AppLanguageState.current = language
     }
 
+    val alertProfile = alertProfileLabel(
+        notificationsEnabled = notificationsEnabled,
+        autoRefreshEnabled = autoRefreshEnabled,
+        testnetOnlyEnabled = testnetOnlyEnabled,
+        riskAcknowledged = riskAcknowledged,
+    )
+
     PremiumScreenBackground {
         androidx.compose.foundation.lazy.LazyColumn(
             modifier = Modifier
@@ -59,8 +70,8 @@ fun SettingsScreen(onOpenReadiness: () -> Unit) {
                 PremiumSectionHeader(
                     title = t("Settings Center", "مرکز تنظیمات"),
                     subtitle = t(
-                        "Language, safety controls and premium system configuration.",
-                        "زبان، کنترل‌های ایمنی و تنظیمات پرمیوم سیستم."
+                        "Language, smart alerts, safety controls and premium system configuration.",
+                        "زبان، هشدارهای هوشمند، کنترل‌های ایمنی و تنظیمات پرمیوم سیستم."
                     )
                 )
             }
@@ -79,6 +90,34 @@ fun SettingsScreen(onOpenReadiness: () -> Unit) {
                         ),
                         color = Color(0xFF67ECFF),
                         fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            item {
+                PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+                    Text(t("Smart Alerts Pro", "اسمارت الرتس پرو"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(t("Alert profile", "پروفایل هشدار") + ": $alertProfile", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AlertProfileChip(t("Execution", "اجرا"), if (notificationsEnabled) t("Enabled", "فعال") else t("Muted", "بی‌صدا"), Modifier.weight(1f))
+                        AlertProfileChip(t("Refresh", "رفرش"), if (autoRefreshEnabled) t("Live", "زنده") else t("Manual", "دستی"), Modifier.weight(1f))
+                        AlertProfileChip(t("Mode", "حالت"), if (testnetOnlyEnabled) t("Safe", "ایمن") else t("Aggressive", "تهاجمی"), Modifier.weight(1f))
+                    }
+                    Text(
+                        when {
+                            notificationsEnabled && autoRefreshEnabled && riskAcknowledged -> t(
+                                "Alert engine is armed for market focus monitoring. Keep risk discipline active.",
+                                "موتور هشدار برای مانیتورینگ تمرکز بازار مسلح است. نظم ریسک را حفظ کن."
+                            )
+                            !notificationsEnabled -> t(
+                                "Notifications are muted, so only on-screen alert boards will guide you.",
+                                "نوتیفیکیشن‌ها خاموش هستند و فقط بردهای داخل برنامه راهنمایی می‌کنند."
+                            )
+                            else -> t(
+                                "Smart alerts are partially configured. Complete safety controls for full readiness.",
+                                "هشدارهای هوشمند به‌صورت ناقص تنظیم شده‌اند. برای آمادگی کامل، کنترل‌های ایمنی را تکمیل کن."
+                            )
+                        },
+                        color = Color(0xFFDDF8FF)
                     )
                 }
             }
@@ -144,6 +183,37 @@ fun SettingsScreen(onOpenReadiness: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AlertProfileChip(title: String, value: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(
+                Brush.linearGradient(listOf(Color(0x2611D9FF), Color(0x2217FFB3))),
+                RoundedCornerShape(16.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, color = Color(0xFFBCEEFF), style = MaterialTheme.typography.bodySmall)
+            Text(value, color = Color.White, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+private fun alertProfileLabel(
+    notificationsEnabled: Boolean,
+    autoRefreshEnabled: Boolean,
+    testnetOnlyEnabled: Boolean,
+    riskAcknowledged: Boolean,
+): String {
+    return when {
+        notificationsEnabled && autoRefreshEnabled && !testnetOnlyEnabled && riskAcknowledged -> "Aggressive"
+        notificationsEnabled && autoRefreshEnabled && riskAcknowledged -> "Balanced"
+        notificationsEnabled || autoRefreshEnabled -> "Defensive"
+        else -> "Silent"
     }
 }
 
