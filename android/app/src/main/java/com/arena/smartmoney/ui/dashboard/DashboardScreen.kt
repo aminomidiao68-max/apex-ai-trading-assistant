@@ -23,12 +23,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.arena.smartmoney.ui.components.PremiumGlassCard
+import com.arena.smartmoney.ui.components.PremiumScreenBackground
+import com.arena.smartmoney.ui.components.PremiumSectionHeader
 import com.arena.smartmoney.ui.i18n.localizeBackendStatus
 import com.arena.smartmoney.ui.i18n.localizeMarketQuality
 import com.arena.smartmoney.ui.i18n.localizeSessionName
@@ -84,193 +88,12 @@ fun DashboardScreen(
         t = t
     )
     val breadthHealth = breadthHealthLabel(risingAssets, fallingAssets, neutralAssets, t)
-    val scalpAlert = alertStateLabel(state.sessionScore >= 8.0 && strongestMove >= 0.75 && !streamInFallbackMode, t)
-    val intradayAlert = alertStateLabel(state.sessionScore >= 6.5 && strongestMove >= 0.35, t)
-    val macroAlert = alertStateLabel(strongestMove >= 1.0 || missingForexFeeds, t)
-    val executiveHealth = executiveHealthLabel(
-        sessionScore = state.sessionScore,
-        portfolioHealth = portfolioHealth,
-        focusHealth = focusHealth,
-        streamFallback = streamInFallbackMode,
-        t = t
-    )
-    val commandPriority = commandPriorityLabel(
-        strongestMove = strongestMove,
-        openTrades = stats?.open_trades ?: 0,
-        risingAssets = risingAssets,
-        fallingAssets = fallingAssets,
-        t = t
-    )
-    val missionStatus = missionStatusLabel(
-        sessionScore = state.sessionScore,
-        streamFallback = streamInFallbackMode,
-        openTrades = stats?.open_trades ?: 0,
-        t = t
-    )
-    val executionClimate = executionClimateLabel(
-        strongestMove = strongestMove,
-        focusHealth = focusHealth,
-        riskPressure = riskPressure,
-        t = t
-    )
-
+    val missionStatus = missionStatusLabel(state.sessionScore, streamInFallbackMode, stats?.open_trades ?: 0, t)
+    val commandPriority = commandPriorityLabel(strongestMove, stats?.open_trades ?: 0, risingAssets, fallingAssets, t)
+    val executionClimate = executionClimateLabel(strongestMove, focusHealth, riskPressure, t)
     val allocationBias = allocationBiasLabel(cryptoAssets, forexAssets, t)
-    val exposureState = exposureStateLabel(stats?.open_trades ?: 0, listToShow.size, t)
-    val rotationBias = rotationBiasLabel(risingAssets, fallingAssets, strongestMove, t)
-    val capitalDefense = capitalDefenseLabel(stats?.net_pnl ?: 0.0, stats?.open_trades ?: 0, t)
-
-    val quantReadiness = quantReadinessLabel(
-        sessionScore = state.sessionScore,
-        strongestMove = strongestMove,
-        streamFallback = streamInFallbackMode,
-        breadthHealth = breadthHealth,
-        t = t
-    )
-    val edgeScore = edgeScoreValue(
-        sessionScore = state.sessionScore,
-        strongestMove = strongestMove,
-        risingAssets = risingAssets,
-        fallingAssets = fallingAssets,
-        openTrades = stats?.open_trades ?: 0
-    )
-    val volatilityState = volatilityStateLabel(strongestMove, t)
-    val decisionBias = decisionBiasLabel(risingAssets, fallingAssets, strongestMove, t)
-    val actionBias = actionBiasLabel(commandPriority, riskPressure, t)
-    val confirmationLayer = confirmationLayerLabel(focusHealth, breadthHealth, streamInFallbackMode, t)
-
-    val primeCockpitState = primeCockpitStateLabel(
-        sessionScore = state.sessionScore,
-        strongestMove = strongestMove,
-        streamFallback = streamInFallbackMode,
-        t = t
-    )
-    val executionWindow = executionWindowLabel(
-        sessionScore = state.sessionScore,
-        strongestMove = strongestMove,
-        t = t
-    )
-    val signalRadarBias = signalRadarBiasLabel(
-        risingAssets = risingAssets,
-        fallingAssets = fallingAssets,
-        strongestMove = strongestMove,
-        t = t
-    )
-    val signalRadarReadiness = signalRadarReadinessLabel(
-        sessionScore = state.sessionScore,
-        strongestMove = strongestMove,
-        streamFallback = streamInFallbackMode,
-        breadthHealth = breadthHealth,
-        t = t
-    )
-    val signalPressure = signalPressureLabel(
-        openTrades = stats?.open_trades ?: 0,
-        riskPressure = riskPressure,
-        t = t
-    )
-
-    val institutionalState = institutionalStateLabel(
-        portfolioHealth = portfolioHealth,
-        breadthHealth = breadthHealth,
-        streamFallback = streamInFallbackMode,
-        t = t
-    )
-    val tacticalResponse = tacticalResponseLabel(
-        commandPriority = commandPriority,
-        riskPressure = riskPressure,
-        t = t
-    )
-    val tacticalTempo = tacticalTempoLabel(
-        sessionScore = state.sessionScore,
-        strongestMove = strongestMove,
-        t = t
-    )
-    val tacticalDefense = tacticalDefenseLabel(
-        capitalDefense = capitalDefense,
-        riskPressure = riskPressure,
-        t = t
-    )
-
-    val supremeState = supremeStateLabel(
-        executiveHealth = executiveHealth,
-        quantReadiness = quantReadiness,
-        riskPressure = riskPressure,
-        t = t
-    )
-    val commandShield = commandShieldLabel(
-        capitalDefense = capitalDefense,
-        riskPressure = riskPressure,
-        t = t
-    )
-    val globalPulseState = globalPulseStateLabel(
-        risingAssets = risingAssets,
-        fallingAssets = fallingAssets,
-        strongestMove = strongestMove,
-        t = t
-    )
-    val pulseVelocity = pulseVelocityLabel(
-        strongestMove = strongestMove,
-        sessionScore = state.sessionScore,
-        t = t
-    )
-
-    val finalReadiness = finalReadinessLabel(
-        executiveHealth = executiveHealth,
-        quantReadiness = quantReadiness,
-        signalRadarReadiness = signalRadarReadiness,
-        t = t
-    )
-    val commandPosture = commandPostureLabel(
-        commandPriority = commandPriority,
-        actionBias = actionBias,
-        t = t
-    )
-    val signalGovernance = signalGovernanceLabel(
-        signalPressure = signalPressure,
-        riskPressure = riskPressure,
-        t = t
-    )
-    val marketRegime = marketRegimeLabel(
-        breadthHealth = breadthHealth,
-        globalPulseState = globalPulseState,
-        t = t
-    )
-    val capitalStability = capitalStabilityLabel(
-        portfolioHealth = portfolioHealth,
-        capitalDefense = capitalDefense,
-        t = t
-    )
-    val executiveAlignment = executiveAlignmentLabel(
-        focusHealth = focusHealth,
-        breadthHealth = breadthHealth,
-        confirmationLayer = confirmationLayer,
-        t = t
-    )
-
-    val supremeDecisionState = supremeDecisionLabel(
-        sessionScore = state.sessionScore,
-        strongestMove = strongestMove,
-        openTrades = stats?.open_trades ?: 0,
-        streamFallback = streamInFallbackMode,
-        t = t
-    )
-    val marketVelocity = omniPulseLabel(
-        risingAssets = risingAssets,
-        fallingAssets = fallingAssets,
-        strongestMove = strongestMove,
-        streamFallback = streamInFallbackMode,
-        t = t
-    )
-    val capitalHeat = capitalHeatLabel(
-        openTrades = stats?.open_trades ?: 0,
-        netPnl = stats?.net_pnl ?: 0.0,
-        t = t
-    )
-    val deploymentRisk = deploymentRiskLabel(
-        openTrades = stats?.open_trades ?: 0,
-        strongestMove = strongestMove,
-        missingForexFeeds = missingForexFeeds,
-        t = t
-    )
+    val supremeState = supremeStateLabel(state.sessionScore, focusHealth, riskPressure, streamInFallbackMode, t)
+    val pulseState = globalPulseStateLabel(risingAssets, fallingAssets, strongestMove, t)
 
     val aiSummary = buildString {
         append(
@@ -297,20 +120,7 @@ fun DashboardScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    listOf(
-                        Color(0xFF050B14),
-                        Color(0xFF08131F),
-                        Color(0xFF0B1D2B),
-                        Color(0xFF050B14)
-                    )
-                )
-            )
-    ) {
+    PremiumScreenBackground {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -365,128 +175,10 @@ fun DashboardScreen(
             }
 
             item {
-                SupremeControlLayerBoard(
+                SupremeLayerBoard(
                     supremeState = supremeState,
-                    commandShield = commandShield,
-                    pulseVelocity = pulseVelocity,
-                    t = t
-                )
-            }
-
-            item {
-                GlobalMarketPulseBoard(
-                    globalPulseState = globalPulseState,
-                    strongestSymbol = strongestSymbol?.symbol ?: "-",
-                    strongestMove = strongestMove,
+                    pulseState = pulseState,
                     allocationBias = allocationBias,
-                    t = t
-                )
-            }
-
-            item {
-                InstitutionalAIMatrixBoard(
-                    finalReadiness = finalReadiness,
-                    commandPosture = commandPosture,
-                    signalGovernance = signalGovernance,
-                    t = t
-                )
-            }
-
-            item {
-                FinalExecutiveLayerBoard(
-                    marketRegime = marketRegime,
-                    capitalStability = capitalStability,
-                    executiveAlignment = executiveAlignment,
-                    t = t
-                )
-            }
-
-            item {
-                PrimeAICockpitBoard(
-                    primeCockpitState = primeCockpitState,
-                    executionWindow = executionWindow,
-                    signalPressure = signalPressure,
-                    t = t
-                )
-            }
-
-            item {
-                ExecutiveSignalRadarBoard(
-                    signalRadarBias = signalRadarBias,
-                    signalRadarReadiness = signalRadarReadiness,
-                    commandPriority = commandPriority,
-                    strongestSymbol = strongestSymbol?.symbol ?: "-",
-                    t = t
-                )
-            }
-
-            item {
-                InstitutionalOverviewGrid(
-                    institutionalState = institutionalState,
-                    allocationBias = allocationBias,
-                    breadthHealth = breadthHealth,
-                    focusHealth = focusHealth,
-                    t = t
-                )
-            }
-
-            item {
-                TacticalResponseBoard(
-                    tacticalResponse = tacticalResponse,
-                    tacticalTempo = tacticalTempo,
-                    tacticalDefense = tacticalDefense,
-                    t = t
-                )
-            }
-
-            item {
-                ExecutiveOverviewBoard(
-                    executiveHealth = executiveHealth,
-                    commandPriority = commandPriority,
-                    focusHealth = focusHealth,
-                    portfolioHealth = portfolioHealth,
-                    breadthHealth = breadthHealth,
-                    t = t,
-                )
-            }
-
-            item {
-                QuantOpsCenterBoard(
-                    quantReadiness = quantReadiness,
-                    edgeScore = edgeScore,
-                    volatilityState = volatilityState,
-                    t = t
-                )
-            }
-
-            item {
-                AdvancedDecisionMatrixBoard(
-                    decisionBias = decisionBias,
-                    actionBias = actionBias,
-                    confirmationLayer = confirmationLayer,
-                    t = t
-                )
-            }
-
-            item {
-                ElitePortfolioFlowBoard(
-                    risingAssets = risingAssets,
-                    fallingAssets = fallingAssets,
-                    neutralAssets = neutralAssets,
-                    exposureState = exposureState,
-                    rotationBias = rotationBias,
-                    strongestSymbol = strongestSymbol?.symbol ?: "-",
-                    t = t
-                )
-            }
-
-            item {
-                CapitalAllocationBoard(
-                    allocationBias = allocationBias,
-                    capitalDefense = capitalDefense,
-                    cryptoAssets = cryptoAssets,
-                    forexAssets = forexAssets,
-                    assetsTracked = listToShow.size,
                     t = t
                 )
             }
@@ -515,64 +207,25 @@ fun DashboardScreen(
             }
 
             item {
-                PortfolioCommandBoard(
-                    assetsTracked = listToShow.size,
+                PortfolioBoard(
                     cryptoAssets = cryptoAssets,
                     forexAssets = forexAssets,
-                    portfolioHealth = portfolioHealth,
-                    riskPressure = riskPressure,
-                    t = t
-                )
-            }
-
-            item {
-                MultiAssetIntelligenceBoard(
                     risingAssets = risingAssets,
                     fallingAssets = fallingAssets,
                     neutralAssets = neutralAssets,
-                    strongestSymbol = strongestSymbol?.symbol ?: "-",
-                    strongestMove = strongestMove,
+                    portfolioHealth = portfolioHealth,
+                    riskPressure = riskPressure,
+                    breadthHealth = breadthHealth,
                     t = t
-                )
-            }
-
-            item {
-                MarketFocusBoard(
-                    strongestSymbol = strongestSymbol,
-                    focusHealth = focusHealth,
-                    streamInFallbackMode = streamInFallbackMode,
-                    missingForexFeeds = missingForexFeeds,
-                    t = t,
                 )
             }
 
             item {
                 SmartAlertsBoard(
-                    scalpAlert = scalpAlert,
-                    intradayAlert = intradayAlert,
-                    macroAlert = macroAlert,
+                    scalpAlert = alertStateLabel(state.sessionScore >= 8.0 && strongestMove >= 0.75 && !streamInFallbackMode, t),
+                    intradayAlert = alertStateLabel(state.sessionScore >= 6.5 && strongestMove >= 0.35, t),
+                    macroAlert = alertStateLabel(strongestMove >= 1.0 || missingForexFeeds, t),
                     t = t,
-                )
-            }
-
-            item {
-                UltimateDecisionStackBoard(
-                    supremeDecisionState = supremeDecisionState,
-                    marketVelocity = marketVelocity,
-                    capitalHeat = capitalHeat,
-                    t = t
-                )
-            }
-
-            item {
-                OmniMarketCommandBoard(
-                    strongestSymbol = strongestSymbol?.symbol ?: "-",
-                    strongestMove = strongestMove,
-                    deploymentRisk = deploymentRisk,
-                    coverageCrypto = cryptoAssets,
-                    coverageForex = forexAssets,
-                    coverageAll = listToShow.size,
-                    t = t
                 )
             }
 
@@ -703,6 +356,239 @@ fun DashboardScreen(
     }
 }
 
+@Composable
+private fun MissionControlBoard(
+    missionStatus: String,
+    commandPriority: String,
+    executionClimate: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
+        Text(t("Mission Control Board", "برد مرکز عملیات"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Status", "وضعیت"), missionStatus, Modifier.weight(1f))
+            FocusChip(t("Priority", "اولویت"), commandPriority, Modifier.weight(1f))
+            FocusChip(t("Climate", "فضای اجرا"), executionClimate, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun SupremeLayerBoard(
+    supremeState: String,
+    pulseState: String,
+    allocationBias: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+        Text(t("Supreme Control Layer", "لایه کنترل برتر"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Supreme", "برتر"), supremeState, Modifier.weight(1f))
+            FocusChip(t("Pulse", "پالس"), pulseState, Modifier.weight(1f))
+            FocusChip(t("Bias", "سوگیری"), allocationBias, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun PortfolioBoard(
+    cryptoAssets: Int,
+    forexAssets: Int,
+    risingAssets: Int,
+    fallingAssets: Int,
+    neutralAssets: Int,
+    portfolioHealth: String,
+    riskPressure: String,
+    breadthHealth: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4033E6A6)) {
+        Text(t("Portfolio Command", "فرماندهی پرتفوی"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Health", "سلامت"), portfolioHealth, Modifier.weight(1f))
+            FocusChip(t("Risk", "ریسک"), riskPressure, Modifier.weight(1f))
+            FocusChip(t("Breadth", "پهنای بازار"), breadthHealth, Modifier.weight(1f))
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Crypto", "کریپتو"), cryptoAssets.toString(), Modifier.weight(1f))
+            FocusChip(t("Forex", "فارکس"), forexAssets.toString(), Modifier.weight(1f))
+            FocusChip(t("R/F/N", "ص/ن/خ"), "$risingAssets/$fallingAssets/$neutralAssets", Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun SmartAlertsBoard(
+    scalpAlert: String,
+    intradayAlert: String,
+    macroAlert: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+        Text(t("Smart Alerts Pro", "اسمارت الرتس پرو"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Scalp", "اسکالپ"), scalpAlert, Modifier.weight(1f))
+            FocusChip(t("Intraday", "درون‌روزی"), intradayAlert, Modifier.weight(1f))
+            FocusChip(t("Macro", "ماکرو"), macroAlert, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun NeonPanel(
+    brush: Brush,
+    borderColor: Color = Color(0x4037E6FF),
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(brush, RoundedCornerShape(28.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(28.dp))
+            .padding(18.dp)
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun MetricCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    accent: Color
+) {
+    Box(
+        modifier = modifier
+            .background(Color(0xCC0E1724), RoundedCornerShape(22.dp))
+            .border(1.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
+            .padding(vertical = 16.dp, horizontal = 12.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, color = Color(0xFFBEEFFF), style = MaterialTheme.typography.labelLarge)
+            Text(value, color = accent, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+        }
+    }
+}
+
+@Composable
+private fun ActionCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    subtitle: String,
+    accent: List<Color>,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .background(Brush.linearGradient(accent), RoundedCornerShape(24.dp))
+            .padding(1.dp)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick),
+            shape = RoundedCornerShape(24.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF0B1320))
+                    .padding(16.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(subtitle, color = Color(0xFFBEEFFF), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoChip(label: String, value: String) {
+    Box(
+        modifier = Modifier
+            .background(Color(0x3318D7F0), RoundedCornerShape(18.dp))
+            .border(1.dp, Color(0x4437E6FF), RoundedCornerShape(18.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Column {
+            Text(label, color = Color(0xFF92EFFF), style = MaterialTheme.typography.labelSmall)
+            Text(value, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun FocusChip(label: String, value: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(
+                Brush.linearGradient(listOf(Color(0x2611D9FF), Color(0x2217FFB3))),
+                RoundedCornerShape(16.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(label, color = Color(0xFFBCEEFF), style = MaterialTheme.typography.bodySmall)
+            Text(value, color = Color.White, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun StreamChip(title: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Button(onClick = onClick, modifier = modifier) {
+        Text(title)
+    }
+}
+
+@Composable
+private fun WatchlistCard(
+    item: com.arena.smartmoney.data.model.MarketOverviewItem,
+    t: (String, String) -> String
+) {
+    val accent = when {
+        (item.change_pct ?: 0.0) > 0 -> Color(0xFF33E6A6)
+        (item.change_pct ?: 0.0) < 0 -> Color(0xFFFF7A7A)
+        else -> Color(0xFF59C7FF)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xCC0E1724), RoundedCornerShape(24.dp))
+            .border(1.dp, accent.copy(alpha = 0.35f), RoundedCornerShape(24.dp))
+            .padding(16.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(item.symbol, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text("${item.market.uppercase(Locale.getDefault())} • ${item.source}", color = Color(0xFFBEEFFF))
+                Text(t("Status", "وضعیت") + ": ${localizeBackendStatus(item.status, t)}", color = Color(0xFF8EDFFF))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    t("Price", "قیمت") + ": ${item.last_price?.toString() ?: "-"}",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "24h: ${item.change_pct?.toString() ?: "-"}%",
+                    color = accent,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
 private fun focusHealthLabel(sessionScore: Double, strongestMove: Double, streamFallback: Boolean, t: (String, String) -> String): String {
     return when {
         sessionScore >= 8.0 && strongestMove >= 0.75 && !streamFallback -> t("Elite", "ممتاز")
@@ -757,16 +643,14 @@ private fun breadthHealthLabel(
     }
 }
 
-private fun executiveHealthLabel(
+private fun missionStatusLabel(
     sessionScore: Double,
-    portfolioHealth: String,
-    focusHealth: String,
     streamFallback: Boolean,
+    openTrades: Int,
     t: (String, String) -> String,
 ): String {
     return when {
-        sessionScore >= 8.0 && !streamFallback && (portfolioHealth == t("Elite", "ممتاز") || focusHealth == t("Elite", "ممتاز")) -> t("Prime", "درجه یک")
-        sessionScore >= 6.5 && !streamFallback -> t("Strong", "قوی")
+        sessionScore >= 8.0 && !streamFallback && openTrades <= 2 -> t("Active", "فعال")
         streamFallback -> t("Protected", "محافظت‌شده")
         else -> t("Measured", "کنترل‌شده")
     }
@@ -784,19 +668,6 @@ private fun commandPriorityLabel(
         strongestMove >= 0.5 && risingAssets != fallingAssets -> t("Monitor", "پایش")
         openTrades >= 3 -> t("Defend", "دفاع")
         else -> t("Observe", "مشاهده")
-    }
-}
-
-private fun missionStatusLabel(
-    sessionScore: Double,
-    streamFallback: Boolean,
-    openTrades: Int,
-    t: (String, String) -> String,
-): String {
-    return when {
-        sessionScore >= 8.0 && !streamFallback && openTrades <= 2 -> t("Active", "فعال")
-        streamFallback -> t("Protected", "محافظت‌شده")
-        else -> t("Measured", "کنترل‌شده")
     }
 }
 
@@ -826,263 +697,6 @@ private fun allocationBiasLabel(
     }
 }
 
-private fun exposureStateLabel(
-    openTrades: Int,
-    assetsTracked: Int,
-    t: (String, String) -> String,
-): String {
-    return when {
-        openTrades >= 3 -> t("Loaded", "سنگین")
-        openTrades >= 1 && assetsTracked >= 3 -> t("Engaged", "درگیر")
-        assetsTracked > 0 -> t("Light", "سبک")
-        else -> t("Idle", "بدون داده")
-    }
-}
-
-private fun rotationBiasLabel(
-    risingAssets: Int,
-    fallingAssets: Int,
-    strongestMove: Double,
-    t: (String, String) -> String,
-): String {
-    return when {
-        strongestMove >= 1.0 && risingAssets > fallingAssets -> t("Risk-On", "ریسک‌پذیر")
-        strongestMove >= 1.0 && fallingAssets > risingAssets -> t("Risk-Off", "ریسک‌گریز")
-        risingAssets == fallingAssets -> t("Balanced", "متعادل")
-        else -> t("Transition", "در حال چرخش")
-    }
-}
-
-private fun capitalDefenseLabel(
-    netPnl: Double,
-    openTrades: Int,
-    t: (String, String) -> String,
-): String {
-    return when {
-        netPnl < 0 && openTrades >= 2 -> t("Defend", "دفاع")
-        netPnl >= 0 && openTrades <= 1 -> t("Preserved", "حفظ‌شده")
-        else -> t("Managed", "مدیریت‌شده")
-    }
-}
-
-private fun quantReadinessLabel(
-    sessionScore: Double,
-    strongestMove: Double,
-    streamFallback: Boolean,
-    breadthHealth: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        sessionScore >= 8.0 && strongestMove >= 0.75 && !streamFallback && breadthHealth == t("Bullish", "صعودی") -> t("Prime", "درجه یک")
-        sessionScore >= 6.5 && strongestMove >= 0.35 && !streamFallback -> t("Ready", "آماده")
-        streamFallback -> t("Protected", "محافظت‌شده")
-        else -> t("Building", "در حال ساخت")
-    }
-}
-
-private fun edgeScoreValue(
-    sessionScore: Double,
-    strongestMove: Double,
-    risingAssets: Int,
-    fallingAssets: Int,
-    openTrades: Int,
-): String {
-    val raw = (sessionScore * 6.0) + (strongestMove * 18.0) + ((risingAssets - fallingAssets) * 2.0) - (openTrades * 3.0)
-    val bounded = raw.coerceIn(0.0, 100.0)
-    return String.format(Locale.US, "%.0f", bounded)
-}
-
-private fun volatilityStateLabel(
-    strongestMove: Double,
-    t: (String, String) -> String,
-): String {
-    return when {
-        strongestMove >= 1.0 -> t("Expanded", "منبسط")
-        strongestMove >= 0.45 -> t("Tradable", "قابل معامله")
-        strongestMove > 0.0 -> t("Compressed", "فشرده")
-        else -> t("Flat", "فلت")
-    }
-}
-
-private fun decisionBiasLabel(
-    risingAssets: Int,
-    fallingAssets: Int,
-    strongestMove: Double,
-    t: (String, String) -> String,
-): String {
-    return when {
-        risingAssets > fallingAssets && strongestMove >= 0.5 -> t("Bullish", "صعودی")
-        fallingAssets > risingAssets && strongestMove >= 0.5 -> t("Bearish", "نزولی")
-        else -> t("Neutral", "خنثی")
-    }
-}
-
-private fun actionBiasLabel(
-    commandPriority: String,
-    riskPressure: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        commandPriority == t("Deploy", "استقرار") && riskPressure != t("High", "بالا") -> t("Execute", "اجرا")
-        commandPriority == t("Monitor", "پایش") -> t("Prepare", "آماده‌سازی")
-        riskPressure == t("High", "بالا") -> t("Defend", "دفاع")
-        else -> t("Observe", "مشاهده")
-    }
-}
-
-private fun confirmationLayerLabel(
-    focusHealth: String,
-    breadthHealth: String,
-    streamInFallbackMode: Boolean,
-    t: (String, String) -> String,
-): String {
-    return when {
-        !streamInFallbackMode && focusHealth == t("Elite", "ممتاز") && breadthHealth != t("Mixed", "ترکیبی") -> t("Confirmed", "تأییدشده")
-        !streamInFallbackMode -> t("Partial", "نیمه‌تأیید")
-        else -> t("Protected", "محافظت‌شده")
-    }
-}
-
-private fun primeCockpitStateLabel(
-    sessionScore: Double,
-    strongestMove: Double,
-    streamFallback: Boolean,
-    t: (String, String) -> String,
-): String {
-    return when {
-        sessionScore >= 8.0 && strongestMove >= 0.75 && !streamFallback -> t("Prime", "درجه یک")
-        sessionScore >= 6.5 && strongestMove >= 0.35 -> t("Armed", "مسلح")
-        streamFallback -> t("Protected", "محافظت‌شده")
-        else -> t("Building", "در حال ساخت")
-    }
-}
-
-private fun executionWindowLabel(
-    sessionScore: Double,
-    strongestMove: Double,
-    t: (String, String) -> String,
-): String {
-    return when {
-        sessionScore >= 8.0 && strongestMove >= 0.75 -> t("Fast", "سریع")
-        sessionScore >= 6.5 && strongestMove >= 0.35 -> t("Active", "فعال")
-        strongestMove > 0.0 -> t("Selective", "انتخابی")
-        else -> t("Quiet", "آرام")
-    }
-}
-
-private fun signalRadarBiasLabel(
-    risingAssets: Int,
-    fallingAssets: Int,
-    strongestMove: Double,
-    t: (String, String) -> String,
-): String {
-    return when {
-        strongestMove >= 0.5 && risingAssets > fallingAssets -> t("Bull Dominant", "غلبه خریداران")
-        strongestMove >= 0.5 && fallingAssets > risingAssets -> t("Bear Dominant", "غلبه فروشندگان")
-        else -> t("Two-Way", "دوطرفه")
-    }
-}
-
-private fun signalRadarReadinessLabel(
-    sessionScore: Double,
-    strongestMove: Double,
-    streamFallback: Boolean,
-    breadthHealth: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        sessionScore >= 8.0 && strongestMove >= 0.75 && !streamFallback && breadthHealth != t("Mixed", "ترکیبی") -> t("Ready", "آماده")
-        !streamFallback -> t("Tracking", "در حال ردیابی")
-        else -> t("Protected", "محافظت‌شده")
-    }
-}
-
-private fun signalPressureLabel(
-    openTrades: Int,
-    riskPressure: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        openTrades >= 3 || riskPressure == t("High", "بالا") -> t("Elevated", "بالارفته")
-        openTrades >= 1 -> t("Managed", "مدیریت‌شده")
-        else -> t("Light", "سبک")
-    }
-}
-
-private fun institutionalStateLabel(
-    portfolioHealth: String,
-    breadthHealth: String,
-    streamFallback: Boolean,
-    t: (String, String) -> String,
-): String {
-    return when {
-        !streamFallback && portfolioHealth == t("Elite", "ممتاز") && breadthHealth != t("Mixed", "ترکیبی") -> t("Aligned", "همسو")
-        !streamFallback -> t("Stable", "پایدار")
-        else -> t("Protected", "محافظت‌شده")
-    }
-}
-
-private fun tacticalResponseLabel(
-    commandPriority: String,
-    riskPressure: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        commandPriority == t("Deploy", "استقرار") && riskPressure != t("High", "بالا") -> t("Push", "پیشروی")
-        commandPriority == t("Defend", "دفاع") || riskPressure == t("High", "بالا") -> t("Shield", "حفاظت")
-        else -> t("Track", "ردیابی")
-    }
-}
-
-private fun tacticalTempoLabel(
-    sessionScore: Double,
-    strongestMove: Double,
-    t: (String, String) -> String,
-): String {
-    return when {
-        sessionScore >= 8.0 && strongestMove >= 0.75 -> t("Fast", "سریع")
-        sessionScore >= 6.5 && strongestMove >= 0.35 -> t("Measured", "کنترل‌شده")
-        else -> t("Slow", "آهسته")
-    }
-}
-
-private fun tacticalDefenseLabel(
-    capitalDefense: String,
-    riskPressure: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        capitalDefense == t("Defend", "دفاع") || riskPressure == t("High", "بالا") -> t("High Guard", "دفاع بالا")
-        capitalDefense == t("Managed", "مدیریت‌شده") -> t("Medium Guard", "دفاع متوسط")
-        else -> t("Low Guard", "دفاع پایین")
-    }
-}
-
-private fun supremeStateLabel(
-    executiveHealth: String,
-    quantReadiness: String,
-    riskPressure: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        executiveHealth == t("Prime", "درجه یک") && quantReadiness == t("Prime", "درجه یک") && riskPressure != t("High", "بالا") -> t("Supreme", "برتر")
-        executiveHealth == t("Strong", "قوی") || quantReadiness == t("Ready", "آماده") -> t("Command", "فرمان")
-        else -> t("Guarded", "محافظت‌شده")
-    }
-}
-
-private fun commandShieldLabel(
-    capitalDefense: String,
-    riskPressure: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        capitalDefense == t("Defend", "دفاع") || riskPressure == t("High", "بالا") -> t("Heavy", "سنگین")
-        capitalDefense == t("Managed", "مدیریت‌شده") -> t("Medium", "متوسط")
-        else -> t("Light", "سبک")
-    }
-}
-
 private fun globalPulseStateLabel(
     risingAssets: Int,
     fallingAssets: Int,
@@ -1097,209 +711,16 @@ private fun globalPulseStateLabel(
     }
 }
 
-private fun pulseVelocityLabel(
-    strongestMove: Double,
+private fun supremeStateLabel(
     sessionScore: Double,
-    t: (String, String) -> String,
-): String {
-    return when {
-        strongestMove >= 1.0 && sessionScore >= 8.0 -> t("Explosive", "انفجاری")
-        strongestMove >= 0.5 -> t("Fast", "سریع")
-        strongestMove > 0.0 -> t("Measured", "کنترل‌شده")
-        else -> t("Slow", "آهسته")
-    }
-}
-
-private fun finalReadinessLabel(
-    executiveHealth: String,
-    quantReadiness: String,
-    signalRadarReadiness: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        executiveHealth == t("Prime", "درجه یک") && quantReadiness == t("Prime", "درجه یک") && signalRadarReadiness == t("Ready", "آماده") -> t("Ready", "آماده")
-        quantReadiness == t("Ready", "آماده") || signalRadarReadiness == t("Tracking", "در حال ردیابی") -> t("Near Ready", "نزدیک به آماده")
-        else -> t("Building", "در حال ساخت")
-    }
-}
-
-private fun commandPostureLabel(
-    commandPriority: String,
-    actionBias: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        commandPriority == t("Deploy", "استقرار") && actionBias == t("Execute", "اجرا") -> t("Aggressive", "تهاجمی")
-        commandPriority == t("Monitor", "پایش") -> t("Adaptive", "تطبیقی")
-        else -> t("Defensive", "دفاعی")
-    }
-}
-
-private fun signalGovernanceLabel(
-    signalPressure: String,
-    riskPressure: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        signalPressure == t("Elevated", "بالارفته") || riskPressure == t("High", "بالا") -> t("Tight", "سخت‌گیرانه")
-        signalPressure == t("Managed", "مدیریت‌شده") -> t("Balanced", "متعادل")
-        else -> t("Light", "سبک")
-    }
-}
-
-private fun marketRegimeLabel(
-    breadthHealth: String,
-    globalPulseState: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        breadthHealth == t("Bullish", "صعودی") && globalPulseState == t("Risk-On", "ریسک‌پذیر") -> t("Expansion", "گسترش")
-        breadthHealth == t("Bearish", "نزولی") && globalPulseState == t("Risk-Off", "ریسک‌گریز") -> t("Contraction", "انقباض")
-        else -> t("Transition", "گذار")
-    }
-}
-
-private fun capitalStabilityLabel(
-    portfolioHealth: String,
-    capitalDefense: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        portfolioHealth == t("Elite", "ممتاز") && capitalDefense == t("Preserved", "حفظ‌شده") -> t("Stable", "پایدار")
-        capitalDefense == t("Managed", "مدیریت‌شده") -> t("Controlled", "کنترل‌شده")
-        else -> t("Fragile", "شکننده")
-    }
-}
-
-private fun executiveAlignmentLabel(
     focusHealth: String,
-    breadthHealth: String,
-    confirmationLayer: String,
-    t: (String, String) -> String,
-): String {
-    return when {
-        focusHealth == t("Elite", "ممتاز") && breadthHealth != t("Mixed", "ترکیبی") && confirmationLayer == t("Confirmed", "تأییدشده") -> t("Aligned", "همسو")
-        confirmationLayer == t("Partial", "نیمه‌تأیید") -> t("Partial", "نیمه‌همسو")
-        else -> t("Unclear", "نامشخص")
-    }
-}
-
-
-@Composable
-private fun UltimateDecisionStackBoard(
-    supremeDecisionState: String,
-    marketVelocity: String,
-    capitalHeat: String,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
-        Text(t("Ultimate Decision Stack", "پشته نهایی تصمیم"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "This layer compresses action urgency, directional force and capital stress into one compact decision stack.",
-                "این لایه فوریت اجرا، قدرت جهت‌دار و فشار سرمایه را در یک پشته تصمیم فشرده می‌کند."
-            ),
-            color = Color(0xFFDDF8FF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("State", "وضعیت"), supremeDecisionState, Modifier.weight(1f))
-            FocusChip(t("Velocity", "سرعت"), marketVelocity, Modifier.weight(1f))
-            FocusChip(t("Heat", "حرارت"), capitalHeat, Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun OmniMarketCommandBoard(
-    strongestSymbol: String,
-    strongestMove: Double,
-    deploymentRisk: String,
-    coverageCrypto: Int,
-    coverageForex: Int,
-    coverageAll: Int,
-    t: (String, String) -> String,
-) {
-    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
-        Text(t("Omni Market Command", "فرمان همه‌جانبه بازار"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
-        Text(
-            t(
-                "Omni command summarizes coverage breadth, active leader and deployment risk in one panel.",
-                "فرمان همه‌جانبه، پوشش بازار، نماد رهبر و ریسک استقرار را در یک پنل خلاصه می‌کند."
-            ),
-            color = Color(0xFFBCEEFF)
-        )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FocusChip(t("Leader", "رهبر"), strongestSymbol, Modifier.weight(1f))
-            FocusChip(t("Risk", "ریسک"), deploymentRisk, Modifier.weight(1f))
-        }
-        Text(
-            t("Coverage", "پوشش") + ": " +
-                t("Crypto", "کریپتو") + "=$coverageCrypto • " +
-                t("Forex", "فارکس") + "=$coverageForex • " +
-                t("All", "همه") + "=$coverageAll",
-            color = Color.White
-        )
-        Text(
-            t("Strongest Move", "قوی‌ترین حرکت") + ": ${String.format(Locale.US, "%.2f", strongestMove)}%",
-            color = Color(0xFF67ECFF),
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-private fun supremeDecisionLabel(
-    sessionScore: Double,
-    strongestMove: Double,
-    openTrades: Int,
+    riskPressure: String,
     streamFallback: Boolean,
     t: (String, String) -> String,
 ): String {
     return when {
-        sessionScore >= 8.0 && strongestMove >= 0.75 && openTrades <= 1 && !streamFallback -> t("Execute", "آماده اجرا")
-        sessionScore >= 6.5 && strongestMove >= 0.35 && !streamFallback -> t("Prepared", "آماده‌سازی")
-        streamFallback -> t("Protected", "محافظت‌شده")
-        else -> t("Observe", "مشاهده")
-    }
-}
-
-private fun omniPulseLabel(
-    risingAssets: Int,
-    fallingAssets: Int,
-    strongestMove: Double,
-    streamFallback: Boolean,
-    t: (String, String) -> String,
-): String {
-    return when {
-        streamFallback -> t("Shielded", "پوشش‌داده‌شده")
-        strongestMove >= 1.0 && risingAssets > fallingAssets -> t("Explosive Up", "انفجار صعودی")
-        strongestMove >= 1.0 && fallingAssets > risingAssets -> t("Explosive Down", "انفجار نزولی")
-        strongestMove >= 0.4 -> t("Active", "فعال")
-        else -> t("Calm", "آرام")
-    }
-}
-
-private fun capitalHeatLabel(
-    openTrades: Int,
-    netPnl: Double,
-    t: (String, String) -> String,
-): String {
-    return when {
-        openTrades >= 3 || netPnl < 0 -> t("Hot", "داغ")
-        openTrades >= 1 -> t("Warm", "گرم")
-        else -> t("Cool", "خنک")
-    }
-}
-
-private fun deploymentRiskLabel(
-    openTrades: Int,
-    strongestMove: Double,
-    missingForexFeeds: Boolean,
-    t: (String, String) -> String,
-): String {
-    return when {
-        missingForexFeeds -> t("Constrained", "محدود")
-        strongestMove >= 1.0 && openTrades == 0 -> t("Opportunity", "فرصت")
-        openTrades >= 3 -> t("Crowded", "شلوغ")
-        else -> t("Controlled", "کنترل‌شده")
+        sessionScore >= 8.0 && focusHealth == t("Elite", "ممتاز") && riskPressure != t("High", "بالا") && !streamFallback -> t("Supreme", "برتر")
+        !streamFallback -> t("Command", "فرمان")
+        else -> t("Protected", "محافظت‌شده")
     }
 }

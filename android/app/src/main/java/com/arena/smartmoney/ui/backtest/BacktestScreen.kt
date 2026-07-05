@@ -304,4 +304,3 @@ private fun localizeOutcome(value: String, t: (String, String) -> String): Strin
         else -> value
     }
 }
-"}
