@@ -119,6 +119,25 @@ fun DashboardScreen(
     val rotationBias = rotationBiasLabel(risingAssets, fallingAssets, strongestMove, t)
     val capitalDefense = capitalDefenseLabel(stats?.net_pnl ?: 0.0, stats?.open_trades ?: 0, t)
 
+    val quantReadiness = quantReadinessLabel(
+        sessionScore = state.sessionScore,
+        strongestMove = strongestMove,
+        streamFallback = streamInFallbackMode,
+        breadthHealth = breadthHealth,
+        t = t
+    )
+    val edgeScore = edgeScoreValue(
+        sessionScore = state.sessionScore,
+        strongestMove = strongestMove,
+        risingAssets = risingAssets,
+        fallingAssets = fallingAssets,
+        openTrades = stats?.open_trades ?: 0
+    )
+    val volatilityState = volatilityStateLabel(strongestMove, t)
+    val decisionBias = decisionBiasLabel(risingAssets, fallingAssets, strongestMove, t)
+    val actionBias = actionBiasLabel(commandPriority, riskPressure, t)
+    val confirmationLayer = confirmationLayerLabel(focusHealth, breadthHealth, streamInFallbackMode, t)
+
     val aiSummary = buildString {
         append(
             if (state.sessionScore >= 8.0) {
@@ -219,6 +238,24 @@ fun DashboardScreen(
                     portfolioHealth = portfolioHealth,
                     breadthHealth = breadthHealth,
                     t = t,
+                )
+            }
+
+            item {
+                QuantOpsCenterBoard(
+                    quantReadiness = quantReadiness,
+                    edgeScore = edgeScore,
+                    volatilityState = volatilityState,
+                    t = t
+                )
+            }
+
+            item {
+                AdvancedDecisionMatrixBoard(
+                    decisionBias = decisionBias,
+                    actionBias = actionBias,
+                    confirmationLayer = confirmationLayer,
+                    t = t
                 )
             }
 
@@ -486,6 +523,54 @@ private fun ExecutiveOverviewBoard(
             FocusChip(t("Focus", "تمرکز"), focusHealth, Modifier.weight(1f))
             FocusChip(t("Portfolio", "پرتفوی"), portfolioHealth, Modifier.weight(1f))
             FocusChip(t("Breadth", "پهنای بازار"), breadthHealth, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun QuantOpsCenterBoard(
+    quantReadiness: String,
+    edgeScore: String,
+    volatilityState: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4033E6A6)) {
+        Text(t("Quant Ops Center", "مرکز عملیات کوانت"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "Quant Ops compresses readiness, edge quality and volatility regime into one fast decision layer.",
+                "مرکز عملیات کوانت آمادگی، کیفیت لبه معاملاتی و رژیم نوسان را در یک لایه تصمیم‌گیری سریع خلاصه می‌کند."
+            ),
+            color = Color(0xFFDDF8FF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Readiness", "آمادگی"), quantReadiness, Modifier.weight(1f))
+            FocusChip(t("Edge", "لبه") + " $edgeScore", edgeScore, Modifier.weight(1f))
+            FocusChip(t("Volatility", "نوسان"), volatilityState, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun AdvancedDecisionMatrixBoard(
+    decisionBias: String,
+    actionBias: String,
+    confirmationLayer: String,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+        Text(t("Advanced Decision Matrix", "ماتریس تصمیم پیشرفته"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+        Text(
+            t(
+                "Decision Matrix aligns directional bias with action posture and confirmation quality.",
+                "ماتریس تصمیم، سوگیری جهت‌دار را با حالت اجرا و کیفیت تأیید هم‌راستا می‌کند."
+            ),
+            color = Color(0xFFBCEEFF)
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Bias", "سوگیری"), decisionBias, Modifier.weight(1f))
+            FocusChip(t("Action", "اقدام"), actionBias, Modifier.weight(1f))
+            FocusChip(t("Confirm", "تأیید"), confirmationLayer, Modifier.weight(1f))
         }
     }
 }
@@ -977,5 +1062,83 @@ private fun capitalDefenseLabel(
         netPnl < 0 && openTrades >= 2 -> t("Defend", "دفاع")
         netPnl >= 0 && openTrades <= 1 -> t("Preserved", "حفظ‌شده")
         else -> t("Managed", "مدیریت‌شده")
+    }
+}
+
+private fun quantReadinessLabel(
+    sessionScore: Double,
+    strongestMove: Double,
+    streamFallback: Boolean,
+    breadthHealth: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        sessionScore >= 8.0 && strongestMove >= 0.75 && !streamFallback && breadthHealth == t("Bullish", "صعودی") -> t("Prime", "درجه یک")
+        sessionScore >= 6.5 && strongestMove >= 0.35 && !streamFallback -> t("Ready", "آماده")
+        streamFallback -> t("Protected", "محافظت‌شده")
+        else -> t("Building", "در حال ساخت")
+    }
+}
+
+private fun edgeScoreValue(
+    sessionScore: Double,
+    strongestMove: Double,
+    risingAssets: Int,
+    fallingAssets: Int,
+    openTrades: Int,
+): String {
+    val raw = (sessionScore * 6.0) + (strongestMove * 18.0) + ((risingAssets - fallingAssets) * 2.0) - (openTrades * 3.0)
+    val bounded = raw.coerceIn(0.0, 100.0)
+    return String.format(Locale.US, "%.0f", bounded)
+}
+
+private fun volatilityStateLabel(
+    strongestMove: Double,
+    t: (String, String) -> String,
+): String {
+    return when {
+        strongestMove >= 1.0 -> t("Expanded", "منبسط")
+        strongestMove >= 0.45 -> t("Tradable", "قابل معامله")
+        strongestMove > 0.0 -> t("Compressed", "فشرده")
+        else -> t("Flat", "فلت")
+    }
+}
+
+private fun decisionBiasLabel(
+    risingAssets: Int,
+    fallingAssets: Int,
+    strongestMove: Double,
+    t: (String, String) -> String,
+): String {
+    return when {
+        risingAssets > fallingAssets && strongestMove >= 0.5 -> t("Bullish", "صعودی")
+        fallingAssets > risingAssets && strongestMove >= 0.5 -> t("Bearish", "نزولی")
+        else -> t("Neutral", "خنثی")
+    }
+}
+
+private fun actionBiasLabel(
+    commandPriority: String,
+    riskPressure: String,
+    t: (String, String) -> String,
+): String {
+    return when {
+        commandPriority == t("Deploy", "استقرار") && riskPressure != t("High", "بالا") -> t("Execute", "اجرا")
+        commandPriority == t("Monitor", "پایش") -> t("Prepare", "آماده‌سازی")
+        riskPressure == t("High", "بالا") -> t("Defend", "دفاع")
+        else -> t("Observe", "مشاهده")
+    }
+}
+
+private fun confirmationLayerLabel(
+    focusHealth: String,
+    breadthHealth: String,
+    streamInFallbackMode: Boolean,
+    t: (String, String) -> String,
+): String {
+    return when {
+        !streamInFallbackMode && focusHealth == t("Elite", "ممتاز") && breadthHealth != t("Mixed", "ترکیبی") -> t("Confirmed", "تأییدشده")
+        !streamInFallbackMode -> t("Partial", "نیمه‌تأیید")
+        else -> t("Protected", "محافظت‌شده")
     }
 }
