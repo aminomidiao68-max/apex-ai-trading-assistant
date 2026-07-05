@@ -136,6 +136,152 @@ def _dedupe_reasons(reasons: list[str]) -> list[str]:
     return ordered
 
 
+def _unique(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in items:
+        clean = item.strip()
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        ordered.append(clean)
+    return ordered
+
+
+def _grade_from_score(score: float) -> str:
+    if score >= 88:
+        return "A+"
+    if score >= 78:
+        return "A"
+    if score >= 68:
+        return "B"
+    return "C"
+
+
+def _execution_label(
+    direction: SignalDirection,
+    score: float,
+    session_quality: str,
+    news_blocked: bool,
+    timeframe_minutes: int,
+    quality_gate_penalty: float,
+) -> str:
+    if news_blocked:
+        return "blocked"
+    if direction == SignalDirection.neutral:
+        return "blocked" if score < 62 or quality_gate_penalty >= 4 else "observe"
+    if timeframe_minutes <= 5 and score >= 76 and session_quality == "high":
+        return "scalp_ready"
+    if score >= 82 and session_quality == "high":
+        return "execution_ready"
+    if score >= 68:
+        return "watchlist"
+    return "observe"
+
+
+def _entry_model(smc: dict, direction: SignalDirection) -> str:
+    if direction == SignalDirection.buy:
+        if smc.get("bullish_ob"):
+            return "Bullish Order Block"
+        if (smc.get("fvg") or {}).get("type") == "bullish":
+            return "Bullish Imbalance"
+        return "Momentum Continuation"
+    if direction == SignalDirection.sell:
+        if smc.get("bearish_ob"):
+            return "Bearish Order Block"
+        if (smc.get("fvg") or {}).get("type") == "bearish":
+            return "Bearish Imbalance"
+        return "Momentum Continuation"
+    return "No Trade"
+
+
+def _build_tags(
+    direction: SignalDirection,
+    higher_direction: SignalDirection,
+    lower_tf_ctx: dict,
+    smc: dict,
+    session: dict,
+) -> list[str]:
+    tags: list[str] = []
+    if direction != SignalDirection.neutral and higher_direction == direction:
+        tags.append("HTF aligned")
+    if direction == SignalDirection.buy and lower_tf_ctx.get("bull_pressure", 0.0) > lower_tf_ctx.get("bear_pressure", 0.0):
+        tags.append("LTF trigger")
+    if direction == SignalDirection.sell and lower_tf_ctx.get("bear_pressure", 0.0) > lower_tf_ctx.get("bull_pressure", 0.0):
+        tags.append("LTF trigger")
+    if smc.get("sweep"):
+        tags.append("Liquidity sweep")
+    if smc.get("choch"):
+        tags.append("CHoCH")
+    if smc.get("displacement"):
+        tags.append("Displacement")
+    if smc.get("bullish_ob") or smc.get("bearish_ob"):
+        tags.append("Order block")
+    if smc.get("fvg"):
+        tags.append("FVG imbalance")
+    if direction == SignalDirection.buy and smc.get("premium_discount") == "discount":
+        tags.append("Discount buy")
+    if direction == SignalDirection.sell and smc.get("premium_discount") == "premium":
+        tags.append("Premium sell")
+    if session.get("quality") == "high":
+        tags.append("Prime session")
+    return _unique(tags)[:6]
+
+
+def _build_risk_flags(
+    session: dict,
+    news: dict,
+    higher_direction: SignalDirection,
+    direction: SignalDirection,
+    liquidity_score: float,
+    timeframe_minutes: int,
+    volatility_pct: float,
+    market: str,
+    quality_gate_penalty: float,
+) -> list[str]:
+    flags: list[str] = []
+    if news.get("blocked"):
+        flags.append("High impact news")
+    if session.get("quality") != "high":
+        flags.append("Off session")
+    if direction != SignalDirection.neutral and higher_direction not in (SignalDirection.neutral, direction):
+        flags.append("HTF conflict")
+    if liquidity_score < 4.0 and timeframe_minutes <= 5:
+        flags.append("Shallow liquidity")
+    vol_floor = 0.004 if market == "forex" else 0.02
+    if timeframe_minutes <= 5 and volatility_pct < vol_floor:
+        flags.append("Compressed volatility")
+    if timeframe_minutes <= 1 and higher_direction == SignalDirection.neutral:
+        flags.append("No HTF sponsor")
+    if quality_gate_penalty >= 5:
+        flags.append("Execution blocked")
+    return _unique(flags)[:4]
+
+
+def _build_ai_summary(
+    symbol: str,
+    timeframe: str,
+    direction: SignalDirection,
+    grade: str,
+    entry_model: str,
+    session_name: str,
+    tags: list[str],
+    risk_flags: list[str],
+) -> str:
+    if direction == SignalDirection.neutral:
+        if risk_flags:
+            return f"{symbol} {timeframe} remains neutral because {risk_flags[0].lower()} is reducing execution quality."
+        return f"{symbol} {timeframe} is neutral because the current confluence is still incomplete."
+
+    side = "buy" if direction == SignalDirection.buy else "sell"
+    summary = f"{symbol} {timeframe} shows a {grade} {side} setup with {entry_model.lower()} context during {session_name}."
+    if tags:
+        summary += f" Key confluence: {', '.join(tags[:3])}."
+    if risk_flags:
+        summary += f" Main caution: {risk_flags[0].lower()}."
+    return summary
+
+
 class SignalEngine:
     def analyze(self, request: SignalRequest) -> SignalResponse:
         closes = [c.close for c in request.candles]
@@ -471,6 +617,33 @@ class SignalEngine:
             direction = SignalDirection.neutral
             reasons.append("Lower timeframe quality gate blocked execution")
 
+        reasons = _dedupe_reasons(reasons)
+        grade = _grade_from_score(total_score)
+        entry_model = _entry_model(smc, direction)
+        risk_flags = _build_risk_flags(
+            session=session,
+            news=news,
+            higher_direction=higher_direction,
+            direction=direction,
+            liquidity_score=liquidity_score,
+            timeframe_minutes=timeframe_minutes,
+            volatility_pct=volatility_pct,
+            market=request.market.value,
+            quality_gate_penalty=quality_gate_penalty,
+        )
+        confluence_tags = _build_tags(direction, higher_direction, lower_tf_ctx, smc, session)
+        execution_label = _execution_label(direction, total_score, session["quality"], news["blocked"], timeframe_minutes, quality_gate_penalty)
+        ai_summary = _build_ai_summary(
+            symbol=request.symbol,
+            timeframe=request.timeframe,
+            direction=direction,
+            grade=grade,
+            entry_model=entry_model,
+            session_name=session["session_name"],
+            tags=confluence_tags,
+            risk_flags=risk_flags,
+        )
+
         risk_plan = None
         if request.risk_settings and direction != SignalDirection.neutral and stop_loss is not None:
             risk_plan = build_risk_plan(
@@ -484,8 +657,9 @@ class SignalEngine:
             )
             if not risk_plan.is_trade_allowed:
                 reasons.extend(risk_plan.warnings)
-
-        reasons = _dedupe_reasons(reasons)
+                risk_flags = _unique(risk_flags + risk_plan.warnings[:2])
+                if execution_label == "execution_ready":
+                    execution_label = "watchlist"
 
         breakdown = ScoreBreakdown(
             structure=round(structure_score, 2),
@@ -513,6 +687,12 @@ class SignalEngine:
             take_profits=take_profits,
             risk_to_reward=rr,
             score_breakdown=breakdown,
+            setup_grade=grade,
+            execution_label=execution_label,
+            entry_model=entry_model,
+            ai_summary=ai_summary,
+            confluence_tags=confluence_tags,
+            risk_flags=risk_flags,
             reasons=reasons,
             risk_plan=risk_plan,
         )

@@ -112,6 +112,62 @@ fun localizeSignalReason(value: String, t: (String, String) -> String): String {
     }
 }
 
+fun localizeExecutionLabel(value: String, t: (String, String) -> String): String {
+    return when (value.lowercase(Locale.getDefault())) {
+        "execution_ready" -> t("Execution Ready", "آماده اجرا")
+        "scalp_ready" -> t("Scalp Ready", "آماده اسکالپ")
+        "watchlist" -> t("Watchlist", "تحت نظر")
+        "blocked" -> t("Blocked", "مسدود")
+        "observe" -> t("Observe", "فقط مشاهده")
+        else -> value
+    }
+}
+
+fun localizeEntryModel(value: String, t: (String, String) -> String): String {
+    return when (value.lowercase(Locale.getDefault())) {
+        "bullish order block" -> t("Bullish Order Block", "اوردر بلاک صعودی")
+        "bearish order block" -> t("Bearish Order Block", "اوردر بلاک نزولی")
+        "bullish imbalance" -> t("Bullish Imbalance", "عدم تعادل صعودی")
+        "bearish imbalance" -> t("Bearish Imbalance", "عدم تعادل نزولی")
+        "momentum continuation" -> t("Momentum Continuation", "ادامه مومنتوم")
+        "no trade" -> t("No Trade", "بدون معامله")
+        else -> value
+    }
+}
+
+fun localizeConfluenceTag(value: String, t: (String, String) -> String): String {
+    return when (value.lowercase(Locale.getDefault())) {
+        "htf aligned" -> t("HTF aligned", "همسویی تایم بالاتر")
+        "ltf trigger" -> t("LTF trigger", "تریگر تایم پایین")
+        "liquidity sweep" -> t("Liquidity sweep", "سویپ نقدینگی")
+        "choch" -> t("CHoCH", "CHoCH")
+        "displacement" -> t("Displacement", "دیسپلیسمنت")
+        "order block" -> t("Order block", "اوردر بلاک")
+        "fvg imbalance" -> t("FVG imbalance", "عدم تعادل FVG")
+        "discount buy" -> t("Discount buy", "خرید در دیسکانت")
+        "premium sell" -> t("Premium sell", "فروش در پریمیوم")
+        "prime session" -> t("Prime session", "سشن اصلی")
+        else -> value
+    }
+}
+
+fun localizeRiskFlag(value: String, t: (String, String) -> String): String {
+    return when (value.lowercase(Locale.getDefault())) {
+        "high impact news" -> t("High impact news", "خبر پرقدرت")
+        "off session" -> t("Off session", "خارج از سشن")
+        "htf conflict" -> t("HTF conflict", "تضاد تایم بالاتر")
+        "shallow liquidity" -> t("Shallow liquidity", "نقدینگی کم‌عمق")
+        "compressed volatility" -> t("Compressed volatility", "فشردگی نوسان")
+        "no htf sponsor" -> t("No HTF sponsor", "بدون حامی تایم بالاتر")
+        "execution blocked" -> t("Execution blocked", "اجرای ستاپ مسدود شد")
+        "daily loss limit reached" -> t("Daily loss limit reached", "حد ضرر روزانه پر شده")
+        "maximum trades per day reached" -> t("Maximum trades per day reached", "حداکثر تعداد معاملات روزانه پر شده")
+        "maximum consecutive losses reached" -> t("Maximum consecutive losses reached", "حداکثر باخت پیاپی پر شده")
+        "maximum open positions reached" -> t("Maximum open positions reached", "حداکثر پوزیشن باز پر شده")
+        else -> value
+    }
+}
+
 fun formatDisplayTimestamp(raw: String): String {
     return runCatching {
         val dt = OffsetDateTime.parse(raw)

@@ -97,11 +97,17 @@ class SignalsViewModel(
                         signal.score >= 65.0 -> tr("Tradeable setup detected", "ستاپ قابل معامله شناسایی شد")
                         else -> tr("Weak setup - avoid entry", "ستاپ ضعیف است و برای ورود توصیه نمی‌شود")
                     }
+                    val grade = signal.setup_grade ?: when {
+                        signal.score >= 88.0 -> "A+"
+                        signal.score >= 78.0 -> "A"
+                        signal.score >= 68.0 -> "B"
+                        else -> "C"
+                    }
                     _uiState.value = _uiState.value.copy(
                         loading = false,
                         items = (listOf(signal) + _uiState.value.items).sortedByDescending { it.score },
                         notificationSignal = signal,
-                        scanMessage = "$qualityMessage • ${signal.symbol} • ${signal.timeframe}",
+                        scanMessage = "$qualityMessage • ${signal.symbol} • ${signal.timeframe} • Grade $grade",
                         error = null
                     )
                 }

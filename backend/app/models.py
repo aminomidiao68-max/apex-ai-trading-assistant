@@ -142,6 +142,12 @@ class SignalResponse(BaseModel):
     take_profits: List[float] = Field(default_factory=list)
     risk_to_reward: Optional[float] = None
     score_breakdown: ScoreBreakdown
+    setup_grade: str = "C"
+    execution_label: str = "observe"
+    entry_model: str = "No Trade"
+    ai_summary: str = ""
+    confluence_tags: List[str] = Field(default_factory=list)
+    risk_flags: List[str] = Field(default_factory=list)
     reasons: List[str] = Field(default_factory=list)
     risk_plan: Optional[RiskPlan] = None
 
@@ -161,6 +167,13 @@ class SignalHistoryItem(BaseModel):
     stop_loss: Optional[float] = None
     take_profits: List[float] = Field(default_factory=list)
     risk_to_reward: Optional[float] = None
+    score_breakdown: Optional[ScoreBreakdown] = None
+    setup_grade: str = "C"
+    execution_label: str = "observe"
+    entry_model: str = "No Trade"
+    ai_summary: str = ""
+    confluence_tags: List[str] = Field(default_factory=list)
+    risk_flags: List[str] = Field(default_factory=list)
     reasons: List[str] = Field(default_factory=list)
     created_at: str
 

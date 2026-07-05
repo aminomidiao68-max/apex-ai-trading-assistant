@@ -268,6 +268,16 @@ data class LiveSignalScanRequestDto(
     val client_timezone: String = "Asia/Tehran"
 )
 
+data class ScoreBreakdownDto(
+    val structure: Double,
+    val smc: Double,
+    val order_flow: Double,
+    val session: Double,
+    val news: Double,
+    val indicators: Double,
+    val total: Double
+)
+
 data class SignalHistoryItemDto(
     val id: Int,
     val symbol: String,
@@ -283,6 +293,13 @@ data class SignalHistoryItemDto(
     val stop_loss: Double?,
     val take_profits: List<Double>,
     val risk_to_reward: Double?,
+    val score_breakdown: ScoreBreakdownDto? = null,
+    val setup_grade: String? = null,
+    val execution_label: String? = null,
+    val entry_model: String? = null,
+    val ai_summary: String? = null,
+    val confluence_tags: List<String>? = null,
+    val risk_flags: List<String>? = null,
     val reasons: List<String>,
     val created_at: String
 )

@@ -12,6 +12,7 @@ from app.models import (
     DeviceTokenItem,
     DeviceTokenRegisterRequest,
     MarketType,
+    ScoreBreakdown,
     SignalDirection,
     SignalHistoryItem,
     SignalResponse,
@@ -40,6 +41,15 @@ class StorageService:
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
 
+    def _column_exists(self, conn: sqlite3.Connection, table: str, column: str) -> bool:
+        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+        return any(row["name"] == column for row in rows)
+
+    def _ensure_column(self, conn: sqlite3.Connection, table: str, definition: str) -> None:
+        column_name = definition.split()[0]
+        if not self._column_exists(conn, table, column_name):
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
+
     def _init_db(self) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -64,6 +74,13 @@ class StorageService:
                 )
                 """
             )
+            self._ensure_column(conn, "signals", "score_breakdown_json TEXT NOT NULL DEFAULT '{}'")
+            self._ensure_column(conn, "signals", "setup_grade TEXT NOT NULL DEFAULT 'C'")
+            self._ensure_column(conn, "signals", "execution_label TEXT NOT NULL DEFAULT 'observe'")
+            self._ensure_column(conn, "signals", "entry_model TEXT NOT NULL DEFAULT 'No Trade'")
+            self._ensure_column(conn, "signals", "ai_summary TEXT NOT NULL DEFAULT ''")
+            self._ensure_column(conn, "signals", "confluence_tags_json TEXT NOT NULL DEFAULT '[]'")
+            self._ensure_column(conn, "signals", "risk_flags_json TEXT NOT NULL DEFAULT '[]'")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS trades (
@@ -119,8 +136,10 @@ class StorageService:
                 INSERT INTO signals (
                     symbol, market, timeframe, direction, score, confidence, session_name,
                     news_blocked, entry_low, entry_high, stop_loss, take_profits_json,
-                    risk_to_reward, reasons_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    risk_to_reward, score_breakdown_json, setup_grade, execution_label,
+                    entry_model, ai_summary, confluence_tags_json, risk_flags_json,
+                    reasons_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     signal.symbol,
@@ -136,6 +155,13 @@ class StorageService:
                     signal.stop_loss,
                     json.dumps(signal.take_profits),
                     signal.risk_to_reward,
+                    json.dumps(signal.score_breakdown.model_dump()),
+                    signal.setup_grade,
+                    signal.execution_label,
+                    signal.entry_model,
+                    signal.ai_summary,
+                    json.dumps(signal.confluence_tags),
+                    json.dumps(signal.risk_flags),
                     json.dumps(signal.reasons),
                     created_at,
                 ),
@@ -158,6 +184,13 @@ class StorageService:
             stop_loss=signal.stop_loss,
             take_profits=signal.take_profits,
             risk_to_reward=signal.risk_to_reward,
+            score_breakdown=signal.score_breakdown,
+            setup_grade=signal.setup_grade,
+            execution_label=signal.execution_label,
+            entry_model=signal.entry_model,
+            ai_summary=signal.ai_summary,
+            confluence_tags=signal.confluence_tags,
+            risk_flags=signal.risk_flags,
             reasons=signal.reasons,
             created_at=created_at,
         )
@@ -414,6 +447,16 @@ class StorageService:
             conn.commit()
 
     def _signal_row_to_model(self, row: sqlite3.Row) -> SignalHistoryItem:
+        breakdown_raw = row["score_breakdown_json"] if "score_breakdown_json" in row.keys() else "{}"
+        breakdown_data = json.loads(breakdown_raw or "{}")
+        breakdown = (
+            ScoreBreakdown(**breakdown_data)
+            if breakdown_data and {"structure", "smc", "order_flow", "session", "news", "indicators", "total"} <= breakdown_data.keys()
+            else None
+        )
+        confluence_tags = json.loads(row["confluence_tags_json"]) if "confluence_tags_json" in row.keys() and row["confluence_tags_json"] else []
+        risk_flags = json.loads(row["risk_flags_json"]) if "risk_flags_json" in row.keys() and row["risk_flags_json"] else []
+
         return SignalHistoryItem(
             id=row["id"],
             symbol=row["symbol"],
@@ -429,6 +472,13 @@ class StorageService:
             stop_loss=row["stop_loss"],
             take_profits=json.loads(row["take_profits_json"]),
             risk_to_reward=row["risk_to_reward"],
+            score_breakdown=breakdown,
+            setup_grade=row["setup_grade"] if "setup_grade" in row.keys() and row["setup_grade"] else "C",
+            execution_label=row["execution_label"] if "execution_label" in row.keys() and row["execution_label"] else "observe",
+            entry_model=row["entry_model"] if "entry_model" in row.keys() and row["entry_model"] else "No Trade",
+            ai_summary=row["ai_summary"] if "ai_summary" in row.keys() and row["ai_summary"] else "",
+            confluence_tags=confluence_tags,
+            risk_flags=risk_flags,
             reasons=json.loads(row["reasons_json"]),
             created_at=row["created_at"],
         )
