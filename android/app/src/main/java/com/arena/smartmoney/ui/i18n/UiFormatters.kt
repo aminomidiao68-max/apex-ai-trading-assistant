@@ -168,6 +168,44 @@ fun localizeRiskFlag(value: String, t: (String, String) -> String): String {
     }
 }
 
+
+
+fun localizeAiSummary(value: String, t: (String, String) -> String): String {
+    return when {
+        value.contains("remains neutral because", ignoreCase = true) -> t(
+            "Setup remains neutral because execution quality is reduced.",
+            "ستاپ فعلاً خنثی است چون کیفیت اجرا کاهش یافته است."
+        )
+        value.contains("is neutral because the current confluence is still incomplete", ignoreCase = true) -> t(
+            "Setup is neutral because current confluence is still incomplete.",
+            "ستاپ خنثی است چون همگرایی فعلی هنوز کامل نشده است."
+        )
+        value.contains("shows a", ignoreCase = true) && value.contains("setup with", ignoreCase = true) -> value
+            .replace("shows a", t("shows a", "دارای یک"))
+            .replace("setup with", t("setup with", "ستاپ با"))
+            .replace("context during", t("context during", "زمینه ورود در"))
+            .replace("Key confluence:", t("Key confluence:", "همگرایی کلیدی:"))
+            .replace("Main caution:", t("Main caution:", "هشدار اصلی:"))
+            .replace("buy setup", t("buy setup", "ستاپ خرید"))
+            .replace("sell setup", t("sell setup", "ستاپ فروش"))
+        else -> value
+    }
+}
+
+fun formatTradeNote(value: String, t: (String, String) -> String): String {
+    return value
+        .replace("AI signal", t("AI signal", "سیگنال AI"))
+        .replace("TF=", t("TF=", "تایم="))
+        .replace("Score", t("Score", "امتیاز"))
+        .replace("Grade=", t("Grade=", "گرید="))
+        .replace("Exec=", t("Exec=", "اجرا="))
+        .replace("observe", t("observe", "مشاهده"))
+        .replace("execution_ready", t("execution_ready", "آماده‌اجرا"))
+        .replace("scalp_ready", t("scalp_ready", "آماده‌اسکالپ"))
+        .replace("watchlist", t("watchlist", "واچ‌لیست"))
+        .replace("blocked", t("blocked", "مسدود"))
+}
+
 fun formatDisplayTimestamp(raw: String): String {
     return runCatching {
         val dt = OffsetDateTime.parse(raw)

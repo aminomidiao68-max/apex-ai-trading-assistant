@@ -32,6 +32,7 @@ import com.arena.smartmoney.ui.components.PremiumGlassCard
 import com.arena.smartmoney.ui.components.PremiumScreenBackground
 import com.arena.smartmoney.ui.components.PremiumSectionHeader
 import com.arena.smartmoney.ui.i18n.formatDisplayTimestamp
+import com.arena.smartmoney.ui.i18n.localizeAiSummary
 import com.arena.smartmoney.ui.i18n.localizeConfluenceTag
 import com.arena.smartmoney.ui.i18n.localizeEntryModel
 import com.arena.smartmoney.ui.i18n.localizeExecutionLabel
@@ -202,7 +203,7 @@ private fun SignalCard(
         Text(signal.symbol, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Color.White)
         Text("${signal.direction.uppercase(Locale.getDefault())} • ${t("Score", "امتیاز")} ${signal.score} • ${signal.timeframe}", color = accent, fontWeight = FontWeight.Bold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            InfoChip(label = "Grade $grade", background = accent.copy(alpha = 0.18f), color = accent)
+            InfoChip(label = t("Grade", "گرید") + " $grade", background = accent.copy(alpha = 0.18f), color = accent)
             InfoChip(label = executionLabel, background = Color(0x2611D9FF), color = Color(0xFF8EEBFF))
         }
         Text(t("Confidence", "اطمینان") + ": $confidence • ${t("Session", "سشن")}: ${localizeSessionName(signal.session_name, t)}", color = Color.White)
@@ -210,7 +211,7 @@ private fun SignalCard(
         ConfidenceBar(progress = confidenceProgress, accent = accent, t = t)
 
         signal.ai_summary?.takeIf { it.isNotBlank() }?.let {
-            Text(t("AI Summary", "خلاصه هوش مصنوعی") + ": $it", color = Color(0xFFDDF8FF))
+            Text(t("AI Summary", "خلاصه هوش مصنوعی") + ": ${localizeAiSummary(it, t)}", color = Color(0xFFDDF8FF))
         }
         if (analysisSummary.isNotBlank()) {
             Text(t("AI Analysis", "تحلیل هوش مصنوعی") + ": $analysisSummary", color = Color(0xFFBCEEFF))

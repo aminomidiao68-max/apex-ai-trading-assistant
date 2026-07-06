@@ -28,6 +28,8 @@ import com.arena.smartmoney.data.model.TradeJournalItemDto
 import com.arena.smartmoney.ui.components.PremiumGlassCard
 import com.arena.smartmoney.ui.components.PremiumScreenBackground
 import com.arena.smartmoney.ui.components.PremiumSectionHeader
+import com.arena.smartmoney.ui.i18n.formatDisplayTimestamp
+import com.arena.smartmoney.ui.i18n.formatTradeNote
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 import java.util.Locale
 import kotlin.math.abs
@@ -58,7 +60,7 @@ fun JournalScreen(viewModel: JournalViewModel = viewModel()) {
     val openRisk = openItems.sumOf { abs(it.entry_price - it.stop_loss) * it.size }
     val bestTrade = closedItems.maxByOrNull { it.pnl_amount ?: Double.NEGATIVE_INFINITY }
     val worstTrade = closedItems.minByOrNull { it.pnl_amount ?: Double.POSITIVE_INFINITY }
-    val healthLabel = journalHealthLabel(stats?.win_rate ?: 0.0, stats?.net_pnl ?: 0.0)
+    val healthLabel = journalHealthLabel(stats?.win_rate ?: 0.0, stats?.net_pnl ?: 0.0, t)
     val coachMessage = journalCoachMessage(
         winRate = stats?.win_rate ?: 0.0,
         netPnl = stats?.net_pnl ?: 0.0,
@@ -204,10 +206,10 @@ private fun JournalTradeCard(
             },
             fontWeight = FontWeight.Bold
         )
-        Text(t("Created At", "زمان ایجاد") + ": ${trade.created_at}", color = Color(0xFF8EDFFF))
-        trade.closed_at?.let { Text(t("Closed At", "زمان بسته شدن") + ": $it", color = Color(0xFF8EDFFF)) }
+        Text(t("Created At", "زمان ایجاد") + ": ${formatDisplayTimestamp(trade.created_at)}", color = Color(0xFF8EDFFF))
+        trade.closed_at?.let { Text(t("Closed At", "زمان بسته شدن") + ": ${formatDisplayTimestamp(it)}", color = Color(0xFF8EDFFF)) }
         if (trade.notes.isNotBlank()) {
-            Text(t("Notes", "یادداشت") + ": ${trade.notes}", color = Color(0xFFDDF8FF))
+            Text(t("Notes", "یادداشت") + ": ${formatTradeNote(trade.notes, t)}", color = Color(0xFFDDF8FF))
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (trade.status == "open") {
@@ -266,12 +268,12 @@ private fun MetricLine(label: String, value: String) {
     }
 }
 
-private fun journalHealthLabel(winRate: Double, netPnl: Double): String {
+private fun journalHealthLabel(winRate: Double, netPnl: Double, t: (String, String) -> String): String {
     return when {
-        winRate >= 60.0 && netPnl > 0 -> "Elite"
-        winRate >= 50.0 && netPnl >= 0 -> "Strong"
-        winRate >= 40.0 -> "Developing"
-        else -> "Weak"
+        winRate >= 60.0 && netPnl > 0 -> t("Elite", "ممتاز")
+        winRate >= 50.0 && netPnl >= 0 -> t("Strong", "قوی")
+        winRate >= 40.0 -> t("Developing", "در حال شکل‌گیری")
+        else -> t("Weak", "ضعیف")
     }
 }
 
