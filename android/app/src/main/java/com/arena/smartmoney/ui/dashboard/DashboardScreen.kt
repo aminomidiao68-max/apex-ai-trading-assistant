@@ -68,32 +68,12 @@ fun DashboardScreen(
     val missingForexFeeds = listToShow.any { it.status == "missing_api_key" }
     val stats = state.tradeStats
 
-    val cryptoAssets = listToShow.count { it.market.equals("crypto", ignoreCase = true) }
-    val forexAssets = listToShow.count { it.market.equals("forex", ignoreCase = true) }
-    val risingAssets = listToShow.count { (it.change_pct ?: 0.0) > 0.0 }
-    val fallingAssets = listToShow.count { (it.change_pct ?: 0.0) < 0.0 }
-    val neutralAssets = listToShow.size - risingAssets - fallingAssets
-
-    val focusHealth = focusHealthLabel(state.sessionScore, strongestMove, streamInFallbackMode, t)
-    val portfolioHealth = portfolioHealthLabel(
-        winRate = stats?.win_rate ?: 0.0,
-        openTrades = stats?.open_trades ?: 0,
-        netPnl = stats?.net_pnl ?: 0.0,
-        assetsTracked = listToShow.size,
-        t = t
-    )
-    val riskPressure = riskPressureLabel(
-        openTrades = stats?.open_trades ?: 0,
-        netPnl = stats?.net_pnl ?: 0.0,
-        t = t
-    )
-    val breadthHealth = breadthHealthLabel(risingAssets, fallingAssets, neutralAssets, t)
-    val missionStatus = missionStatusLabel(state.sessionScore, streamInFallbackMode, stats?.open_trades ?: 0, t)
-    val commandPriority = commandPriorityLabel(strongestMove, stats?.open_trades ?: 0, risingAssets, fallingAssets, t)
-    val executionClimate = executionClimateLabel(strongestMove, focusHealth, riskPressure, t)
-    val allocationBias = allocationBiasLabel(cryptoAssets, forexAssets, t)
-    val supremeState = supremeStateLabel(state.sessionScore, focusHealth, riskPressure, streamInFallbackMode, t)
-    val pulseState = globalPulseStateLabel(risingAssets, fallingAssets, strongestMove, t)
+    val focusHealth = when {
+        state.sessionScore >= 8.0 && strongestMove >= 0.75 && !streamInFallbackMode -> t("Elite", "ممتاز")
+        state.sessionScore >= 6.5 && strongestMove >= 0.35 -> t("Strong", "قوی")
+        state.sessionScore >= 5.0 -> t("Developing", "در حال شکل‌گیری")
+        else -> t("Weak", "ضعیف")
+    }
 
     val aiSummary = buildString {
         append(
@@ -166,24 +146,6 @@ fun DashboardScreen(
             }
 
             item {
-                MissionControlBoard(
-                    missionStatus = missionStatus,
-                    commandPriority = commandPriority,
-                    executionClimate = executionClimate,
-                    t = t
-                )
-            }
-
-            item {
-                SupremeLayerBoard(
-                    supremeState = supremeState,
-                    pulseState = pulseState,
-                    allocationBias = allocationBias,
-                    t = t
-                )
-            }
-
-            item {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     MetricCard(
                         modifier = Modifier.weight(1f),
@@ -207,26 +169,37 @@ fun DashboardScreen(
             }
 
             item {
-                PortfolioBoard(
-                    cryptoAssets = cryptoAssets,
-                    forexAssets = forexAssets,
-                    risingAssets = risingAssets,
-                    fallingAssets = fallingAssets,
-                    neutralAssets = neutralAssets,
-                    portfolioHealth = portfolioHealth,
-                    riskPressure = riskPressure,
-                    breadthHealth = breadthHealth,
-                    t = t
-                )
+                PremiumGlassCard(borderColor = Color(0x40FFC857)) {
+                    Text(t("Market Focus Board", "برد تمرکز بازار"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(
+                        strongestSymbol?.let {
+                            t(
+                                "Highest active displacement is coming from ${it.symbol} with ${String.format(Locale.US, "%.2f", it.change_pct ?: 0.0)}% movement.",
+                                "بیشترین جابه‌جایی فعال فعلاً از ${it.symbol} با حرکت ${String.format(Locale.US, "%.2f", it.change_pct ?: 0.0)}٪ می‌آید."
+                            )
+                        } ?: t(
+                            "Focus board is waiting for fresh market movement data.",
+                            "برد تمرکز بازار منتظر داده تازه برای تشخیص حرکت است."
+                        ),
+                        color = Color(0xFFE7FAFF)
+                    )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FocusChip(t("Health", "سلامت"), focusHealth, Modifier.weight(1f))
+                        FocusChip(t("Stream", "استریم"), if (streamInFallbackMode) t("Fallback", "جایگزین") else t("Realtime", "لحظه‌ای"), Modifier.weight(1f))
+                        FocusChip(t("Forex", "فارکس"), if (missingForexFeeds) t("Limited", "محدود") else t("Ready", "آماده"), Modifier.weight(1f))
+                    }
+                }
             }
 
             item {
-                SmartAlertsBoard(
-                    scalpAlert = alertStateLabel(state.sessionScore >= 8.0 && strongestMove >= 0.75 && !streamInFallbackMode, t),
-                    intradayAlert = alertStateLabel(state.sessionScore >= 6.5 && strongestMove >= 0.35, t),
-                    macroAlert = alertStateLabel(strongestMove >= 1.0 || missingForexFeeds, t),
-                    t = t,
-                )
+                PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+                    Text(t("Smart Alerts Pro", "اسمارت الرتس پرو"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FocusChip(t("Scalp", "اسکالپ"), if (state.sessionScore >= 8.0 && strongestMove >= 0.75 && !streamInFallbackMode) t("Armed", "مسلح") else t("Standby", "آماده‌باش"), Modifier.weight(1f))
+                        FocusChip(t("Intraday", "درون‌روزی"), if (state.sessionScore >= 6.5 && strongestMove >= 0.35) t("Armed", "مسلح") else t("Standby", "آماده‌باش"), Modifier.weight(1f))
+                        FocusChip(t("Macro", "ماکرو"), if (strongestMove >= 1.0 || missingForexFeeds) t("Armed", "مسلح") else t("Standby", "آماده‌باش"), Modifier.weight(1f))
+                    }
+                }
             }
 
             item {
