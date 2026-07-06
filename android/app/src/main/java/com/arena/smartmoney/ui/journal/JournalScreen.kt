@@ -146,7 +146,7 @@ fun JournalScreen(viewModel: JournalViewModel = viewModel()) {
                     trade = trade,
                     onCloseWin = { viewModel.closeTradeAsWin(trade) },
                     onCloseLoss = { viewModel.closeTradeAsLoss(trade) },
-                    onDelete = { viewModel.deleteTrade(trade) },
+                    onDelete = { },
                     t = t,
                 )
             }
