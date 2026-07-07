@@ -47,9 +47,12 @@ class ReadinessService:
         return ReadinessItem(category="firebase", key="FIREBASE_PROJECT_ID", status="missing", message="Firebase project id is missing")
 
     def _firebase_service_account_check(self) -> ReadinessItem:
-        if not settings.firebase_service_account_json:
-            return ReadinessItem(category="firebase", key="FIREBASE_SERVICE_ACCOUNT_JSON", status="missing", message="Firebase service account path is missing")
-        service_path = Path(settings.firebase_service_account_json)
+        raw_value = settings.firebase_service_account_json.strip()
+        if not raw_value:
+            return ReadinessItem(category="firebase", key="FIREBASE_SERVICE_ACCOUNT_JSON", status="missing", message="Firebase service account is missing")
+        if raw_value.startswith("{") and '"project_id"' in raw_value and '"private_key"' in raw_value:
+            return ReadinessItem(category="firebase", key="FIREBASE_SERVICE_ACCOUNT_JSON", status="ready", message="Firebase service account JSON is configured via environment variable")
+        service_path = Path(raw_value)
         if service_path.exists() and service_path.is_file():
             return ReadinessItem(category="firebase", key="FIREBASE_SERVICE_ACCOUNT_JSON", status="ready", message="Firebase service account file exists")
         return ReadinessItem(category="firebase", key="FIREBASE_SERVICE_ACCOUNT_JSON", status="missing", message="Firebase service account path does not exist on this server")

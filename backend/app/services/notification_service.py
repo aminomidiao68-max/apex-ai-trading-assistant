@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 import httpx
 
@@ -87,11 +88,18 @@ class NotificationService:
         from google.auth.transport.requests import Request
         from google.oauth2 import service_account
 
-        service_account_path = Path(settings.firebase_service_account_json)
-        credentials = service_account.Credentials.from_service_account_file(
-            service_account_path,
-            scopes=["https://www.googleapis.com/auth/firebase.messaging"],
-        )
+        raw_value = settings.firebase_service_account_json.strip()
+        if raw_value.startswith("{"):
+            credentials = service_account.Credentials.from_service_account_info(
+                json.loads(raw_value),
+                scopes=["https://www.googleapis.com/auth/firebase.messaging"],
+            )
+        else:
+            service_account_path = Path(raw_value)
+            credentials = service_account.Credentials.from_service_account_file(
+                service_account_path,
+                scopes=["https://www.googleapis.com/auth/firebase.messaging"],
+            )
         credentials.refresh(Request())
         if not credentials.token:
             raise RuntimeError("Failed to acquire Firebase access token")
