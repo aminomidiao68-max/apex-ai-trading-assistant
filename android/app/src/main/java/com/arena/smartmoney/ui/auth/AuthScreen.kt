@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -35,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.arena.smartmoney.R
+import com.arena.smartmoney.data.preferences.AppPreferencesManager
 import com.arena.smartmoney.data.repository.TradingRepository
 import com.arena.smartmoney.data.session.SessionManager
 import com.arena.smartmoney.push.PushRegistrationHelper
@@ -43,6 +45,7 @@ import com.arena.smartmoney.ui.components.PremiumScreenBackground
 import com.arena.smartmoney.ui.components.PremiumSectionHeader
 import com.arena.smartmoney.ui.components.premiumTextFieldColors
 import com.arena.smartmoney.ui.components.premiumTextFieldStyle
+import com.arena.smartmoney.ui.i18n.AppLanguageState
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 import kotlinx.coroutines.launch
 
@@ -51,6 +54,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     val context = LocalContext.current
     val repository = remember { TradingRepository() }
     val sessionManager = remember { SessionManager(context) }
+    val prefs = remember { AppPreferencesManager(context) }
     val scope = rememberCoroutineScope()
     val t = rememberTranslator()
 
@@ -60,6 +64,7 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
     var password by rememberSaveable { mutableStateOf("Demo12345!") }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    var currentLanguage by rememberSaveable { mutableStateOf(prefs.getLanguage()) }
 
     fun isDemoCredentials(): Boolean {
         return email.trim().equals("demo@apexai.app", ignoreCase = true) && password == "Demo12345!"
@@ -105,6 +110,12 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
         password = ""
     }
 
+    fun applyLanguage(language: String) {
+        currentLanguage = language
+        prefs.setLanguage(language)
+        AppLanguageState.current = language
+    }
+
     PremiumScreenBackground {
         Column(
             modifier = Modifier
@@ -125,6 +136,33 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                 subtitle = t("Neon AI trading access portal", "درگاه ورود نئونی هوش مصنوعی معاملات")
             )
             Spacer(Modifier.height(18.dp))
+
+
+PremiumGlassCard(modifier = Modifier.fillMaxWidth()) {
+    Text(t("App Language", "زبان برنامه"), color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+    Spacer(Modifier.height(8.dp))
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (currentLanguage == "fa") {
+            Button(onClick = { applyLanguage("fa") }, modifier = Modifier.weight(1f)) { Text("فارسی") }
+        } else {
+            OutlinedButton(onClick = { applyLanguage("fa") }, modifier = Modifier.weight(1f)) { Text("فارسی") }
+        }
+        if (currentLanguage == "en") {
+            Button(onClick = { applyLanguage("en") }, modifier = Modifier.weight(1f)) { Text("English") }
+        } else {
+            OutlinedButton(onClick = { applyLanguage("en") }, modifier = Modifier.weight(1f)) { Text("English") }
+        }
+    }
+    Spacer(Modifier.height(6.dp))
+    Text(
+        t(
+            "Choose the interface language before entering the app.",
+            "قبل از ورود به برنامه، زبان رابط کاربری را انتخاب کن."
+        ),
+        color = Color(0xFFBCEEFF)
+    )
+}
+Spacer(Modifier.height(14.dp))
 
             PremiumGlassCard(modifier = Modifier.fillMaxWidth()) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

@@ -48,6 +48,7 @@ import com.arena.smartmoney.ui.dashboard.DashboardScreen
 import com.arena.smartmoney.ui.i18n.AppLanguageState
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 import com.arena.smartmoney.ui.journal.JournalScreen
+import com.arena.smartmoney.ui.market.MarketAnalysisScreen
 import com.arena.smartmoney.ui.profile.ProfileScreen
 import com.arena.smartmoney.ui.readiness.ReadinessScreen
 import com.arena.smartmoney.ui.risk.RiskCalculatorScreen
@@ -64,6 +65,7 @@ sealed class AppRoute(val route: String, val label: String) {
     data object Journal : AppRoute("journal", "Journal")
     data object Backtest : AppRoute("backtest", "Backtest")
     data object Analytics : AppRoute("analytics", "Analytics")
+    data object MarketAnalysis : AppRoute("market_analysis", "Market Analysis")
     data object Settings : AppRoute("settings", "Settings")
     data object Readiness : AppRoute("readiness", "Readiness")
 }
@@ -151,6 +153,7 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
                         AppRoute.Journal -> Icons.Default.Analytics
                         AppRoute.Backtest -> Icons.Default.Analytics
                         AppRoute.Analytics -> Icons.Default.Analytics
+                        AppRoute.MarketAnalysis -> Icons.Default.ShowChart
                         AppRoute.Settings -> Icons.Default.Settings
                         AppRoute.Readiness -> Icons.Default.Settings
                     }
@@ -164,6 +167,7 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
                         AppRoute.Journal -> t("Journal", "ژورنال")
                         AppRoute.Backtest -> t("Backtest", "بک‌تست")
                         AppRoute.Analytics -> t("Analytics", "آنالیتیکس")
+                        AppRoute.MarketAnalysis -> t("Market Analysis", "تحلیل بازار")
                         AppRoute.Settings -> t("Settings", "تنظیمات")
                         AppRoute.Readiness -> t("Readiness", "آمادگی")
                     }
@@ -194,7 +198,8 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
             composable(AppRoute.Dashboard.route) {
                 DashboardScreen(
                     onOpenBacktest = { navController.navigate(AppRoute.Backtest.route) },
-                    onOpenAnalytics = { navController.navigate(AppRoute.Analytics.route) }
+                    onOpenAnalytics = { navController.navigate(AppRoute.Analytics.route) },
+                    onOpenMarketAnalysis = { navController.navigate(AppRoute.MarketAnalysis.route) }
                 )
             }
             composable(AppRoute.Signals.route) {
@@ -212,6 +217,13 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
             composable(AppRoute.Journal.route) { JournalScreen() }
             composable(AppRoute.Backtest.route) { BacktestScreen() }
             composable(AppRoute.Analytics.route) { AnalyticsScreen() }
+            composable(AppRoute.MarketAnalysis.route) {
+                MarketAnalysisScreen(
+                    onOpenChart = { navController.navigate(AppRoute.Chart.route) },
+                    onOpenAnalytics = { navController.navigate(AppRoute.Analytics.route) },
+                    onOpenSignals = { navController.navigate(AppRoute.Signals.route) }
+                )
+            }
             composable(AppRoute.Settings.route) {
                 SettingsScreen(onOpenReadiness = { navController.navigate(AppRoute.Readiness.route) })
             }

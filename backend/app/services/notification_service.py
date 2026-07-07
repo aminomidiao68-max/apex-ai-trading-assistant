@@ -5,7 +5,7 @@ from pathlib import Path
 import httpx
 
 from app.config import settings
-from app.models import NotificationDispatchResult
+from app.models import NotificationDispatchResult, SignalHistoryItem
 from app.services.storage_service import StorageService
 
 
@@ -96,3 +96,31 @@ class NotificationService:
         if not credentials.token:
             raise RuntimeError("Failed to acquire Firebase access token")
         return credentials.token
+
+
+def try_send_fresh_signal_alert(self, signal: SignalHistoryItem) -> None:
+    if signal.direction.value == "neutral" or signal.score < 70:
+        return
+
+    devices = self.storage.list_all_device_tokens()
+    if not devices:
+        return
+
+    title = f"{signal.symbol} {signal.direction.value.upper()} • {signal.timeframe}"
+    body = f"Score {signal.score} • Grade {signal.setup_grade} • {signal.execution_label}"
+
+    if self._is_firebase_configured():
+        sent_count = self._send_fcm_notifications([device.token for device in devices], title, body)
+        mode = "firebase-live"
+    else:
+        sent_count = len(devices)
+        mode = "dry-run"
+
+    for user_id in sorted({device.user_id for device in devices}):
+        self.storage.log_notification_event(
+            user_id=user_id,
+            title=title,
+            body=body,
+            mode=mode,
+            sent_count=sent_count,
+        )

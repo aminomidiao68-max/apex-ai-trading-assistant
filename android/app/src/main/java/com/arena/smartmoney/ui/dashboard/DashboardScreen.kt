@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,6 +45,7 @@ import kotlin.math.abs
 fun DashboardScreen(
     onOpenBacktest: () -> Unit,
     onOpenAnalytics: () -> Unit,
+    onOpenMarketAnalysis: () -> Unit,
     viewModel: DashboardViewModel = viewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -229,6 +231,17 @@ fun DashboardScreen(
                     )
                 }
             }
+
+
+item {
+    ActionCard(
+        modifier = Modifier.fillMaxWidth(),
+        title = t("Market Analysis Pro", "تحلیل بازار حرفه‌ای"),
+        subtitle = t("Open the dedicated precision workspace", "ورود به فضای اختصاصی تحلیل دقیق بازار"),
+        accent = listOf(Color(0xFF7A5CFF), Color(0xFF3BE7FF)),
+        onClick = onOpenMarketAnalysis
+    )
+}
 
             item {
                 NeonPanel(

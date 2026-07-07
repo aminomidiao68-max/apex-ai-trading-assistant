@@ -435,6 +435,13 @@ class StorageService:
             ).fetchall()
         return [self._device_row_to_model(row) for row in rows]
 
+    def list_all_device_tokens(self) -> list[DeviceTokenItem]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM device_tokens ORDER BY id DESC"
+            ).fetchall()
+        return [self._device_row_to_model(row) for row in rows]
+
     def log_notification_event(self, user_id: int, title: str, body: str, mode: str, sent_count: int) -> None:
         with self._connect() as conn:
             conn.execute(

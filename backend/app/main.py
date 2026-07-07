@@ -284,7 +284,12 @@ def analyze_signal(request: SignalRequest):
 @app.post("/api/v1/signals/analyze-and-save")
 def analyze_and_save_signal(request: SignalRequest):
     signal = engine.analyze(request)
-    return storage.save_signal(signal)
+    saved_signal = storage.save_signal(signal)
+    try:
+        notification_service.try_send_fresh_signal_alert(saved_signal)
+    except Exception:
+        pass
+    return saved_signal
 
 
 @app.post("/api/v1/signals/live-scan")
@@ -319,7 +324,12 @@ async def live_scan_signal(request: LiveSignalScanRequest):
             client_timezone=request.client_timezone,
         )
     )
-    return storage.save_signal(signal)
+    saved_signal = storage.save_signal(signal)
+    try:
+        notification_service.try_send_fresh_signal_alert(saved_signal)
+    except Exception:
+        pass
+    return saved_signal
 
 
 @app.get("/api/v1/signals/history")
