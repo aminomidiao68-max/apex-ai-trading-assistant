@@ -87,6 +87,8 @@ fun DashboardScreen(
         else -> t("Weak", "ضعیف")
     }
 
+    val liquidityFilter = buildLiquidityTimeFilter(timezoneMode = liquidityTimezone.value, t = t)
+
     val aiSummary = buildString {
         append(
             if (state.sessionScore >= 8.0) {
