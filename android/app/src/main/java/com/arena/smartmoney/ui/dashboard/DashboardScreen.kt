@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -58,7 +59,7 @@ fun DashboardScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val t = rememberTranslator()
-    var liquidityTimezone by remember { mutableStateOf("tehran") }
+    val liquidityTimezone = remember { mutableStateOf("tehran") }
 
     val listToShow = if (state.watchlist.isEmpty()) {
         state.watchlistSymbols.map {
