@@ -19,10 +19,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -37,6 +41,11 @@ import com.arena.smartmoney.ui.i18n.localizeBackendStatus
 import com.arena.smartmoney.ui.i18n.localizeMarketQuality
 import com.arena.smartmoney.ui.i18n.localizeSessionName
 import com.arena.smartmoney.ui.i18n.rememberTranslator
+import java.time.Duration
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
 
@@ -49,6 +58,7 @@ fun DashboardScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val t = rememberTranslator()
+    var liquidityTimezone by rememberSaveable { mutableStateOf("tehran") }
 
     val listToShow = if (state.watchlist.isEmpty()) {
         state.watchlistSymbols.map {
@@ -137,6 +147,7 @@ fun DashboardScreen(
                             color = Color(0xFFE3F8FF),
                             style = MaterialTheme.typography.bodyMedium
                         )
+                        LiquidityTimeFilterBox(model = liquidityFilter, t = t)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             InfoChip(t("Session", "سشن"), localizeSessionName(state.sessionName, t))
                             InfoChip(t("Quality", "کیفیت"), localizeMarketQuality(state.marketQuality, t))
@@ -417,6 +428,145 @@ private fun SmartAlertsBoard(
             FocusChip(t("Macro", "ماکرو"), macroAlert, Modifier.weight(1f))
         }
     }
+}
+
+private data class LiquidityWindowSlot(
+    val title: String,
+    val priority: Int,
+    val start: ZonedDateTime,
+    val end: ZonedDateTime,
+)
+
+private data class LiquidityTimeFilterModel(
+    val currentLabel: String,
+    val primeRange: String,
+    val nextRange: String,
+    val guidance: String,
+)
+
+@Composable
+private fun LiquidityTimeFilterBox(
+    model: LiquidityTimeFilterModel,
+    t: (String, String) -> String,
+) {
+    PremiumGlassCard(borderColor = Color(0x40FFC857)) {
+        Text(
+            t("Liquidity Time Filter", "فیلتر زمانی نقدینگی"),
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
+        Text(model.guidance, color = Color(0xFFDDF8FF))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FocusChip(t("Now", "الان"), model.currentLabel, Modifier.weight(1f))
+            FocusChip(t("Prime Window", "اوج نقدینگی"), model.primeRange, Modifier.weight(1f))
+            FocusChip(t("Next Window", "پنجره بعدی"), model.nextRange, Modifier.weight(1f))
+        }
+    }
+}
+
+private fun buildLiquidityTimeFilter(t: (String, String) -> String): LiquidityTimeFilterModel {
+    val tehranZone = ZoneId.of("Asia/Tehran")
+    val now = ZonedDateTime.now(tehranZone)
+    val formatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
+
+    fun buildWindow(
+        zoneId: String,
+        titleEn: String,
+        titleFa: String,
+        startHour: Int,
+        startMinute: Int,
+        endHour: Int,
+        endMinute: Int,
+        priority: Int,
+    ): LiquidityWindowSlot {
+        val sourceNow = now.withZoneSameInstant(ZoneId.of(zoneId))
+        var startSource = sourceNow.with(LocalTime.of(startHour, startMinute)).withSecond(0).withNano(0)
+        var endSource = sourceNow.with(LocalTime.of(endHour, endMinute)).withSecond(0).withNano(0)
+        if (!endSource.isAfter(startSource)) endSource = endSource.plusDays(1)
+        return LiquidityWindowSlot(
+            title = t(titleEn, titleFa),
+            priority = priority,
+            start = startSource.withZoneSameInstant(tehranZone),
+            end = endSource.withZoneSameInstant(tehranZone),
+        )
+    }
+
+    val windows = listOf(
+        buildWindow(
+            zoneId = "Europe/London",
+            titleEn = "London Open Drive",
+            titleFa = "موج آغاز لندن",
+            startHour = 8,
+            startMinute = 0,
+            endHour = 10,
+            endMinute = 30,
+            priority = 2,
+        ),
+        buildWindow(
+            zoneId = "America/New_York",
+            titleEn = "New York Open Drive",
+            titleFa = "موج آغاز نیویورک",
+            startHour = 8,
+            startMinute = 0,
+            endHour = 10,
+            endMinute = 30,
+            priority = 2,
+        ),
+        buildWindow(
+            zoneId = "America/New_York",
+            titleEn = "London-New York Overlap",
+            titleFa = "همپوشانی لندن-نیویورک",
+            startHour = 8,
+            startMinute = 0,
+            endHour = 11,
+            endMinute = 30,
+            priority = 3,
+        ),
+    )
+
+    val activeWindow = windows
+        .filter { !now.isBefore(it.start) && now.isBefore(it.end) }
+        .maxByOrNull { it.priority }
+
+    val nextWindow = windows
+        .filter { now.isBefore(it.start) }
+        .minByOrNull { Duration.between(now, it.start).toMinutes() }
+        ?: windows.minByOrNull { it.start }?.let { it.copy(start = it.start.plusDays(1), end = it.end.plusDays(1)) }
+
+    val primeWindow = windows.maxByOrNull { it.priority }
+
+    val currentLabel = when (activeWindow?.priority) {
+        3 -> t("Peak liquidity live", "اوج نقدینگی فعال")
+        2 -> t("Strong liquidity live", "نقدینگی قوی فعال")
+        else -> t("Outside prime liquidity", "خارج از اوج نقدینگی")
+    }
+
+    val guidance = when (activeWindow?.priority) {
+        3 -> t(
+            "Highest liquidity is live now. This is the best window for signal confirmation and fast execution.",
+            "بیشترین حجم نقدینگی همین حالا فعال است. این بهترین بازه برای تأیید سیگنال و اجرای سریع است."
+        )
+        2 -> t(
+            "Liquidity is strong now, but the overlap window remains the most powerful time for premium signals.",
+            "الان نقدینگی قوی است، اما بازه همپوشانی همچنان قدرتمندترین زمان برای سیگنال‌های ممتاز است."
+        )
+        else -> t(
+            "You are outside the prime liquidity window. Wait for the next institutional wave before trusting aggressive signals.",
+            "الان خارج از پنجره اصلی نقدینگی هستی. برای سیگنال‌های تهاجمی بهتر است تا موج بعدی نقدینگی صبر کنی."
+        )
+    }
+
+    fun formatRange(slot: LiquidityWindowSlot?): String {
+        return slot?.let { "${it.title} • ${it.start.format(formatter)}-${it.end.format(formatter)}" } ?: "-"
+    }
+
+    return LiquidityTimeFilterModel(
+        currentLabel = currentLabel,
+        primeRange = formatRange(primeWindow),
+        nextRange = formatRange(nextWindow),
+        guidance = guidance,
+    )
 }
 
 @Composable
