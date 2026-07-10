@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.arena.smartmoney.ui.dashboard
 
 import androidx.compose.foundation.BorderStroke
@@ -55,41 +57,45 @@ private enum class Session(val labelFa: String, val startTH: Int, val endTH: Int
 }
 
 private data class Dummy(val sym:String, val dir:String, val tf:String, val st:String, val tp:String, val sl:String)
-private val SAMPLE_SIGNALS = listOf(
+private val SAMPLE = listOf(
     Dummy("XAUUSD","LONG","15m","SMC","2685.00","2675.00"),
     Dummy("EURUSD","SHORT","1H","OB","1.08000","1.08650")
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
+    // all possible names the caller might use
     onNavigateToSignals: () -> Unit = {},
     onOpenSignals: () -> Unit = {},
     onNavigateToJournal: () -> Unit = {},
     onOpenJournal: () -> Unit = {},
     onNavigateToMarketAnalysis: () -> Unit = {},
     onOpenMarketAnalysis: () -> Unit = {},
+    onNavigateToAnalytics: () -> Unit = {},
+    onOpenAnalytics: () -> Unit = {},
     onNavigateToChart: () -> Unit = {},
     onOpenChart: () -> Unit = {},
     onNavigateToNews: () -> Unit = {},
-    onOpenNews: () -> Unit = {}
+    onOpenNews: () -> Unit = {},
+    onNavigateToDashboard: () -> Unit = {},
+    onOpenDashboard: () -> Unit = {},
+    onNavigateToHome: () -> Unit = {},
+    onOpenHome: () -> Unit = {}
 ) {
-    val goSignals   = { onNavigateToSignals(); onOpenSignals() }
-    val goJournal   = { onNavigateToJournal(); onOpenJournal() }
-    val goAnalysis  = { onNavigateToMarketAnalysis(); onOpenMarketAnalysis() }
-    val goChart     = { onNavigateToChart(); onOpenChart() }
-    val goNews      = { onNavigateToNews(); onOpenNews() }
+    val goSignals  = { onNavigateToSignals(); onOpenSignals() }
+    val goJournal  = { onNavigateToJournal(); onOpenJournal() }
+    val goAnalysis = { onNavigateToMarketAnalysis(); onOpenMarketAnalysis(); onNavigateToAnalytics(); onOpenAnalytics() }
+    val goChart    = { onNavigateToChart(); onOpenChart() }
+    val goNews     = { onNavigateToNews(); onOpenNews() }
 
     var tz     by rememberSaveable { mutableStateOf(Tz.TEHRAN) }
     var filter by rememberSaveable { mutableStateOf(Session.ASIA) }
     var tzMenu by remember { mutableStateOf(false) }
 
     val fmt = remember(tz) {
-        SimpleDateFormat("HH:mm", Locale.ENGLISH).apply {
-            timeZone = TimeZone.getTimeZone(tz.zoneId)
-        }
+        SimpleDateFormat("HH:mm", Locale.ENGLISH).apply { timeZone = TimeZone.getTimeZone(tz.zoneId) }
     }
-    var clock by remember { mutableStateOf(fmt.format(Date())) }
+    var clock by remember { mutableStateOf(fmt.format(Date()))) }
     LaunchedEffect(tz) {
         while (true) { clock = fmt.format(Date()); kotlinx.coroutines.delay(30_000L) }
     }
@@ -111,9 +117,7 @@ fun DashboardScreen(
     ) { pad ->
         Box {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(pad)
+                modifier = Modifier.fillMaxSize().padding(pad)
                     .background(Brush.verticalGradient(listOf(BgDark, BgDarkElev))),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
@@ -135,7 +139,7 @@ fun DashboardScreen(
                     }
                 }
                 item { Label("سیگنال‌های زنده") }
-                items(SAMPLE_SIGNALS) { s -> SignalCard(s, goChart) }
+                items(SAMPLE) { s -> SignalCard(s, goChart) }
                 item {
                     Spacer(Modifier.height(10.dp))
                     Text("Created by\nAmin Omidi", Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
@@ -148,8 +152,8 @@ fun DashboardScreen(
                     DropdownMenuItem(
                         text = { Text(m.display, color = if (m == tz) Gold else TextHi) },
                         leadingIcon = {
-                            Icon(if (m == Tz.TEHRAN) Icons.Default.Language else Icons.Default.Public, null,
-                                tint = if (m == tz) Gold else TextMid, modifier = Modifier.size(18.dp))
+                            Icon(if (m == Tz.TEHRAN) Icons.Default.Language else Icons.Default.Public,
+                                null, tint = if (m == tz) Gold else TextMid, modifier = Modifier.size(18.dp))
                         },
                         onClick = { tz = m; tzMenu = false }
                     )
@@ -185,7 +189,6 @@ private fun TopBar(tz: Tz, clock: String, onTzClick: () -> Unit) {
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LiquidityCard(tz: Tz, selected: Session, current: Session, onSelect: (Session) -> Unit) {
     ElevatedCard(
