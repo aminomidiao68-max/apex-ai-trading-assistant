@@ -47,6 +47,11 @@ from app.services.signal_engine import SignalEngine
 from app.services.storage_service import StorageService
 
 app = FastAPI(title=settings.app_name, version="0.9.0")
+
+
+# News router (APEX B phase)
+from app.news_router import router as _news_router
+app.include_router(_news_router)
 engine = SignalEngine()
 backtest_service = BacktestService(engine)
 market_data = MarketDataService()
@@ -463,5 +468,3 @@ async def place_oanda_order(request: OandaOrderRequest):
         raise HTTPException(status_code=400, detail=guard)
     return await oanda_connector.place_order(request)
 
-from .news_router import router as _news_router
-app.include_router(_news_router)
