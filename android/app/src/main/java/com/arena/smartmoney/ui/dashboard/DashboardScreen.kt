@@ -469,8 +469,8 @@ private fun LiquidityTimeFilterBox(
 }
 
 private fun buildLiquidityTimeFilter(t: (String, String) -> String): LiquidityTimeFilterModel {
-    val tehranZone = ZoneId.of("Asia/Tehran")
-    val now = ZonedDateTime.now(tehranZone)
+    val displayZone = if (timezoneMode == "utc") ZoneId.of("UTC") else ZoneId.of("Asia/Tehran")
+    val now = ZonedDateTime.now(displayZone)
     val formatter = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
     fun buildWindow(
@@ -490,8 +490,8 @@ private fun buildLiquidityTimeFilter(t: (String, String) -> String): LiquidityTi
         return LiquidityWindowSlot(
             title = t(titleEn, titleFa),
             priority = priority,
-            start = startSource.withZoneSameInstant(tehranZone),
-            end = endSource.withZoneSameInstant(tehranZone),
+            start = startSource.withZoneSameInstant(displayZone),
+            end = endSource.withZoneSameInstant(displayZone),
         )
     }
 
