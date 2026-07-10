@@ -110,3 +110,8 @@ class ReadinessService:
             )
         )
         return items
+
+from ..finnhub_client import get_finnhub as _gfh
+_fh = _gfh()
+readiness_checks["finnhub"] = {"configured": _fh.is_configured, "status": "ready" if _fh.is_configured else "waiting_for_api_key"}
+

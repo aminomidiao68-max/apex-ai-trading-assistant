@@ -1,6 +1,7 @@
 package com.arena.smartmoney.data.network
 
 import com.arena.smartmoney.data.model.AnalyticsReportDto
+import com.arena.smartmoney.data.model.NewsBrief
 import com.arena.smartmoney.data.model.AnalyticsSummaryDto
 import com.arena.smartmoney.data.model.AuthLoginRequestDto
 import com.arena.smartmoney.data.model.AuthResponseDto
@@ -174,4 +175,8 @@ interface TradingApiService {
                 .create(TradingApiService::class.java)
         }
     }
+
+    @GET("news/brief")
+    suspend fun getNewsBrief(): NewsBrief
+
 }

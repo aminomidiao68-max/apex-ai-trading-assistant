@@ -1,4 +1,6 @@
 package com.arena.smartmoney.data.repository
+import com.arena.smartmoney.data.model.NewsBrief
+import com.arena.smartmoney.data.model.NewsAdjustment
 
 import com.arena.smartmoney.data.model.AuthLoginRequestDto
 import com.arena.smartmoney.data.model.AuthRegisterRequestDto
@@ -102,4 +104,20 @@ class TradingRepository(
     suspend fun closeTrade(tradeId: Int, request: TradeJournalCloseRequestDto) = api.closeTrade(tradeId, request)
 
     suspend fun calculateRisk(request: RiskPlanRequestDto) = api.calculateRisk(request)
+
+
+
+    suspend fun getNewsBrief(): NewsBrief {
+        return try {
+            api.getNewsBrief()
+        } catch (t: Throwable) {
+            NewsBrief(
+                finnhub_configured = false,
+                adjustment = NewsAdjustment(
+                    note = "سرویس اخبار در دسترس نیست. اتصال اینترنت یا بک‌اند را بررسی کنید."
+                )
+            )
+        }
+    }
+
 }

@@ -45,6 +45,7 @@ import com.arena.smartmoney.ui.backtest.BacktestScreen
 import com.arena.smartmoney.ui.broker.BrokerScreen
 import com.arena.smartmoney.ui.chart.ChartScreen
 import com.arena.smartmoney.ui.dashboard.DashboardScreen
+import com.arena.smartmoney.ui.news.NewsScreen
 import com.arena.smartmoney.ui.i18n.AppLanguageState
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 import com.arena.smartmoney.ui.journal.JournalScreen
@@ -199,7 +200,11 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
                 DashboardScreen(
                     onOpenBacktest = { navController.navigate(AppRoute.Backtest.route) },
                     onOpenAnalytics = { navController.navigate(AppRoute.Analytics.route) },
-                    onOpenMarketAnalysis = { navController.navigate(AppRoute.MarketAnalysis.route) }
+                    onOpenMarketAnalysis = { navController.navigate(AppRoute.MarketAnalysis.route) },
+                    onOpenNews = { navController.navigate("news") },
+                    onOpenJournal = { navController.navigate(AppRoute.Journal.route) },
+                    onOpenSignals = { navController.navigate(AppRoute.Signals.route) },
+                    onOpenChart = { navController.navigate(AppRoute.Chart.route) }
                 )
             }
             composable(AppRoute.Signals.route) {
@@ -229,5 +234,10 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
             }
             composable(AppRoute.Readiness.route) { ReadinessScreen() }
         }
-    }
+    
+        composable("news") {
+            NewsScreen(onBack = { navController.popBackStack() })
+        }
+
+}
 }

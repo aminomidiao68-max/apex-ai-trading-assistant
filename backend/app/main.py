@@ -462,3 +462,6 @@ async def place_oanda_order(request: OandaOrderRequest):
     if not guard["ok"]:
         raise HTTPException(status_code=400, detail=guard)
     return await oanda_connector.place_order(request)
+
+from .news_router import router as _news_router
+app.include_router(_news_router)

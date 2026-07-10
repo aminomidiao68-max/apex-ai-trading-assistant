@@ -538,3 +538,44 @@ data class WalkForwardSummaryDto(
     val worst_step_index: Int?,
     val items: List<WalkForwardStepResultDto>
 )
+
+data class NewsEvent(
+    val id: String = "",
+    val title: String = "",
+    val country: String = "",
+    val currency: String = "",
+    val impact: String = "low",
+    val actual: String? = null,
+    val forecast: String? = null,
+    val previous: String? = null,
+    val unit: String = "",
+    val time_unix: Long = 0L,
+    val time_iso: String = "",
+    val source: String = "finnhub",
+    val minutes_until: Int = 0
+)
+data class NewsHeadline(
+    val id: String = "", val title: String = "", val summary: String = "",
+    val source: String = "", val category: String = "general", val url: String = "",
+    val image: String = "", val time_unix: Long = 0L, val impact: String = "low",
+    val country: String = "GLOBAL", val currency: String = ""
+)
+data class NewsBlockStatus(
+    val blocked: Boolean = false, val reasons: List<String> = emptyList(),
+    val block_until: Long = 0L, val active_events: List<NewsEvent> = emptyList()
+)
+data class NewsAdjustment(
+    val bias: String = "neutral", val score_penalty: Int = 0, val note: String = ""
+)
+data class NewsBrief(
+    val finnhub_configured: Boolean = false, val server_time_unix: Long = 0L,
+    val server_time_iso: String = "", val block: NewsBlockStatus = NewsBlockStatus(),
+    val adjustment: NewsAdjustment = NewsAdjustment(),
+    val events: NewsEventGroups = NewsEventGroups(),
+    val headlines: List<NewsHeadline> = emptyList()
+)
+data class NewsEventGroups(
+    val upcoming: List<NewsEvent> = emptyList(),
+    val live: List<NewsEvent> = emptyList(),
+    val past: List<NewsEvent> = emptyList()
+)
