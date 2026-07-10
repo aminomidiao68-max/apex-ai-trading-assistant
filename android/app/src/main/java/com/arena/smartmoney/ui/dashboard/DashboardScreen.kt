@@ -1,5 +1,6 @@
 package com.arena.smartmoney.ui.dashboard
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -25,67 +26,75 @@ import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
 import java.util.*
 
-private val BgDark        = Color(0xFF0B0F14)
-private val BgDarkElev    = Color(0xFF10151C)
-private val Card          = Color(0xFF161C25)
-private val CardDark      = Color(0xFF0E1319)
-private val TextHi        = Color(0xFFF2F4F7)
-private val TextMid       = Color(0xFF9AA3B2)
-private val TextLow       = Color(0xFF5B6472)
-private val Gold          = Color(0xFFD4AF37)
-private val Green         = Color(0xFF22C55E)
-private val Red           = Color(0xFFEF4444)
-private val Blue          = Color(0xFF60A5FA)
-private val Purple        = Color(0xFFA78BFA)
-private val Orange        = Color(0xFFF97316)
-private val Amber         = Color(0xFFF59E0B)
-private val Teal          = Color(0xFF34D399)
-private val Slate         = Color(0xFF94A3B8)
+private val BgDark     = Color(0xFF0B0F14)
+private val BgDarkElev = Color(0xFF10151C)
+private val CardC      = Color(0xFF161C25)
+private val CardDark   = Color(0xFF0E1319)
+private val TextHi     = Color(0xFFF2F4F7)
+private val TextMid    = Color(0xFF9AA3B2)
+private val TextLow    = Color(0xFF5B6472)
+private val Gold       = Color(0xFFD4AF37)
+private val Green      = Color(0xFF22C55E)
+private val Red        = Color(0xFFEF4444)
+private val Blue       = Color(0xFF60A5FA)
+private val Purple     = Color(0xFFA78BFA)
+private val Orange     = Color(0xFFF97316)
+private val Amber      = Color(0xFFF59E0B)
+private val Teal       = Color(0xFF34D399)
+private val Slate      = Color(0xFF94A3B8)
 
 private enum class Tz(val display: String, val zoneId: String) {
     TEHRAN("تهران", "Asia/Tehran"),
     UTC("UTC", "UTC")
 }
-
-private enum class Session(
-    val labelFa: String,
-    val startHourTehran: Int,
-    val endHourTehran: Int,
-    val color: Color
-) {
-    ASIA    ("نقدینگی آسیا",      4, 12, Slate),
-    LONDON  ("نقدینگی لندن",     12, 17, Blue),
-    NY      ("نقدینگی نیویورک",  17, 24, Orange),
-    OVERLAP ("هم‌پوشانی طلایی",  16, 19, Gold)
+private enum class Session(val labelFa: String, val startTH: Int, val endTH: Int, val color: Color) {
+    ASIA    ("نقدینگی آسیا",      4,12,Slate),
+    LONDON  ("نقدینگی لندن",     12,17,Blue),
+    NY      ("نقدینگی نیویورک",  17,24,Orange),
+    OVERLAP ("هم‌پوشانی طلایی",  16,19,Gold)
 }
+
+private data class Dummy(val sym:String, val dir:String, val tf:String, val st:String, val tp:String, val sl:String)
+private val SAMPLE_SIGNALS = listOf(
+    Dummy("XAUUSD","LONG","15m","SMC","2685.00","2675.00"),
+    Dummy("EURUSD","SHORT","1H","OB","1.08000","1.08650")
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     onNavigateToSignals: () -> Unit = {},
+    onOpenSignals: () -> Unit = {},
     onNavigateToJournal: () -> Unit = {},
+    onOpenJournal: () -> Unit = {},
     onNavigateToMarketAnalysis: () -> Unit = {},
+    onOpenMarketAnalysis: () -> Unit = {},
     onNavigateToChart: () -> Unit = {},
-    onNavigateToNews: () -> Unit = {}
+    onOpenChart: () -> Unit = {},
+    onNavigateToNews: () -> Unit = {},
+    onOpenNews: () -> Unit = {}
 ) {
-    var tz by rememberSaveable { mutableStateOf(Tz.TEHRAN) }
+    val goSignals   = { onNavigateToSignals(); onOpenSignals() }
+    val goJournal   = { onNavigateToJournal(); onOpenJournal() }
+    val goAnalysis  = { onNavigateToMarketAnalysis(); onOpenMarketAnalysis() }
+    val goChart     = { onNavigateToChart(); onOpenChart() }
+    val goNews      = { onNavigateToNews(); onOpenNews() }
+
+    var tz     by rememberSaveable { mutableStateOf(Tz.TEHRAN) }
     var filter by rememberSaveable { mutableStateOf(Session.ASIA) }
-    var tzMenuOpen by remember { mutableStateOf(false) }
+    var tzMenu by remember { mutableStateOf(false) }
 
     val fmt = remember(tz) {
         SimpleDateFormat("HH:mm", Locale.ENGLISH).apply {
             timeZone = TimeZone.getTimeZone(tz.zoneId)
         }
     }
-    var now by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = System.currentTimeMillis()
-            kotlinx.coroutines.delay(30_000L)
-        }
+    var clock by remember { mutableStateOf(fmt.format(Date())) }
+    LaunchedEffect(tz) {
+        while (true) { clock = fmt.format(Date()); kotlinx.coroutines.delay(30_000L) }
     }
 
-    val current = remember(tz, now) {
+    val current = run {
         val h = Calendar.getInstance(TimeZone.getTimeZone(tz.zoneId)).get(Calendar.HOUR_OF_DAY)
         when {
             h in 16..18 -> Session.OVERLAP
@@ -98,7 +107,7 @@ fun DashboardScreen(
 
     Scaffold(
         containerColor = BgDark,
-        topBar = { ApexTopBar(tz, fmt.format(Date(now))) { tzMenuOpen = true } }
+        topBar = { TopBar(tz, clock) { tzMenu = true } }
     ) { pad ->
         Box {
             LazyColumn(
@@ -109,56 +118,40 @@ fun DashboardScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                item { LiquidityBox(tz, filter, current) { filter = it } }
-                item { SummaryBox(current) }
-                item { Section("دسترسی سریع") }
+                item { LiquidityCard(tz, filter, current) { filter = it } }
+                item { SummaryCard(current) }
+                item { Label("دسترسی سریع") }
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Action("تحلیل بازار حرفه‌ای", Icons.Default.Assessment, Gold, Modifier.weight(1f), onNavigateToMarketAnalysis)
-                            Action("چارت", Icons.Default.ShowChart, Blue, Modifier.weight(1f), onNavigateToChart)
+                            Tile("تحلیل بازار حرفه‌ای", Icons.Default.Assessment, Gold, Modifier.weight(1f), goAnalysis)
+                            Tile("چارت", Icons.Default.ShowChart, Blue, Modifier.weight(1f), goChart)
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Action("سیگنال‌ها", Icons.Default.Campaign, Purple, Modifier.weight(1f), onNavigateToSignals)
-                            Action("اخبار", Icons.Default.MenuBook, Amber, Modifier.weight(1f), onNavigateToNews)
-                            Action("ژورنال", Icons.Default.Book, Teal, Modifier.weight(1f), onNavigateToJournal)
+                            Tile("سیگنال‌ها", Icons.Default.Campaign, Purple, Modifier.weight(1f), goSignals)
+                            Tile("اخبار", Icons.Default.Newspaper, Amber, Modifier.weight(1f), goNews)
+                            Tile("ژورنال", Icons.Default.Book, Teal, Modifier.weight(1f), goJournal)
                         }
                     }
                 }
-                item { Section("سیگنال‌های زنده") }
-                val demoSignals = remember {
-                    listOf(
-                        DemoSignal("XAUUSD", "LONG",  "15m", "SMC", "2685.00", "2675.00"),
-                        DemoSignal("EURUSD", "SHORT", "1H",  "OB",  "1.08000", "1.08650")
-                    )
-                }
-                items(demoSignals) { s -> SignalItem(s, onNavigateToChart) }
+                item { Label("سیگنال‌های زنده") }
+                items(SAMPLE_SIGNALS) { s -> SignalCard(s, goChart) }
                 item {
                     Spacer(Modifier.height(10.dp))
-                    Text(
-                        "Created by\nAmin Omidi",
-                        Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center,
-                        color = TextLow,
-                        fontSize = 11.sp,
-                        lineHeight = 14.sp,
-                        letterSpacing = 1.2.sp
-                    )
+                    Text("Created by\nAmin Omidi", Modifier.fillMaxWidth(), textAlign = TextAlign.Center,
+                        color = TextLow, fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 1.2.sp)
                     Spacer(Modifier.height(24.dp))
                 }
             }
-            DropdownMenu(expanded = tzMenuOpen, onDismissRequest = { tzMenuOpen = false }) {
+            DropdownMenu(expanded = tzMenu, onDismissRequest = { tzMenu = false }) {
                 Tz.values().forEach { m ->
                     DropdownMenuItem(
                         text = { Text(m.display, color = if (m == tz) Gold else TextHi) },
                         leadingIcon = {
-                            Icon(
-                                if (m == Tz.TEHRAN) Icons.Default.Language else Icons.Default.Public,
-                                null, tint = if (m == tz) Gold else TextMid,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Icon(if (m == Tz.TEHRAN) Icons.Default.Language else Icons.Default.Public, null,
+                                tint = if (m == tz) Gold else TextMid, modifier = Modifier.size(18.dp))
                         },
-                        onClick = { tz = m; tzMenuOpen = false }
+                        onClick = { tz = m; tzMenu = false }
                     )
                 }
             }
@@ -166,9 +159,8 @@ fun DashboardScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ApexTopBar(tz: Tz, clock: String, onTzClick: () -> Unit) {
+private fun TopBar(tz: Tz, clock: String, onTzClick: () -> Unit) {
     CenterAlignedTopAppBar(
         title = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -177,26 +169,29 @@ private fun ApexTopBar(tz: Tz, clock: String, onTzClick: () -> Unit) {
             }
         },
         actions = {
-            AssistChip(
-                onClick = onTzClick,
-                label = { Text("${tz.display} · $clock", color = TextHi, fontSize = 11.sp) },
-                leadingIcon = { Icon(Icons.Default.Schedule, null, tint = Gold, modifier = Modifier.size(14.dp)) },
-                shape = RoundedCornerShape(50),
-                colors = AssistChipDefaults.assistChipColors(containerColor = Card),
-                border = AssistChipDefaults.assistChipBorder(borderColor = Gold.copy(alpha = 0.35f))
-            )
-            Spacer(Modifier.width(8.dp))
+            Surface(
+                modifier = Modifier.clickable(onClick = onTzClick).padding(end = 12.dp),
+                shape = RoundedCornerShape(50), color = CardC,
+                border = BorderStroke(1.dp, Gold.copy(alpha = 0.35f))
+            ) {
+                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Schedule, null, tint = Gold, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("${tz.display} · $clock", color = TextHi, fontSize = 11.sp)
+                }
+            }
         },
         colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = BgDark, titleContentColor = TextHi)
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LiquidityBox(tz: Tz, selected: Session, current: Session, onSelect: (Session) -> Unit) {
+private fun LiquidityCard(tz: Tz, selected: Session, current: Session, onSelect: (Session) -> Unit) {
     ElevatedCard(
-        Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = Card),
+        colors = CardDefaults.elevatedCardColors(containerColor = CardC),
         elevation = CardDefaults.elevatedCardElevation(6.dp)
     ) {
         Column(Modifier.padding(16.dp)) {
@@ -212,19 +207,14 @@ private fun LiquidityBox(tz: Tz, selected: Session, current: Session, onSelect: 
                 Session.values().forEach { s ->
                     val sel = s == selected
                     FilterChip(
-                        selected = sel,
-                        onClick = { onSelect(s) },
-                        label = {
-                            Text(s.labelFa, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
-                                color = if (sel) Color.Black else TextHi, maxLines = 1)
-                        },
+                        selected = sel, onClick = { onSelect(s) },
+                        label = { Text(s.labelFa, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                            color = if (sel) Color.Black else TextHi, maxLines = 1) },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp),
                         colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = s.color,
-                            containerColor = CardDark,
-                            selectedLabelColor = Color.Black,
-                            labelColor = TextMid
+                            selectedContainerColor = s.color, containerColor = CardDark,
+                            selectedLabelColor = Color.Black, labelColor = TextMid
                         )
                     )
                 }
@@ -232,13 +222,13 @@ private fun LiquidityBox(tz: Tz, selected: Session, current: Session, onSelect: 
             Spacer(Modifier.height(12.dp))
             val windowText = when (tz) {
                 Tz.TEHRAN -> {
-                    val sh = String.format("%02d:00", selected.startHourTehran)
-                    val eh = if (selected.endHourTehran == 24) "00:00" else String.format("%02d:00", selected.endHourTehran)
+                    val sh = String.format("%02d:00", selected.startTH)
+                    val eh = if (selected.endTH == 24) "00:00" else String.format("%02d:00", selected.endTH)
                     "$sh – $eh"
                 }
                 Tz.UTC -> {
-                    val sh = (selected.startHourTehran - 4 + 24) % 24
-                    val eh = (selected.endHourTehran - 4 + 24) % 24
+                    val sh = (selected.startTH - 4 + 24) % 24
+                    val eh = (selected.endTH - 4 + 24) % 24
                     val shs = String.format("%02d:00", sh)
                     val ehs = if (eh == 0) "00:00" else String.format("%02d:00", eh)
                     "$shs – $ehs"
@@ -254,11 +244,11 @@ private fun LiquidityBox(tz: Tz, selected: Session, current: Session, onSelect: 
 }
 
 @Composable
-private fun SummaryBox(session: Session) {
+private fun SummaryCard(session: Session) {
     ElevatedCard(
-        Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = Card)
+        colors = CardDefaults.elevatedCardColors(containerColor = CardC)
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -277,7 +267,7 @@ private fun SummaryBox(session: Session) {
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Text("روند کلی در جلسهٔ فعلی صعودی است. تمرکز روی نقدینگی سمت فروش و تایید روی تایم فریم‌های بالاتر باشد. مدیریت ریسک را رعایت کنید.",
+            Text("روند کلی در جلسهٔ فعلی صعودی است. تمرکز روی نقدینگی سمت فروش و تایید روی تایم‌فریم‌های بالاتر باشد. مدیریت ریسک را رعایت کنید.",
                 color = TextHi, fontSize = 13.sp, lineHeight = 20.sp)
             Spacer(Modifier.height(10.dp))
             HorizontalDivider(color = CardDark)
@@ -292,11 +282,11 @@ private fun SummaryBox(session: Session) {
 }
 
 @Composable
-private fun Action(label: String, icon: ImageVector, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun Tile(label: String, icon: ImageVector, color: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
     ElevatedCard(
         modifier = modifier.height(82.dp).clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = Card)
+        colors = CardDefaults.elevatedCardColors(containerColor = CardC)
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -308,16 +298,14 @@ private fun Action(label: String, icon: ImageVector, color: Color, modifier: Mod
     }
 }
 
-private data class DemoSignal(val symbol: String, val direction: String, val timeframe: String, val strategy: String, val tp: String, val sl: String)
-
 @Composable
-private fun SignalItem(s: DemoSignal, onClick: () -> Unit) {
-    val isLong = s.direction.equals("LONG", ignoreCase = true)
+private fun SignalCard(s: Dummy, onClick: () -> Unit) {
+    val isLong = s.dir.equals("LONG", ignoreCase = true)
     val c = if (isLong) Green else Red
     ElevatedCard(
-        Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = Card)
+        colors = CardDefaults.elevatedCardColors(containerColor = CardC)
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(c.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
@@ -325,8 +313,8 @@ private fun SignalItem(s: DemoSignal, onClick: () -> Unit) {
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(s.symbol, color = TextHi, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text("${s.timeframe} · ${s.strategy}", color = TextMid, fontSize = 11.sp)
+                Text(s.sym, color = TextHi, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text("${s.tf} · ${s.st}", color = TextMid, fontSize = 11.sp)
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(if (isLong) "LONG" else "SHORT", color = c, fontWeight = FontWeight.Black, fontSize = 12.sp)
@@ -337,6 +325,6 @@ private fun SignalItem(s: DemoSignal, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Section(text: String) {
+private fun Label(text: String) {
     Text(text, color = TextMid, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
 }
