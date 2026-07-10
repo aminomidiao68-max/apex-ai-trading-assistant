@@ -89,8 +89,7 @@ fun NewsScreen(onBack: () -> Unit = {}) {
                     if (b.block.blocked) item { BlockBanner(b.block.reasons) }
                     item { ConfigCard(b.finnhub_configured, b.adjustment) }
                     item {
-                        TabRow(selectedTabIndex = tab, containerColor = CardDark, contentColor = Gold,
-                            indicator = { tp -> TabRowDefaults.Indicator(Modifier.tabIndicatorOffset(tp[tab]), color = Gold) }) {
+                        TabRow(selectedTabIndex = tab, containerColor = CardDark, contentColor = Gold) {
                             listOf("زنده", "پیش‌رو", "تیترها").forEachIndexed { i, t ->
                                 Tab(selected = tab == i, onClick = { tab = i },
                                     text = { Text(t, color = if (tab == i) Gold else TextMid, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) })

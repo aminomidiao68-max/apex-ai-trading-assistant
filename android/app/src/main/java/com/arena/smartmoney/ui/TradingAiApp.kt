@@ -207,6 +207,10 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
                     onOpenChart = { navController.navigate(AppRoute.Chart.route) }
                 )
             }
+
+                composable("news") {
+                    NewsScreen(onBack = { navController.popBackStack() })
+                }
             composable(AppRoute.Signals.route) {
                 SignalsScreen(onOpenJournal = { navController.navigate(AppRoute.Journal.route) })
             }
@@ -235,9 +239,6 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
             composable(AppRoute.Readiness.route) { ReadinessScreen() }
         }
     
-        composable("news") {
-            NewsScreen(onBack = { navController.popBackStack() })
-        }
 
 }
 }
