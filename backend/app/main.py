@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 import time
 import os
-from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
