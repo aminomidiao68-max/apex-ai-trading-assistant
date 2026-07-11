@@ -3,6 +3,7 @@ package com.arena.smartmoney.data.network
 import com.arena.smartmoney.data.model.AnalyticsReportDto
 import com.arena.smartmoney.data.model.NewsBrief
 import com.arena.smartmoney.data.model.SmcReport
+import com.arena.smartmoney.data.model.SmcScanResponse
 import com.arena.smartmoney.data.model.AnalyticsSummaryDto
 import com.arena.smartmoney.data.model.AuthLoginRequestDto
 import com.arena.smartmoney.data.model.AuthResponseDto
@@ -182,8 +183,11 @@ interface TradingApiService {
     @GET("api/v1/analysis/smc")
     suspend fun getSmcAnalysis(
         @Query("symbol") symbol: String = "XAUUSD",
-        @Query("market") market: String = "forex",
+        @Query("market") market: String = "",
         @Query("interval") interval: String = "15min",
         @Query("limit") limit: Int = 220
     ): SmcReport
+
+    @GET("api/v1/signals/scan")
+    suspend fun scanSignals(@Query("min_confluence") minConfluence: Int = 2): SmcScanResponse
 }

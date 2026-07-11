@@ -600,7 +600,8 @@ data class SmcZone(
     @SerializedName("end_idx") val endIdx: Int = -1,
     val name: String = "",
     val inverse: Boolean = false,
-    @SerializedName("size_pct") val sizePct: Float = 0f
+    @SerializedName("size_pct") val sizePct: Float = 0f,
+    @SerializedName("full_height") val fullHeight: Boolean = false
 )
 data class SmcLabel(val kind: String = "", val dir: String = "", val index: Int = 0, val price: Float = 0f)
 data class SmcLine(val kind: String = "", val price: Float = 0f)
@@ -619,18 +620,51 @@ data class SmcAiNarrative(
     val trend: String = "خنثی",
     val summary: String = "",
     val recommendation: String = "",
-    val confluence: Int = 0
+    val confluence: Int = 0,
+    val rr: Float = 0f
+)
+data class SmcVisibleRange(
+    val low: Float = 0f,
+    val high: Float = 0f
+)
+data class SmcHtf(
+    val timeframe: String? = null,
+    val bias: String? = null
+)
+data class SmcSignal(
+    val symbol: String = "",
+    val market: String = "forex",
+    val timeframe: String = "",
+    val bias: String = "neutral",
+    val direction: String = "neutral",
+    val confluence: Int = 0,
+    val rr: Float = 0f,
+    val price: Float = 0f,
+    val note: String = "",
+    val levels: SmcLevel = SmcLevel(),
+    val ai: SmcAiNarrative = SmcAiNarrative(),
+    val status: String = "ok"
+)
+data class SmcScanResponse(
+    val signals: List<SmcSignal> = emptyList(),
+    @SerializedName("total_scanned") val totalScanned: Int = 0,
+    val count: Int = 0,
+    @SerializedName("created_by") val createdBy: String = "Amin Omidi"
 )
 data class SmcReport(
     val symbol: String = "",
     val timeframe: String = "",
+    val market: String = "forex",
     val price: Float = 0f,
     val bias: String = "neutral",
     val direction: String = "neutral",
     val confluence: Int = 0,
+    val rr: Float = 0f,
+    val atr: Float = 0f,
     val note: String = "",
     val status: String = "",
     val levels: SmcLevel = SmcLevel(),
+    @SerializedName("premium_zone") val premiumZone: String = "eq",
     val events: List<SmcEvent> = emptyList(),
     @SerializedName("order_blocks") val orderBlocks: List<SmcZone> = emptyList(),
     val fvg: List<SmcZone> = emptyList(),
@@ -640,6 +674,8 @@ data class SmcReport(
     val killzones: List<SmcZone> = emptyList(),
     val orderflow: SmcOrderFlow = SmcOrderFlow(),
     val ai: SmcAiNarrative = SmcAiNarrative(),
+    val htf: SmcHtf = SmcHtf(),
+    @SerializedName("visible_range") val visibleRange: SmcVisibleRange = SmcVisibleRange(),
     val candles: List<SmcCandle> = emptyList(),
     val overlay: SmcOverlay = SmcOverlay(),
     @SerializedName("candles_count") val candlesCount: Int = 0,

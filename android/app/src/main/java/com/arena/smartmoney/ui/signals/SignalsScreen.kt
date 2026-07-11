@@ -28,7 +28,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arena.smartmoney.data.model.SignalHistoryItemDto
+import com.arena.smartmoney.data.model.SmcSignal
+import com.arena.smartmoney.data.repository.TradingRepository
+import com.arena.smartmoney.ui.chart.fmt
 import com.arena.smartmoney.ui.components.PremiumGlassCard
+import kotlinx.coroutines.launch
 import com.arena.smartmoney.ui.components.PremiumScreenBackground
 import com.arena.smartmoney.ui.components.PremiumSectionHeader
 import com.arena.smartmoney.ui.i18n.formatDisplayTimestamp
@@ -51,6 +55,19 @@ fun SignalsScreen(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val t = rememberTranslator()
+    // Apex AI Pro SMC live signals
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var smcSignals by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<List<SmcSignal>>(emptyList()) }
+    var smcLoading by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+    fun loadSmc() {
+        scope.launch {
+            smcLoading = true
+            try { smcSignals = TradingRepository().scanSignals(2).signals }
+            catch (_: Throwable) { smcSignals = emptyList() }
+            finally { smcLoading = false }
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(Unit) { loadSmc() }
 
     val eliteCount = state.items.count { (it.setup_grade ?: "C").uppercase(Locale.getDefault()) in listOf("A+", "A") }
     val readyCount = state.items.count { (it.execution_label ?: "observe").lowercase(Locale.getDefault()) in listOf("execution_ready", "scalp_ready") }
@@ -154,6 +171,9 @@ fun SignalsScreen(
                         color = Color(0xFFFFD27A)
                     )
                 }
+            }
+            item {
+                com.arena.smartmoney.ui.chart.AiSignalBoard(smcSignals, smcLoading) { loadSmc() }
             }
             items(state.items) { signal ->
                 SignalCard(signal = signal, onOpenJournal = onOpenJournal, onAddToJournal = { viewModel.createTradeFromSignal(signal) }, t = t)

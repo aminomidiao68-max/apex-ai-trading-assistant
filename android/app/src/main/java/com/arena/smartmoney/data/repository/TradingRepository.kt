@@ -1,6 +1,8 @@
 package com.arena.smartmoney.data.repository
 import com.arena.smartmoney.data.model.NewsBrief
 import com.arena.smartmoney.data.model.SmcReport
+import com.arena.smartmoney.data.model.SmcScanResponse
+import com.arena.smartmoney.data.model.SmcSignal
 import com.arena.smartmoney.data.model.SmcLevel
 import com.arena.smartmoney.data.model.SmcZone
 import com.arena.smartmoney.data.model.SmcEvent
@@ -127,12 +129,17 @@ class TradingRepository(
         }
     }
 
-    suspend fun getSmcAnalysis(symbol: String = "XAUUSD", market: String = "forex", interval: String = "15min", limit: Int = 220): SmcReport {
+    suspend fun getSmcAnalysis(symbol: String = "XAUUSD", market: String = "", interval: String = "15min", limit: Int = 220): SmcReport {
         return try { api.getSmcAnalysis(symbol, market, interval, limit) }
         catch (e: Exception) {
             SmcReport(
                 symbol = symbol, timeframe = interval, note = "خطا در بارگذاری تحلیل: ${e.message}", status = "error"
             )
         }
+    }
+
+    suspend fun scanSignals(minConfluence: Int = 2): SmcScanResponse {
+        return try { api.scanSignals(minConfluence) }
+        catch (e: Exception) { SmcScanResponse() }
     }
 }

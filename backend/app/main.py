@@ -87,14 +87,44 @@ def extract_bearer_token(authorization: str | None) -> str:
     return authorization.split(" ", 1)[1].strip()
 
 
+import asyncio as _asyncio, time as _time
+_CANDLE_CACHE = {}
+_CACHE_TTL = 30  # seconds
+
+def _auto_market(symbol: str, market: str | None) -> str:
+    if market: return market.lower()
+    u = symbol.upper()
+    if u.endswith("USDT") or u.endswith("BTC") or u.endswith("ETH") or u in ("BTC","ETH","SOL","XRP","BNB","DOGE","ADA"):
+        return "crypto"
+    return "forex"
+
 async def fetch_live_candles(symbol: str, market: str, timeframe: str):
-    market = market.lower()
-    if market == "crypto":
-        return await market_data.fetch_binance_candles(symbol=symbol, interval=timeframe, limit=220)
-    if market == "forex":
-        twelve_interval = timeframe.replace("m", "min") if timeframe.endswith("m") else timeframe
-        return await market_data.fetch_twelvedata_candles(symbol=symbol, interval=twelve_interval, outputsize=220)
-    raise HTTPException(status_code=400, detail="market must be crypto or forex")
+    market = _auto_market(symbol, market)
+    cache_key = (symbol.upper(), market, timeframe)
+    now = _time.time()
+    cached = _CANDLE_CACHE.get(cache_key)
+    if cached and now - cached[0] < _CACHE_TTL:
+        return cached[1]
+    last_err = None
+    for attempt in range(3):
+        try:
+            if market == "crypto":
+                data = await market_data.fetch_binance_candles(symbol=symbol, interval=timeframe, limit=220)
+            elif market == "forex":
+                twelve_interval = timeframe.replace("m", "min") if timeframe.endswith("m") else timeframe
+                data = await market_data.fetch_twelvedata_candles(symbol=symbol, interval=twelve_interval, outputsize=220)
+            else:
+                raise HTTPException(status_code=400, detail="market must be crypto or forex")
+            _CANDLE_CACHE[cache_key] = (now, data)
+            return data
+        except Exception as e:
+            last_err = e
+            msg = str(e).lower()
+            if "429" in msg or "too many" in msg:
+                await _asyncio.sleep(1.5 * (attempt+1))
+                continue
+            raise
+    raise last_err if last_err else RuntimeError("fetch failed")
 
 
 async def fetch_live_snapshot(symbol: str, market: str):
@@ -286,77 +316,137 @@ async def get_market_candles(symbol: str, market: str, interval: str = "15m", li
 
 @app.get("/api/v1/analysis/smc")
 async def get_smc_analysis(
-    symbol: str = Query("XAUUSD", description="Trading symbol, e.g. XAUUSD, BTCUSDT, EURUSD"),
-    market: str = Query("forex", description="forex or crypto"),
-    interval: str = Query("15min", description="Candle interval: 1m/5m/15m/30m/1h/4h/1d"),
+    symbol: str = Query("XAUUSD", description="Trading symbol"),
+    market: str = Query("", description="forex, crypto, or auto"),
+    interval: str = Query("15min", description="Candle interval"),
     limit: int = Query(220, ge=50, le=500),
 ):
-    """Smart-Money-Concepts structural analysis (BOS, CHoCH, OB, FVG, Breaker, Inducement)."""
+    """Pro SMC analysis with multi-timeframe bias, killzones, liquidity pools, order flow."""
     import logging
     logger = logging.getLogger("apex.api.smc")
+    symbol = symbol.upper()
+    market_eff = _auto_market(symbol, market or None)
+
+    def _tf_fetch(mk: str, tf: str) -> str:
+        if mk == "crypto":
+            return tf.replace("min", "m")  # binance wants "15m" not "15min"
+        # forex -> twelvedata: "15min", "1h", "4h", "1d"
+        if tf in ("1m","5m","15m","30m"):
+            return tf + "in"  # -> "1min"
+        return tf
+
+    int_fetch = _tf_fetch(market_eff, interval)
     try:
-        raw = await fetch_live_candles(symbol=symbol, market=market, timeframe=interval)
+        raw = await fetch_live_candles(symbol=symbol, market=market_eff, timeframe=int_fetch)
     except Exception as e:
         logger.exception("SMC candles fetch failed")
-        return {
-            "symbol": symbol.upper(), "timeframe": interval, "price": 0,
-            "bias": "neutral", "direction": "neutral", "confluence": 0,
-            "note": f"خطا در دریافت داده‌های بازار: {e}",
-            "status": "fetch_failed",
-            "levels": {"entry": None, "sl": None, "tp": None},
-            "events": [], "order_blocks": [], "fvg": [], "breakers": [], "inducements": [],
-            "sessions": [], "killzones": [],
-            "orderflow": {"delta": 0, "pressure": "neutral", "cvd_curve": []},
-            "ai": {"side": "انتظار", "trend": "خنثی", "summary": "خطا در دریافت داده", "recommendation": "-", "confluence": 0},
-            "candles": [],
-            "overlay": {"lines": [], "zones": [], "labels": []},
-            "candles_count": 0,
-            "created_by": "Amin Omidi",
-        }
+        return _smc_err(symbol, interval, 0, f"خطا در دریافت داده‌های بازار: {e}")
 
-    # Normalize candle objects (accept both Pydantic models and dicts, any naming convention)
-    items = []
-    for c in raw[-limit:]:
-        d = c.model_dump() if hasattr(c, "model_dump") else (dict(c) if isinstance(c, dict) else {})
-        t = d.get("t", d.get("time", d.get("datetime", 0)))
-        o = d.get("o", d.get("open", 0))
-        h = d.get("h", d.get("high", 0))
-        l = d.get("l", d.get("low", 0))
-        cl = d.get("c", d.get("close", 0))
-        v = d.get("v", d.get("volume", 0))
-        try:
-            items.append({"t": float(t), "o": float(o), "h": float(h), "l": float(l), "c": float(cl), "v": float(v)})
-        except Exception:
-            continue
+    items = _norm_candles(raw[-limit:])
+    if len(items) < 30:
+        return _smc_err(symbol, interval, items[-1]["c"] if items else 0, "حداقل ۳۰ کندل لازم است.", code="insufficient_data")
+
+    # Determine HTF bias (1h for 15m, 4h for 1h etc)
+    htf_bias = None; htf_used = None
+    try:
+        # Normalize interval key: strip "in" suffix if present so map keys match both "15m"/"15min"
+        key = interval.replace("min", "m")
+        htf_map = {"1m":"5m","5m":"15m","15m":"1h","30m":"4h","1h":"4h","4h":"1d","1d":"1d"}
+        htf = htf_map.get(key)
+        if htf:
+            htf_used = htf
+            htf_fetch = _tf_fetch(market_eff, htf)
+            hraw = await fetch_live_candles(symbol=symbol, market=market_eff, timeframe=htf_fetch)
+            hitems = _norm_candles(hraw)
+            if len(hitems) >= 30:
+                from app.services.smc_engine import analyze as _an
+                hrep = _an(hitems, symbol=symbol, timeframe=htf)
+                htf_bias = hrep.get("bias")
+    except Exception as e:
+        logger.warning("HTF bias fetch failed: %s", e)
 
     try:
         from app.services.smc_engine import analyze
-        report = analyze(items, symbol=symbol.upper(), timeframe=interval)
-        report["status"] = "ok"
-        # Attach normalized candles (trim to last 120 for chart rendering to keep payload small)
-        chart_items = items[-120:]
-        report["candles"] = chart_items
-        # Provide full length in candles_count
+        report = analyze(items, symbol=symbol, timeframe=interval, htf_bias=htf_bias)
+        report["market"] = market_eff
+        report["htf"] = {"timeframe": htf_used, "bias": htf_bias}
+        # visible chart candles (trim to last 120)
+        report["candles"] = items[-120:]
         report["candles_count"] = len(items)
+        report["status"] = "ok"
         return report
     except Exception as e:
         logger.exception("SMC analysis failed")
-        return {
-            "symbol": symbol.upper(), "timeframe": interval,
-            "price": items[-1]["c"] if items else 0,
-            "bias": "neutral", "direction": "neutral", "confluence": 0,
-            "note": f"خطا در تحلیل SMC: {e}",
-            "status": "analysis_failed",
-            "levels": {"entry": None, "sl": None, "tp": None},
-            "events": [], "order_blocks": [], "fvg": [], "breakers": [], "inducements": [],
-            "sessions": [], "killzones": [],
-            "orderflow": {"delta": 0, "pressure": "neutral", "cvd_curve": []},
-            "ai": {"side": "انتظار", "trend": "خنثی", "summary": "خطا در تحلیل", "recommendation": "-", "confluence": 0},
-            "candles": items[-120:],
-            "overlay": {"lines": [], "zones": [], "labels": []},
-            "candles_count": len(items),
-            "created_by": "Amin Omidi",
-        }
+        return _smc_err(symbol, interval, items[-1]["c"] if items else 0, f"خطا در تحلیل SMC: {e}", code="analysis_failed", candles=items[-120:], count=len(items))
+
+
+def _norm_candles(raw):
+    items = []
+    for c in raw:
+        d = c.model_dump() if hasattr(c,"model_dump") else (dict(c) if isinstance(c,dict) else {})
+        t = d.get("t", d.get("time", d.get("datetime",0)))
+        o = d.get("o", d.get("open",0)); h = d.get("h", d.get("high",0))
+        l = d.get("l", d.get("low",0)); cl = d.get("c", d.get("close",0))
+        v = d.get("v", d.get("volume",0))
+        try: items.append({"t":float(t),"o":float(o),"h":float(h),"l":float(l),"c":float(cl),"v":float(v)})
+        except Exception: continue
+    return items
+
+def _smc_err(symbol, tf, price, note, code="fetch_failed", candles=None, count=0):
+    return {"symbol":symbol,"timeframe":tf,"price":price or 0,
+            "bias":"neutral","direction":"neutral","confluence":0,"note":note,"status":code,
+            "levels":{"entry":None,"sl":None,"tp":None},"rr":0,"premium_zone":"eq",
+            "events":[],"order_blocks":[],"fvg":[],"breakers":[],"inducements":[],
+            "sessions":[],"killzones":[],
+            "orderflow":{"delta":0,"pressure":"neutral","cvd_curve":[]},
+            "ai":{"side":"انتظار","trend":"خنثی","summary":note,"recommendation":"-","confluence":0,"rr":0},
+            "visible_range":{"low":0,"high":0},"atr":0,"market":"",
+            "htf":{"timeframe":None,"bias":None},"candles":candles or [],"candles_count":count,
+            "overlay":{"lines":[],"zones":[],"labels":[]},"created_by":"Amin Omidi"}
+
+
+_SCAN_WATCHLIST = [
+    ("XAUUSD","forex","15min"),
+    ("XAUUSD","forex","5min"),
+    ("XAUUSD","forex","1h"),
+    ("EURUSD","forex","15min"),
+    ("GBPUSD","forex","15min"),
+    ("USDJPY","forex","15min"),
+    ("BTCUSDT","crypto","15min"),
+    ("BTCUSDT","crypto","1h"),
+    ("ETHUSDT","crypto","15min"),
+]
+
+@app.get("/api/v1/signals/scan")
+async def scan_signals(min_confluence: int = 2):
+    """Multi-symbol multi-tf professional SMC scan."""
+    from app.services.smc_engine import analyze
+    import asyncio, logging
+    log = logging.getLogger("apex.api.signals")
+    results = []
+    async def _job(sym, mkt, tf):
+        try:
+            mkt_eff = _auto_market(sym, mkt)
+            if mkt_eff == "crypto": tf_fetch = tf.replace("min","m")
+            elif mkt_eff == "forex" and tf in ("1m","5m","15m","30m"): tf_fetch = tf+"in"
+            else: tf_fetch = tf
+            raw = await fetch_live_candles(sym, mkt_eff, tf_fetch)
+            items = _norm_candles(raw)
+            if len(items) < 30: return None
+            r = analyze(items, symbol=sym, timeframe=tf)
+            return {"symbol":sym,"market":mkt_eff,"timeframe":tf,
+                    "bias":r["bias"],"direction":r["direction"],"confluence":r["confluence"],
+                    "rr":r.get("rr",0),"price":r["price"],"note":r["note"],
+                    "levels":r["levels"],"ai":r["ai"],"status":"ok"}
+        except Exception as e:
+            log.warning("scan %s@%s failed: %s", sym, tf, e)
+            return None
+    jobs = [_job(s,m,t) for s,m,t in _SCAN_WATCHLIST]
+    out = await asyncio.gather(*jobs)
+    sigs = [x for x in out if x and x["confluence"] >= min_confluence and x["direction"] in ("long","short")]
+    sigs.sort(key=lambda x: (-x["confluence"], -x["rr"]))
+    return {"signals": sigs, "total_scanned": len(_SCAN_WATCHLIST), "count": len(sigs), "created_by": "Amin Omidi"}
+
 
 @app.websocket("/ws/market")
 async def market_websocket(websocket: WebSocket, symbol: str = "BTCUSDT", market: str = "crypto"):
