@@ -12,6 +12,9 @@ except Exception as e:
 
 from .news_fallback import build_offline_brief
 
+def _is_error(v):
+    return isinstance(v, dict) and ("error" in v)
+
 async def build_news_brief():
     if FINNHUB_AVAILABLE:
         try:
@@ -21,11 +24,10 @@ async def build_news_brief():
                 try:
                     cal = await fh.get_economic_calendar()
                     h1 = await fh.get_general_news("general")
-                    # Treat None/dict-as-error as failure
-                    cal_ok = isinstance(cal, list)
-                    h1_ok = isinstance(h1, list)
-                    if not cal_ok or not h1_ok:
-                        raise RuntimeError(f"finnhub returned non-list: cal={type(cal).__name__}, news={type(h1).__name__}")
+                    if _is_error(cal) or _is_error(h1):
+                        raise RuntimeError(f"finnhub error cal={cal} news={h1}")
+                    if not isinstance(cal, list) or not isinstance(h1, list):
+                        raise RuntimeError(f"unexpected finnhub types: {type(cal).__name__}/{type(h1).__name__}")
                     now = datetime.now(timezone.utc)
                     return {
                         "finnhub_configured": True,
@@ -38,7 +40,7 @@ async def build_news_brief():
                         "source": "finnhub",
                     }
                 except Exception as inner:
-                    logger.warning(f"Finnhub fetch failed, falling back: {inner}")
+                    logger.warning(f"Finnhub fetch failed, falling back to Apex AI offline news: {inner}")
         except Exception as e:
             logger.warning(f"Finnhub init failed: {e}")
     return build_offline_brief()

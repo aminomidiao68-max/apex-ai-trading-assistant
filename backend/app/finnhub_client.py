@@ -34,11 +34,11 @@ class FinnhubClient:
             r = await self._client.get(url, params=params)
             if r.status_code != 200:
                 logger.warning("Finnhub %s -> %s", path, r.status_code)
-                return None
+                return {"error": f"HTTP {r.status_code}"}
             data = r.json()
             if isinstance(data, dict) and data.get("error"):
                 logger.warning("Finnhub error: %s", data.get("error"))
-                return None
+                return {"error": data.get("error")}
             self._cache[key] = (now, data)
             return data
         except Exception as e:
@@ -49,8 +49,8 @@ class FinnhubClient:
         today = datetime.now(timezone.utc).date()
         params = {"from": today.isoformat(), "to": (today + timedelta(days=1)).isoformat()}
         data = await self._get("/calendar/economic", params)
-        if not isinstance(data, dict):
-            return []
+        if not isinstance(data, dict) or data.get("error"):
+            return data if isinstance(data, dict) and data.get("error") else []
         events = data.get("economicCalendar") or []
         out: List[Dict[str, Any]] = []
         for ev in events:
@@ -84,7 +84,7 @@ class FinnhubClient:
     async def get_general_news(self, category: str = "general") -> List[Dict[str, Any]]:
         data = await self._get("/news", {"category": category})
         if not isinstance(data, list):
-            return []
+            return data if isinstance(data, dict) and data.get("error") else []
         out: List[Dict[str, Any]] = []
         for n in data[:30]:
             out.append({
