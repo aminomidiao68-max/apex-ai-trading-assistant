@@ -367,7 +367,15 @@ async def get_smc_analysis(
 
     try:
         from app.services.smc_engine import analyze
-        report = analyze(items, symbol=symbol, timeframe=interval, htf_bias=htf_bias)
+        # Fetch news block status (light call; cached internally)
+        _news_blocked = False
+        try:
+            from app.news_engine_v2 import build_news_brief as _nb
+            _nbrief = await _nb()
+            _news_blocked = bool((_nbrief.get("block") or {}).get("blocked"))
+        except Exception:
+            pass
+        report = analyze(items, symbol=symbol, timeframe=interval, htf_bias=htf_bias, news_blocked=_news_blocked)
         report["market"] = market_eff
         report["htf"] = {"timeframe": htf_used, "bias": htf_bias}
         # visible chart candles (trim to last 120)
@@ -394,27 +402,35 @@ def _norm_candles(raw):
 
 def _smc_err(symbol, tf, price, note, code="fetch_failed", candles=None, count=0):
     return {"symbol":symbol,"timeframe":tf,"price":price or 0,
-            "bias":"neutral","direction":"neutral","confluence":0,"note":note,"status":code,
-            "levels":{"entry":None,"sl":None,"tp":None},"rr":0,"premium_zone":"eq",
+            "bias":"neutral","direction":"neutral","confluence":0,"probability":0,"setup_type":"-",
+            "rr":0,"atr":0,"note":note,"status":code,
+            "levels":{"entry":None,"sl":None,"tp":None},"tp1":None,"tp2":None,"tp3":None,
+            "invalidation":None,"entry_zone":None,"plan_lines":[],
+            "premium_zone":"eq","mtf_aligned":False,"htf_bias":None,
+            "news_blocked":False,"volume_spike":False,
             "events":[],"order_blocks":[],"fvg":[],"breakers":[],"inducements":[],
             "sessions":[],"killzones":[],
-            "orderflow":{"delta":0,"pressure":"neutral","cvd_curve":[]},
-            "ai":{"side":"انتظار","trend":"خنثی","summary":note,"recommendation":"-","confluence":0,"rr":0},
+            "orderflow":{"delta":0,"pressure":"neutral","cvd_curve":[],"volume_spike":False},
+            "ai":{"side":"انتظار","trend":"خنثی","summary":note,"recommendation":"-","confluence":0,
+                  "probability":0,"rr":0,"verdict":"-","setup_type":"-"},
             "visible_range":{"low":0,"high":0},"atr":0,"market":"",
             "htf":{"timeframe":None,"bias":None},"candles":candles or [],"candles_count":count,
             "overlay":{"lines":[],"zones":[],"labels":[]},"created_by":"Amin Omidi"}
 
 
 _SCAN_WATCHLIST = [
-    ("XAUUSD","forex","15min"),
     ("XAUUSD","forex","5min"),
+    ("XAUUSD","forex","15min"),
     ("XAUUSD","forex","1h"),
     ("EURUSD","forex","15min"),
     ("GBPUSD","forex","15min"),
     ("USDJPY","forex","15min"),
+    ("AUDUSD","forex","15min"),
+    ("BTCUSDT","crypto","5min"),
     ("BTCUSDT","crypto","15min"),
     ("BTCUSDT","crypto","1h"),
     ("ETHUSDT","crypto","15min"),
+    ("SOLUSDT","crypto","15min"),
 ]
 
 @app.get("/api/v1/signals/scan")
@@ -424,20 +440,49 @@ async def scan_signals(min_confluence: int = 2):
     import asyncio, logging
     log = logging.getLogger("apex.api.signals")
     results = []
+    _news_blocked = False
+    try:
+        from app.news_engine_v2 import build_news_brief as _nb
+        _nbrief = await _nb()
+        _news_blocked = bool((_nbrief.get("block") or {}).get("blocked"))
+    except Exception: pass
+
     async def _job(sym, mkt, tf):
         try:
             mkt_eff = _auto_market(sym, mkt)
-            if mkt_eff == "crypto": tf_fetch = tf.replace("min","m")
-            elif mkt_eff == "forex" and tf in ("1m","5m","15m","30m"): tf_fetch = tf+"in"
-            else: tf_fetch = tf
+            if mkt_eff == "crypto":
+                tf_fetch = tf.replace("min","m")
+            elif mkt_eff == "forex" and tf in ("1m","5m","15m","30m"):
+                tf_fetch = tf + "in"
+            else:
+                tf_fetch = tf
             raw = await fetch_live_candles(sym, mkt_eff, tf_fetch)
             items = _norm_candles(raw)
             if len(items) < 30: return None
-            r = analyze(items, symbol=sym, timeframe=tf)
+            # HTF for scan
+            htf_bias=None
+            try:
+                key=tf.replace("min","m"); hm={"1m":"5m","5m":"15m","15m":"1h","30m":"4h","1h":"4h"}.get(key)
+                if hm:
+                    if mkt_eff == "crypto":
+                        hf = hm.replace("min","m")
+                    elif mkt_eff == "forex" and hm in ("1m","5m","15m","30m"):
+                        hf = hm + "in"
+                    else:
+                        hf = hm
+                    hraw = await fetch_live_candles(sym, mkt_eff, hf)
+                    hi=_norm_candles(hraw)
+                    if len(hi)>=30:
+                        hrep=analyze(hi,symbol=sym,timeframe=hm)
+                        htf_bias=hrep.get("bias")
+            except Exception: pass
+            r = analyze(items, symbol=sym, timeframe=tf, htf_bias=htf_bias, news_blocked=_news_blocked)
             return {"symbol":sym,"market":mkt_eff,"timeframe":tf,
                     "bias":r["bias"],"direction":r["direction"],"confluence":r["confluence"],
                     "rr":r.get("rr",0),"price":r["price"],"note":r["note"],
-                    "levels":r["levels"],"ai":r["ai"],"status":"ok"}
+                    "probability":r.get("probability",0),"setup_type":r.get("setup_type","-"),
+                    "levels":r["levels"],"tp1":r.get("tp1"),"tp2":r.get("tp2"),"tp3":r.get("tp3"),
+                    "ai":r["ai"],"status":"ok"}
         except Exception as e:
             log.warning("scan %s@%s failed: %s", sym, tf, e)
             return None

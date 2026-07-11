@@ -469,17 +469,29 @@ private fun SummaryCard(session: Session, onOpenChart: () -> Unit = {}) {
             }
             Spacer(modifier = Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "کانفلونس: ", color = TextMid, fontSize = 12.sp)
-                Text(text = "$score/4", color = Gold, fontWeight = FontWeight.Black, fontSize = 16.sp)
-                Spacer(modifier = Modifier.width(10.dp))
+                Text(text = "کانف: ", color = TextMid, fontSize = 12.sp)
+                Text(text = "$score", color = Gold, fontWeight = FontWeight.Black, fontSize = 15.sp)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(text = "•  احتمال: %${r?.probability ?: 0}", color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Spacer(modifier = Modifier.width(8.dp))
                 Surface(shape = RoundedCornerShape(8.dp), color = sideColor.copy(alpha = 0.15f)) {
                     Text(text = "  ${r?.ai?.side ?: "انتظار"}  ",
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        fontSize = 10.sp, fontWeight = FontWeight.Black, color = sideColor)
+                        fontSize = 9.sp, fontWeight = FontWeight.Black, color = sideColor)
                 }
                 Spacer(modifier = Modifier.weight(1f))
+                if (r != null && r.rr > 0f) {
+                    Text("RR 1:${"%.1f".format(r.rr)}", color = Green, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Spacer(Modifier.width(8.dp))
+                }
                 if (r != null) {
-                    Text("%.2f".format(r.price), color = TextHi, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("%.2f".format(r.price), color = TextHi, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+            }
+            if (r?.setupType != null && r.setupType != "-") {
+                Spacer(Modifier.height(4.dp))
+                Surface(shape = RoundedCornerShape(6.dp), color = Gold.copy(alpha=0.15f)) {
+                    Text("  ${r.setupType}  ", color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Black)
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))

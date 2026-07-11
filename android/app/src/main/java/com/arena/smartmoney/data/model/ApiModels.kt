@@ -613,15 +613,8 @@ data class SmcOverlay(
 data class SmcOrderFlow(
     val delta: Float = 0f,
     val pressure: String = "neutral",
-    val cvd_curve: List<Map<String, Double>> = emptyList()
-)
-data class SmcAiNarrative(
-    val side: String = "انتظار",
-    val trend: String = "خنثی",
-    val summary: String = "",
-    val recommendation: String = "",
-    val confluence: Int = 0,
-    val rr: Float = 0f
+    val cvd_curve: List<Map<String, Double>> = emptyList(),
+    @SerializedName("volume_spike") val volumeSpike: Boolean = false
 )
 data class SmcVisibleRange(
     val low: Float = 0f,
@@ -630,6 +623,17 @@ data class SmcVisibleRange(
 data class SmcHtf(
     val timeframe: String? = null,
     val bias: String? = null
+)
+data class SmcAiNarrative(
+    val side: String = "انتظار",
+    val trend: String = "خنثی",
+    val summary: String = "",
+    val recommendation: String = "",
+    val confluence: Int = 0,
+    val rr: Float = 0f,
+    val probability: Int = 0,
+    val verdict: String = "",
+    @SerializedName("setup_type") val setupType: String = "-"
 )
 data class SmcSignal(
     val symbol: String = "",
@@ -642,6 +646,11 @@ data class SmcSignal(
     val price: Float = 0f,
     val note: String = "",
     val levels: SmcLevel = SmcLevel(),
+    val tp1: Float? = null,
+    val tp2: Float? = null,
+    val tp3: Float? = null,
+    val probability: Int = 0,
+    @SerializedName("setup_type") val setupType: String = "-",
     val ai: SmcAiNarrative = SmcAiNarrative(),
     val status: String = "ok"
 )
@@ -651,6 +660,10 @@ data class SmcScanResponse(
     val count: Int = 0,
     @SerializedName("created_by") val createdBy: String = "Amin Omidi"
 )
+data class SmcEntryZone(
+    val high: Float = 0f,
+    val low: Float = 0f
+)
 data class SmcReport(
     val symbol: String = "",
     val timeframe: String = "",
@@ -659,12 +672,24 @@ data class SmcReport(
     val bias: String = "neutral",
     val direction: String = "neutral",
     val confluence: Int = 0,
+    val probability: Int = 0,
+    @SerializedName("setup_type") val setupType: String = "-",
     val rr: Float = 0f,
     val atr: Float = 0f,
     val note: String = "",
     val status: String = "",
     val levels: SmcLevel = SmcLevel(),
+    val tp1: Float? = null,
+    val tp2: Float? = null,
+    val tp3: Float? = null,
+    val invalidation: Float? = null,
+    @SerializedName("entry_zone") val entryZone: SmcEntryZone? = null,
+    @SerializedName("plan_lines") val planLines: List<SmcLine> = emptyList(),
     @SerializedName("premium_zone") val premiumZone: String = "eq",
+    @SerializedName("mtf_aligned") val mtfAligned: Boolean = false,
+    @SerializedName("htf_bias") val htfBias: String? = null,
+    @SerializedName("news_blocked") val newsBlocked: Boolean = false,
+    @SerializedName("volume_spike") val volumeSpike: Boolean = false,
     val events: List<SmcEvent> = emptyList(),
     @SerializedName("order_blocks") val orderBlocks: List<SmcZone> = emptyList(),
     val fvg: List<SmcZone> = emptyList(),

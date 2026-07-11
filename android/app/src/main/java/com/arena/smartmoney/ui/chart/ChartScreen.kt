@@ -201,13 +201,23 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
             }
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                ChipS("conf ${r.confluence}/4", when { r.confluence>=3->Gold; r.confluence>=2->GoldDim; else->TL })
-                ChipS(if (r.rr > 0f) "RR %.1f".format(r.rr) else "RR -", if(r.rr>=2f) UpC else TL)
+                ChipS("conf ${r.confluence}", when { r.confluence>=70->Gold; r.confluence>=40->GoldDim; else->TL })
+                ChipS("احتمال %${r.probability}", when { r.probability>=70->UpC; r.probability>=50->GoldDim; else->TL })
+                ChipS(if (r.rr > 0f) "RR 1:%.1f".format(r.rr) else "RR -", if(r.rr>=2f) UpC else TL)
                 ChipS("${r.candlesCount}c", TL)
                 ChipS(r.status.ifBlank { "-" }, TL)
                 val pr = r.orderflow.pressure
                 ChipS(when(pr){"buy"->"OF: خرید";"sell"->"OF: فروش";else->"OF: خنثی"}, when(pr){"buy"->UpC;"sell"->DnC;else->TL})
                 ChipS(when(r.premiumZone){"premium"->"پرمیوم";"discount"->"دیسکانت";else->"تعادل"}, GoldDim)
+                if (r.newsBlocked) ChipS("⚠️ خبر", DnC)
+                if (r.mtfAligned) ChipS("MTF ✓", UpC)
+                if (r.volumeSpike) ChipS("VOL ↑", Gold)
+            }
+            if (r.setupType != "-" && r.setupType.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Surface(shape=RoundedCornerShape(8.dp), color=Gold.copy(alpha=0.18f)) {
+                    Text("  ستاپ: ${r.setupType}  ", color=Gold, fontSize=11.sp, fontWeight=FontWeight.Black)
+                }
             }
             Spacer(Modifier.height(8.dp))
             Text(if (loading) "در حال بارگذاری..." else r.note.ifBlank { "-" }, color = TH, fontSize = 12.sp, lineHeight = 18.sp)
@@ -248,12 +258,19 @@ private fun AiCard(r: SmcReport, loading: Boolean) {
 private fun LevelsCard(r: SmcReport) {
     Card(colors = CardDefaults.cardColors(containerColor = Surf2), shape = RoundedCornerShape(16.dp)) {
         Column(modifier = Modifier.padding(14.dp)) {
-            Text("سطوح ورود / حد ضرر / هدف", color = Gold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text("طرح معامله (Entry / SL / TP1 / TP2 / TP3)", color = Gold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Lvl("Entry", r.levels.entry, Gold)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Lvl("Inval", r.invalidation, GoldDim)
                 Lvl("SL",    r.levels.sl,    DnC)
-                Lvl("TP",    r.levels.tp,    UpC)
+                Lvl("Entry", r.levels.entry, Gold)
+                Lvl("TP1",   r.tp1,          UpC.copy(alpha=0.8f))
+                Lvl("TP2",   r.levels.tp,    UpC)
+                Lvl("TP3",   r.tp3,          UpC.copy(alpha=0.6f))
+            }
+            if (r.entryZone != null) {
+                Spacer(Modifier.height(6.dp))
+                Text("محدوده ورود: ${fmt(r.entryZone.low)} — ${fmt(r.entryZone.high)}", color = TL, fontSize = 11.sp)
             }
         }
     }
@@ -324,7 +341,7 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         }
 
         // Zones (OB/FVG/BRK) - draw slightly wider than 1 candle
-        for (z in report.overlay.zones ?: report.killzones) {
+        for (z in report.overlay.zones) {
             if (z.kind == "KZ") continue
             val i = z.index; if (i<startIdx || i>=totalCandles) continue
             val top = priceY(z.top); val bot = priceY(z.bottom)
@@ -394,11 +411,28 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             val lp = NativePaint().apply { color = col.toArgb(); textSize = 18f; isAntiAlias = true }
             drawContext.canvas.nativeCanvas.drawText(ev.kind, idxX(idx)+6f, y-4f, lp)
         }
+        // Trade plan lines (entry/sl/tp)
+        for (pl in report.planLines) {
+            val y = priceY(pl.price)
+            if (y < chartT-5f || y > chartB+5f) continue
+            val (c, label) = when(pl.kind) {
+                "entry" -> Gold to "ENTRY"
+                "sl"    -> DnC to "SL"
+                "tp1"   -> UpC.copy(alpha=0.7f) to "TP1"
+                "tp2"   -> UpC to "TP2"
+                "tp3"   -> UpC.copy(alpha=0.5f) to "TP3"
+                else    -> continue to ""
+            }
+            drawLine(c, Offset(chartL, y), Offset(chartR, y), strokeWidth=1.4f,
+                pathEffect=if (pl.kind=="entry") null else PathEffect.dashPathEffect(floatArrayOf(5f,3f)))
+            val lp = NativePaint().apply { color=c.toArgb(); textSize=18f; isAntiAlias=true; isFakeBoldText=true }
+            drawContext.canvas.nativeCanvas.drawText(label, 6f, y-4f, lp)
+        }
         // Current price
         val yPrice = priceY(report.price)
-        drawLine(Gold, Offset(chartL, yPrice), Offset(chartR, yPrice), strokeWidth=1.2f,
+        drawLine(Gold, Offset(chartL, yPrice), Offset(chartR, yPrice), strokeWidth=1.4f,
             pathEffect=PathEffect.dashPathEffect(floatArrayOf(4f,3f)))
-        drawCircle(Gold, radius=4f, center=Offset(chartR-2f, yPrice))
+        drawCircle(Gold, radius=5f, center=Offset(chartR-2f, yPrice))
         val cp = NativePaint().apply { color=Gold.toArgb(); textSize=22f; isAntiAlias=true; isFakeBoldText=true }
         drawContext.canvas.nativeCanvas.drawText(df.format(report.price), 6f, yPrice+8f, cp)
     }
@@ -560,7 +594,7 @@ fun AiSignalBoard(signals: List<com.arena.smartmoney.data.model.SmcSignal>, load
                                     Text("  $side  ", color = col, fontSize = 10.sp, fontWeight = FontWeight.Black)
                                 }
                                 Spacer(Modifier.height(3.dp))
-                                Text("conf ${s.confluence}/4 · RR %.1f".format(s.rr), color = col, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("conf ${s.confluence} · %${s.probability} · RR 1:" + "%.1f".format(s.rr), color = col, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
