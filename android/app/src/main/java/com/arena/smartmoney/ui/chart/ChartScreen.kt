@@ -309,16 +309,18 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             val s = kz.startIdx.coerceAtLeast(startIdx); val e = kz.endIdx.coerceAtMost(totalCandles-1)
             if (e < startIdx || s > totalCandles-1) continue
             val x1 = idxX(s) - cw/2; val x2 = idxX(e) + cw/2
-            val color = when {
+            val kzCol = when {
                 kz.name.contains("نیویورک") && kz.name.contains("لندن") -> KzOver
                 kz.name.contains("نیویورک") -> KzNy
                 kz.name.contains("لندن") -> KzLon
                 else -> KzAsia
             }
-            drawRect(color, topLeft = Offset(x1, chartT), size = Size(x2-x1, chartH))
-            // label at top
-            val lp = NativePaint().apply { color = color.copy(alpha=0.9f).toArgb(); textSize=20f; isAntiAlias=true }
-            drawContext.canvas.nativeCanvas.drawText(kz.name, x1+6f, chartT+18f, lp)
+            drawRect(kzCol, topLeft = Offset(x1, chartT), size = Size(x2-x1, chartH))
+            val kzPaint = NativePaint().apply {
+                color = kzCol.copy(alpha = 0.95f).toArgb(); textSize = 20f; isAntiAlias = true
+                isFakeBoldText = true
+            }
+            drawContext.canvas.nativeCanvas.drawText(kz.name, x1+6f, chartT+18f, kzPaint)
         }
 
         // Zones (OB/FVG/BRK) - draw slightly wider than 1 candle
@@ -351,7 +353,7 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             val col = if (up) UpC else DnC
             val yH=priceY(c.h); val yL=priceY(c.l); val yO=priceY(c.o); val yC=priceY(c.c)
             drawLine(col, Offset(x,yH), Offset(x,yL), strokeWidth=1f)
-            val top=min(yO,yC); val hgt=kotlin.math.abs(yC-yO).coerceAtLeast(1.2f)
+            val top=kotlin.math.min(yO,yC); val hgt=kotlin.math.abs(yC-yO).coerceAtLeast(1.2f)
             drawRect(col, topLeft=Offset(x-bw/2, top), size=Size(bw, hgt))
         }
 

@@ -20,6 +20,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -56,18 +60,18 @@ fun SignalsScreen(
     val context = LocalContext.current
     val t = rememberTranslator()
     // Apex AI Pro SMC live signals
-    val scope = androidx.compose.runtime.rememberCoroutineScope()
-    var smcSignals by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<List<SmcSignal>>(emptyList()) }
-    var smcLoading by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+    val smcScope = rememberCoroutineScope()
+    var smcSignals by remember { mutableStateOf<List<SmcSignal>>(emptyList()) }
+    var smcLoading by remember { mutableStateOf(true) }
     fun loadSmc() {
-        scope.launch {
+        smcScope.launch {
             smcLoading = true
             try { smcSignals = TradingRepository().scanSignals(2).signals }
             catch (_: Throwable) { smcSignals = emptyList() }
             finally { smcLoading = false }
         }
     }
-    androidx.compose.runtime.LaunchedEffect(Unit) { loadSmc() }
+    LaunchedEffect(Unit) { loadSmc() }
 
     val eliteCount = state.items.count { (it.setup_grade ?: "C").uppercase(Locale.getDefault()) in listOf("A+", "A") }
     val readyCount = state.items.count { (it.execution_label ?: "observe").lowercase(Locale.getDefault()) in listOf("execution_ready", "scalp_ready") }
