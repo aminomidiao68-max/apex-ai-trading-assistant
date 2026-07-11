@@ -469,14 +469,22 @@ private fun SummaryCard(session: Session, onOpenChart: () -> Unit = {}) {
             }
             Spacer(modifier = Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "کانف: ", color = TextMid, fontSize = 12.sp)
-                Text(text = "$score", color = Gold, fontWeight = FontWeight.Black, fontSize = 15.sp)
+                // Grade badge
+                val gr = r?.grade ?: "-"
+                val gCol = when(gr) { "A+","A" -> Gold; "B" -> Green; "C" -> Gold; "D" -> Color(0xFFFF9F43); else -> TextLow }
+                Surface(shape = RoundedCornerShape(7.dp), color = gCol.copy(alpha=0.2f)) {
+                    Text("  $gr  ", color = gCol, fontSize = 11.sp, fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(vertical=3.dp))
+                }
+                Spacer(Modifier.width(6.dp))
+                Text(text = "کانف: ", color = TextMid, fontSize = 11.sp)
+                Text(text = "$score", color = Gold, fontWeight = FontWeight.Black, fontSize = 14.sp)
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(text = "•  احتمال: %${r?.probability ?: 0}", color = Gold, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "•%${r?.probability ?: 0}", color = Gold, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                Spacer(modifier = Modifier.width(6.dp))
                 Surface(shape = RoundedCornerShape(8.dp), color = sideColor.copy(alpha = 0.15f)) {
                     Text(text = "  ${r?.ai?.side ?: "انتظار"}  ",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
                         fontSize = 9.sp, fontWeight = FontWeight.Black, color = sideColor)
                 }
                 Spacer(modifier = Modifier.weight(1f))

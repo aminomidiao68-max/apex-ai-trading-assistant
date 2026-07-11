@@ -601,7 +601,11 @@ data class SmcZone(
     val name: String = "",
     val inverse: Boolean = false,
     @SerializedName("size_pct") val sizePct: Float = 0f,
-    @SerializedName("full_height") val fullHeight: Boolean = false
+    @SerializedName("full_height") val fullHeight: Boolean = false,
+    val quality: Int = 5,
+    val fresh: Boolean = true,
+    val vol: Float = 0f,
+    val color: String = ""
 )
 data class SmcLabel(val kind: String = "", val dir: String = "", val index: Int = 0, val price: Float = 0f)
 data class SmcLine(val kind: String = "", val price: Float = 0f)
@@ -613,8 +617,13 @@ data class SmcOverlay(
 data class SmcOrderFlow(
     val delta: Float = 0f,
     val pressure: String = "neutral",
+    val cvd: Float = 0f,
     val cvd_curve: List<Map<String, Double>> = emptyList(),
-    @SerializedName("volume_spike") val volumeSpike: Boolean = false
+    @SerializedName("volume_spike") val volumeSpike: Boolean = false,
+    @SerializedName("cvd_divergence") val cvdDivergence: String? = null,
+    val absorption: Boolean = false,
+    val climax: Boolean = false,
+    @SerializedName("avg_volume") val avgVolume: Float = 0f
 )
 data class SmcVisibleRange(
     val low: Float = 0f,
@@ -623,6 +632,21 @@ data class SmcVisibleRange(
 data class SmcHtf(
     val timeframe: String? = null,
     val bias: String? = null
+)
+data class SmcConfluenceFactor(
+    val name: String = "",
+    val points: Int = 0,
+    val why: String = ""
+)
+data class SmcWatching(
+    val direction: String = "neutral",
+    val entry: Float = 0f,
+    val sl: Float = 0f,
+    val tp: Float = 0f,
+    val distance: Float = 0f,
+    val atr: Float = 0f,
+    val reasons: List<String> = emptyList(),
+    val status: String = ""
 )
 data class SmcAiNarrative(
     val side: String = "انتظار",
@@ -633,7 +657,9 @@ data class SmcAiNarrative(
     val rr: Float = 0f,
     val probability: Int = 0,
     val verdict: String = "",
-    @SerializedName("setup_type") val setupType: String = "-"
+    @SerializedName("setup_type") val setupType: String = "-",
+    val grade: String = "-",
+    val factors: List<SmcConfluenceFactor> = emptyList()
 )
 data class SmcSignal(
     val symbol: String = "",
@@ -650,6 +676,7 @@ data class SmcSignal(
     val tp2: Float? = null,
     val tp3: Float? = null,
     val probability: Int = 0,
+    val grade: String = "-",
     @SerializedName("setup_type") val setupType: String = "-",
     val ai: SmcAiNarrative = SmcAiNarrative(),
     val status: String = "ok"
@@ -678,6 +705,9 @@ data class SmcReport(
     val atr: Float = 0f,
     val note: String = "",
     val status: String = "",
+    val grade: String = "-",
+    @SerializedName("trend_strength") val trendStrength: Int = 0,
+    val vwap: Float = 0f,
     val levels: SmcLevel = SmcLevel(),
     val tp1: Float? = null,
     val tp2: Float? = null,
@@ -690,6 +720,9 @@ data class SmcReport(
     @SerializedName("htf_bias") val htfBias: String? = null,
     @SerializedName("news_blocked") val newsBlocked: Boolean = false,
     @SerializedName("volume_spike") val volumeSpike: Boolean = false,
+    @SerializedName("session_active") val sessionActive: String = "-",
+    @SerializedName("session_weight") val sessionWeight: Float = 0f,
+    @SerializedName("session_color") val sessionColor: String = "#f59e0b",
     val events: List<SmcEvent> = emptyList(),
     @SerializedName("order_blocks") val orderBlocks: List<SmcZone> = emptyList(),
     val fvg: List<SmcZone> = emptyList(),
@@ -703,6 +736,8 @@ data class SmcReport(
     @SerializedName("visible_range") val visibleRange: SmcVisibleRange = SmcVisibleRange(),
     val candles: List<SmcCandle> = emptyList(),
     val overlay: SmcOverlay = SmcOverlay(),
+    val watching: List<SmcWatching> = emptyList(),
+    @SerializedName("confluence_factors") val confluenceFactors: List<SmcConfluenceFactor> = emptyList(),
     @SerializedName("candles_count") val candlesCount: Int = 0,
     @SerializedName("created_by") val createdBy: String = "Amin Omidi"
 )

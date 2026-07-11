@@ -141,6 +141,7 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
             }
             item { AiCard(r, loading) }
             item { LevelsCard(r) }
+            if (r.watching.isNotEmpty()) item { WatchingCard(r) }
             if (r.killzones.isNotEmpty()) item { Section("سشن‌ها و کیل‌زون‌ها", Gold) }
             if (r.killzones.isNotEmpty()) items(r.killzones.take(4)) { kz ->
                 KzRow(kz)
@@ -201,17 +202,26 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
             }
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Grade chip
+                val gradeC = when(r.grade) {
+                    "A+","A" -> Gold; "B" -> UpC; "C" -> GoldDim; "D" -> BrkC; else -> TL
+                }
+                ChipS("درجه ${r.grade}", gradeC)
                 ChipS("conf ${r.confluence}", when { r.confluence>=70->Gold; r.confluence>=40->GoldDim; else->TL })
-                ChipS("احتمال %${r.probability}", when { r.probability>=70->UpC; r.probability>=50->GoldDim; else->TL })
+                ChipS("احتمال %${r.probability}", when { r.probability>=75->UpC; r.probability>=55->GoldDim; else->TL })
                 ChipS(if (r.rr > 0f) "RR 1:%.1f".format(r.rr) else "RR -", if(r.rr>=2f) UpC else TL)
+                ChipS("TS ${r.trendStrength}", when{r.trendStrength>=60->UpC;r.trendStrength<30->DnC;else->TL})
                 ChipS("${r.candlesCount}c", TL)
                 ChipS(r.status.ifBlank { "-" }, TL)
                 val pr = r.orderflow.pressure
                 ChipS(when(pr){"buy"->"OF: خرید";"sell"->"OF: فروش";else->"OF: خنثی"}, when(pr){"buy"->UpC;"sell"->DnC;else->TL})
+                if (r.orderflow.volumeSpike) ChipS("VOL ↑", Gold)
+                if (r.orderflow.absorption) ChipS("ABSRB", BrkC)
+                if (r.orderflow.cvdDivergence != null) ChipS("DIV "+if(r.orderflow.cvdDivergence=="bullish")"▲"else"▼",
+                    if(r.orderflow.cvdDivergence=="bullish")UpC else DnC)
                 ChipS(when(r.premiumZone){"premium"->"پرمیوم";"discount"->"دیسکانت";else->"تعادل"}, GoldDim)
                 if (r.newsBlocked) ChipS("⚠️ خبر", DnC)
                 if (r.mtfAligned) ChipS("MTF ✓", UpC)
-                if (r.volumeSpike) ChipS("VOL ↑", Gold)
             }
             if (r.setupType != "-" && r.setupType.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
@@ -221,9 +231,12 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
             }
             Spacer(Modifier.height(8.dp))
             Text(if (loading) "در حال بارگذاری..." else r.note.ifBlank { "-" }, color = TH, fontSize = 12.sp, lineHeight = 18.sp)
-            if (r.sessions.isNotEmpty()) {
+            if (r.sessionActive != "-") {
                 Spacer(Modifier.height(6.dp))
-                Text("سشن فعال: " + r.sessions.joinToString(" / "), color = GoldDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Text("سشن فعال: ${r.sessionActive}  •  VWAP ${fmt(r.vwap)}", color = GoldDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            } else {
+                Spacer(Modifier.height(6.dp))
+                Text("VWAP: ${fmt(r.vwap)}", color = TL, fontSize = 11.sp)
             }
         }
     }
@@ -250,6 +263,43 @@ private fun AiCard(r: SmcReport, loading: Boolean) {
                 color = TH, fontSize = 12.sp, lineHeight = 22.sp)
             Spacer(Modifier.height(6.dp))
             Text(if (loading) "" else r.ai.recommendation, color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun WatchingCard(r: SmcReport) {
+    Card(colors = CardDefaults.cardColors(containerColor = Surf2), shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(14.dp)) {
+            Text("👀 ستاپ‌های زیر نظر (Watching)", color = Gold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            r.watching.take(3).forEach { w ->
+                val col = if (w.direction == "long") UpC else if (w.direction == "short") DnC else TL
+                val lbl = if (w.direction == "long") "خرید (LONG)" else if (w.direction == "short") "فروش (SHORT)" else "خنثی"
+                val distPct = if (w.atr > 0f) (w.distance/w.atr) else 0f
+                val statusLbl = when(w.status) {
+                    "in_zone" -> "✅ داخل ناحیه"
+                    "approaching" -> "🟡 نزدیک"
+                    else -> "🔴 دور"
+                }
+                Surface(shape = RoundedCornerShape(10.dp), color = col.copy(alpha=0.08f),
+                    modifier = Modifier.fillMaxWidth().padding(vertical=3.dp)) {
+                    Column(Modifier.padding(10.dp)) {
+                        Row(horizontalArrangement=Arrangement.SpaceBetween, modifier=Modifier.fillMaxWidth()) {
+                            Text(lbl, color=col, fontSize=12.sp, fontWeight=FontWeight.Black)
+                            Text(statusLbl, color=col, fontSize=11.sp, fontWeight=FontWeight.Bold)
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text("فاصله: %.2f ATR • ورود: %s • SL: %s • TP: %s".format(
+                            distPct, fmt(w.entry), fmt(w.sl), fmt(w.tp)),
+                            color=TL, fontSize=10.sp)
+                        if (w.reasons.isNotEmpty()) {
+                            Spacer(Modifier.height(3.dp))
+                            Text("دلایل: " + w.reasons.joinToString(" / "), color=GoldDim, fontSize=10.sp)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -358,9 +408,12 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             if (color == Color.Transparent) continue
             drawRect(color=color.copy(alpha=0.20f), topLeft=Offset(xstart, top), size=Size(xend-xstart, (bot-top).coerceAtLeast(2f)))
             drawRect(color=color.copy(alpha=0.7f), topLeft=Offset(xstart, top), size=Size(xend-xstart, (bot-top).coerceAtLeast(2f)), style=Stroke(1.2f))
-            // Tag
+            // Tag with quality stars
+            val stars = if (z.quality >= 1) "★".repeat(z.quality.coerceAtMost(5)) else ""
+            val fresh_dot = if (z.fresh) "●" else "○"
+            val tag = "${z.kind} $fresh_dot$stars"
             val tp = NativePaint().apply { this.color = color.toArgb(); textSize = 18f; isAntiAlias = true }
-            drawContext.canvas.nativeCanvas.drawText(z.kind, xstart+4f, top-4f, tp)
+            drawContext.canvas.nativeCanvas.drawText(tag, xstart+4f, top-4f, tp)
         }
 
         // Candles
@@ -374,6 +427,34 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             drawRect(col, topLeft=Offset(x-bw/2, top), size=Size(bw, hgt))
         }
 
+        // VWAP line
+        if (report.vwap > 0f) {
+            val y = priceY(report.vwap)
+            if (y >= chartT-5f && y <= chartB+5f) {
+                drawLine(Color.Cyan.copy(alpha=0.55f), Offset(chartL, y), Offset(chartR, y), strokeWidth=1f,
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f,3f)))
+                val vp = NativePaint().apply { color=android.graphics.Color.CYAN; textSize=17f; isAntiAlias=true }
+                drawContext.canvas.nativeCanvas.drawText("VWAP", 6f, y-4f, vp)
+            }
+        }
+        // Fib lines from overlay (fib50/fib62/fib79)
+        for (fl in report.overlay.lines) {
+            if (fl.kind == "vwap" || fl.kind.startsWith("fib")) {
+                val col = when(fl.kind) {
+                    "fib50" -> Color.Magenta.copy(alpha=0.45f)
+                    "fib62" -> Color(0xFFfbbf24).copy(alpha=0.55f)
+                    "fib79" -> Color(0xFFef4444).copy(alpha=0.55f)
+                    else -> Color.Transparent
+                }
+                if (col == Color.Transparent) continue
+                val y = priceY(fl.price)
+                if (y < chartT-5f || y > chartB+5f) continue
+                drawLine(col, Offset(chartL, y), Offset(chartR, y), strokeWidth=0.8f,
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(2f,4f)))
+                val fp = NativePaint().apply { this.color = col.toArgb(); textSize = 16f; isAntiAlias = true }
+                drawContext.canvas.nativeCanvas.drawText(fl.kind.uppercase(), 6f, y-4f, fp)
+            }
+        }
         // Liquidity / EQ lines + labels
         for (lab in report.inducements) {
             val col = when {
@@ -594,7 +675,7 @@ fun AiSignalBoard(signals: List<com.arena.smartmoney.data.model.SmcSignal>, load
                                     Text("  $side  ", color = col, fontSize = 10.sp, fontWeight = FontWeight.Black)
                                 }
                                 Spacer(Modifier.height(3.dp))
-                                Text("conf ${s.confluence} · %${s.probability} · RR 1:" + "%.1f".format(s.rr), color = col, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Text("${s.grade} · conf ${s.confluence} · %${s.probability} · RR 1:" + "%.1f".format(s.rr), color = col, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

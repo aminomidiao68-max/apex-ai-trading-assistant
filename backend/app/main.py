@@ -392,7 +392,17 @@ def _norm_candles(raw):
     items = []
     for c in raw:
         d = c.model_dump() if hasattr(c,"model_dump") else (dict(c) if isinstance(c,dict) else {})
-        t = d.get("t", d.get("time", d.get("datetime",0)))
+        t_raw = d.get("t", d.get("time", d.get("datetime", d.get("timestamp", 0))))
+        # Convert datetime objects to unix seconds
+        if hasattr(t_raw, "timestamp"):
+            t = t_raw.timestamp()
+        else:
+            try:
+                t = float(t_raw)
+                if t > 1e12: t = t/1000.0  # ms -> s
+                elif t > 1e10: pass  # seconds in ms-range? unlikely but ok
+            except Exception:
+                continue
         o = d.get("o", d.get("open",0)); h = d.get("h", d.get("high",0))
         l = d.get("l", d.get("low",0)); cl = d.get("c", d.get("close",0))
         v = d.get("v", d.get("volume",0))
@@ -419,6 +429,7 @@ def _smc_err(symbol, tf, price, note, code="fetch_failed", candles=None, count=0
 
 
 _SCAN_WATCHLIST = [
+    # Forex majors
     ("XAUUSD","forex","5min"),
     ("XAUUSD","forex","15min"),
     ("XAUUSD","forex","1h"),
@@ -426,11 +437,20 @@ _SCAN_WATCHLIST = [
     ("GBPUSD","forex","15min"),
     ("USDJPY","forex","15min"),
     ("AUDUSD","forex","15min"),
+    ("USDCAD","forex","15min"),
+    ("EURJPY","forex","15min"),
+    ("GBPJPY","forex","15min"),
+    # Crypto
     ("BTCUSDT","crypto","5min"),
     ("BTCUSDT","crypto","15min"),
     ("BTCUSDT","crypto","1h"),
+    ("ETHUSDT","crypto","5min"),
     ("ETHUSDT","crypto","15min"),
     ("SOLUSDT","crypto","15min"),
+    ("BNBUSDT","crypto","15min"),
+    ("XRPUSDT","crypto","15min"),
+    ("DOGEUSDT","crypto","5min"),
+    ("ADAUSDT","crypto","15min"),
 ]
 
 @app.get("/api/v1/signals/scan")
@@ -481,6 +501,7 @@ async def scan_signals(min_confluence: int = 2):
                     "bias":r["bias"],"direction":r["direction"],"confluence":r["confluence"],
                     "rr":r.get("rr",0),"price":r["price"],"note":r["note"],
                     "probability":r.get("probability",0),"setup_type":r.get("setup_type","-"),
+                    "grade":r.get("grade","-"),
                     "levels":r["levels"],"tp1":r.get("tp1"),"tp2":r.get("tp2"),"tp3":r.get("tp3"),
                     "ai":r["ai"],"status":"ok"}
         except Exception as e:
