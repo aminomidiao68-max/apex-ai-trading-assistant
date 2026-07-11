@@ -37,6 +37,8 @@ from app.services.ctrader_connector import CTraderConnector
 from app.services.execution_engine import ExecutionEngine
 from app.services.market_data_service import MarketDataService
 from app.services.news_engine import mock_news
+from app.services.news_engine import _news_router as _inline_news_router
+app.include_router(_inline_news_router)
 from app.services.notification_service import NotificationService
 from app.services.readiness_service import ReadinessService
 from app.services.mt5_connector import Mt5Connector
@@ -471,26 +473,3 @@ async def place_oanda_order(request: OandaOrderRequest):
     if not guard["ok"]:
         raise HTTPException(status_code=400, detail=guard)
     return await oanda_connector.place_order(request)
-# --- Inline news endpoints (APEX B) ---
-import os as _os, time as _time
-
-@app.get("/api/v1/news/health")
-def _apex_news_health():
-    k = _os.getenv("FINNHUB_API_KEY", "")
-    return {"service": "news", "finnhub_configured": bool(k), "key_length": len(k)}
-
-@app.get("/api/v1/news/brief")
-def _apex_news_brief():
-    k = _os.getenv("FINNHUB_API_KEY", "")
-    now = int(_time.time())
-    note = "اخبار در حال پردازش است." if k else "FINNHUB_API_KEY هنوز ست نشده."
-    return {
-        "finnhub_configured": bool(k),
-        "server_time_unix": now,
-        "server_time_iso": "",
-        "block": {"blocked": False, "reasons": [], "block_until": 0, "active_events": []},
-        "adjustment": {"bias": "neutral", "score_penalty": 0, "note": note},
-        "events": {"upcoming": [], "live": [], "past": []},
-        "headlines": []
-    }
-# --- end APEX B news endpoints ---

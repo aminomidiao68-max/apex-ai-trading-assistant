@@ -55,3 +55,31 @@ def mock_news(market: str) -> list[dict]:
             "market": market,
         },
     ]
+
+
+# --- APEX B inline health + brief ---
+from fastapi import APIRouter
+import os as _os, time as _time
+
+_news_router = APIRouter(prefix="/api/v1/news")
+
+@_news_router.get("/health")
+def _apex_news_health():
+    k = _os.getenv("FINNHUB_API_KEY", "")
+    return {"service": "news", "finnhub_configured": bool(k), "key_length": len(k)}
+
+@_news_router.get("/brief")
+def _apex_news_brief():
+    k = _os.getenv("FINNHUB_API_KEY", "")
+    now = int(_time.time())
+    note = "اخبار در حال پردازش است." if k else "FINNHUB_API_KEY هنوز ست نشده."
+    return {
+        "finnhub_configured": bool(k),
+        "server_time_unix": now,
+        "server_time_iso": "",
+        "block": {"blocked": False, "reasons": [], "block_until": 0, "active_events": []},
+        "adjustment": {"bias": "neutral", "score_penalty": 0, "note": note},
+        "events": {"upcoming": [], "live": [], "past": []},
+        "headlines": []
+    }
+
