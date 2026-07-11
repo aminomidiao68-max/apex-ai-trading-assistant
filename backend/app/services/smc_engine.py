@@ -355,10 +355,8 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None):
             if risk>0:
                 tp=price+risk*2; rr=(tp-entry)/risk; near_ob=True
                 # entry only valid if current price is within/near OB (within 1 ATR of top)
-                if price<=z["top"]+atr and price>=z["bottom"]-atr*0.3:
+                if price<=z["top"]+atr*1.5 and price>=z["bottom"]-atr*0.5:
                     conf+=2
-                else:
-                    direction="long"  # setup exists but not retested yet
         # fvg
         in_bull_fvg=any(g["kind"]=="bullish" and g["bottom"]<=price<=g["top"]*1.005 for g in active_fvg)
         if in_bull_fvg: conf+=1; near_fvg=True
@@ -380,10 +378,8 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None):
             risk=sl-entry
             if risk>0:
                 tp=price-risk*2; rr=(entry-tp)/risk; near_ob=True
-                if price>=z["bottom"]-atr and price<=z["top"]+atr*0.3:
+                if price>=z["bottom"]-atr*1.5 and price<=z["top"]+atr*0.5:
                     conf+=2
-                else:
-                    direction="short"
         in_bear_fvg=any(g["kind"]=="bearish" and g["bottom"]*0.995<=price<=g["top"] for g in active_fvg)
         if in_bear_fvg: conf+=1; near_fvg=True
         if oflow["pressure"]=="sell": conf+=1
