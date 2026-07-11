@@ -51,12 +51,12 @@ app = FastAPI(title=settings.app_name, version="0.9.0")
 # --- Inline news endpoints (APEX B) ---
 import os as _os, time as _time
 
-@app.get("/api/news/health")
+@app.get("/api/v1/news/health")
 def _apex_news_health():
     k = _os.getenv("FINNHUB_API_KEY", "")
     return {"service": "news", "finnhub_configured": bool(k), "key_length": len(k)}
 
-@app.get("/api/news/brief")
+@app.get("/api/v1/news/brief")
 def _apex_news_brief():
     k = _os.getenv("FINNHUB_API_KEY", "")
     now = int(_time.time())

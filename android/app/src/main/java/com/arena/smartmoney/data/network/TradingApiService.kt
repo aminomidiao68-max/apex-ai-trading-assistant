@@ -176,7 +176,7 @@ interface TradingApiService {
         }
     }
 
-    @GET("news/brief")
+    @GET("v1/news/brief")
     suspend fun getNewsBrief(): NewsBrief
 
 }
