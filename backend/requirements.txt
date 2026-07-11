@@ -6,3 +6,5 @@ python-dotenv==1.1.1
 httpx==0.28.1
 google-auth==2.40.3
 requests==2.32.3
+
+# news endpoints rebuild trigger
