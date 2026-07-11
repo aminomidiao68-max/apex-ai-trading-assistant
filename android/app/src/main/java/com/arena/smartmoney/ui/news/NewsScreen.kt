@@ -101,9 +101,8 @@ fun NewsScreen(onBack: () -> Unit = {}) {
                             else items(b.events.live, key = { it.id }) { EventRow(it, live = true) }
                         1 -> if (b.events.upcoming.isEmpty()) item { Empty("رویداد مهمی در ساعات آینده نیست.") }
                             else items(b.events.upcoming, key = { it.id }) { EventRow(it, live = false) }
-                        else -> if (!b.finnhub_configured) item { Empty("برای تیترها FINNHUB_API_KEY را روی Render ست کن.") }
-                        else if (b.headlines.isEmpty()) item { Empty("تیتری دریافت نشد.") }
-                        else items(b.headlines, key = { it.id }) { HeadlineRow(it) }
+                        else -> if (b.headlines.isEmpty()) item { Empty("تیتری دریافت نشد.") }
+                            else items(b.headlines, key = { it.id.ifBlank { it.title } }) { HeadlineRow(it) }
                     }
                     item {
                         Spacer(Modifier.height(10.dp))
@@ -134,7 +133,7 @@ private fun BlockBanner(reasons: List<String>) {
 @Composable
 private fun ConfigCard(configured: Boolean, adj: NewsAdjustment) {
     val (icon, c, title) = when {
-        !configured -> Triple(Icons.Default.Lock, Amber, "فین‌هاب تنظیم نشده")
+        !configured -> Triple(Icons.Default.AutoAwesome, Gold, "اخبار هوشمند آفلاین")
         adj.bias == "risk_off" -> Triple(Icons.Default.Shield, Red, "حالت ریسک‌گریز")
         adj.bias == "risk_on" -> Triple(Icons.Default.TrendingUp, Green, "حالت ریسک‌پذیر")
         else -> Triple(Icons.Default.CheckCircle, Green, "بازار پایدار")
@@ -145,7 +144,7 @@ private fun ConfigCard(configured: Boolean, adj: NewsAdjustment) {
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, color = TextHi, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text(if (configured) adj.note else "برای فعال شدن اخبار واقعی، FINNHUB_API_KEY را روی Render اضافه کن.",
+                Text(if (configured) adj.note else ("اخبار توسط Apex AI تولید می‌شوند. " + adj.note),
                     color = TextMid, fontSize = 12.sp, lineHeight = 18.sp)
                 if (configured && adj.score_penalty > 0) {
                     Spacer(Modifier.height(6.dp))
@@ -160,11 +159,12 @@ private fun ConfigCard(configured: Boolean, adj: NewsAdjustment) {
 private fun EventRow(ev: NewsEvent, live: Boolean) {
     val impactColor = when (ev.impact) { "high" -> Red; "medium" -> Orange; else -> Blue }
     val fmt = remember { SimpleDateFormat("HH:mm", Locale.ENGLISH) }
+    val timeLabel = ev.timeTehran.ifBlank { fmt.format(Date(ev.time_unix * 1000L)) }
     ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.elevatedCardColors(containerColor = CardC)) {
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(fmt.format(Date(ev.time_unix * 1000L)), color = TextHi, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                Text(if (live) "زنده" else if (ev.minutes_until > 0) "${ev.minutes_until}m" else "-",
+                Text(timeLabel, color = TextHi, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(if (live) "زنده" else if (ev.phase == "past") "گذشته" else "پیش‌رو",
                     color = if (live) Red else impactColor, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.width(12.dp))
@@ -208,12 +208,13 @@ private fun Metric(label: String, value: String, color: Color) {
 @Composable
 private fun HeadlineRow(h: NewsHeadline) {
     val fmt = remember { SimpleDateFormat("HH:mm", Locale.ENGLISH) }
+    val timeText = if (h.time_unix > 0L) fmt.format(Date(h.time_unix * 1000L)) else ""
     ElevatedCard(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.elevatedCardColors(containerColor = CardC)) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(h.source.ifBlank { "Finnhub" }, color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text(h.source.ifBlank { "Apex AI" }, color = Gold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.weight(1f))
-                Text(fmt.format(Date(h.time_unix * 1000L)), color = TextLow, fontSize = 10.sp)
+                if (timeText.isNotBlank()) Text(timeText, color = TextLow, fontSize = 10.sp)
             }
             Spacer(Modifier.height(6.dp))
             Text(h.title, color = TextHi, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)

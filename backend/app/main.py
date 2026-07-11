@@ -305,6 +305,10 @@ async def get_smc_analysis(
             "status": "fetch_failed",
             "levels": {"entry": None, "sl": None, "tp": None},
             "events": [], "order_blocks": [], "fvg": [], "breakers": [], "inducements": [],
+            "sessions": [], "killzones": [],
+            "orderflow": {"delta": 0, "pressure": "neutral", "cvd_curve": []},
+            "ai": {"side": "انتظار", "trend": "خنثی", "summary": "خطا در دریافت داده", "recommendation": "-", "confluence": 0},
+            "candles": [],
             "overlay": {"lines": [], "zones": [], "labels": []},
             "candles_count": 0,
             "created_by": "Amin Omidi",
@@ -329,6 +333,11 @@ async def get_smc_analysis(
         from app.services.smc_engine import analyze
         report = analyze(items, symbol=symbol.upper(), timeframe=interval)
         report["status"] = "ok"
+        # Attach normalized candles (trim to last 120 for chart rendering to keep payload small)
+        chart_items = items[-120:]
+        report["candles"] = chart_items
+        # Provide full length in candles_count
+        report["candles_count"] = len(items)
         return report
     except Exception as e:
         logger.exception("SMC analysis failed")
@@ -340,6 +349,10 @@ async def get_smc_analysis(
             "status": "analysis_failed",
             "levels": {"entry": None, "sl": None, "tp": None},
             "events": [], "order_blocks": [], "fvg": [], "breakers": [], "inducements": [],
+            "sessions": [], "killzones": [],
+            "orderflow": {"delta": 0, "pressure": "neutral", "cvd_curve": []},
+            "ai": {"side": "انتظار", "trend": "خنثی", "summary": "خطا در تحلیل", "recommendation": "-", "confluence": 0},
+            "candles": items[-120:],
             "overlay": {"lines": [], "zones": [], "labels": []},
             "candles_count": len(items),
             "created_by": "Amin Omidi",

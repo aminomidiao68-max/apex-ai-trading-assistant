@@ -28,7 +28,12 @@ import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
 import java.util.*
 
+import com.arena.smartmoney.data.model.SmcReport
+import com.arena.smartmoney.data.repository.TradingRepository
+import kotlinx.coroutines.launch
+
 private val BgDark     = Color(0xFF0B0F14)
+
 private val BgDarkElev = Color(0xFF10151C)
 private val CardC      = Color(0xFF161C25)
 private val CardDark   = Color(0xFF0E1319)
@@ -173,7 +178,7 @@ fun DashboardScreen(
                     }
                 }
                 // Box 2: AI summary
-                item { SummaryCard(session = currentSession) }
+                item { SummaryCard(session = currentSession, onOpenChart = goChart) }
                 // Quick actions title
                 item { Label("دسترسی سریع") }
                 item {
@@ -432,70 +437,65 @@ private fun LiquidityCard(
 }
 
 @Composable
-private fun SummaryCard(session: Session) {
+@Composable
+private fun SummaryCard(session: Session, onOpenChart: () -> Unit = {}) {
+    val scope = rememberCoroutineScope()
+    var rep by remember { mutableStateOf<SmcReport?>(null) }
+    LaunchedEffect(Unit) {
+        scope.launch {
+            try { rep = TradingRepository().getSmcAnalysis("XAUUSD","forex","15min",160) } catch (_: Throwable) { rep = null }
+        }
+    }
+    val r = rep
+    val biasColor = when (r?.bias) { "bullish" -> Green; "bearish" -> Red; else -> Gold }
+    val biasText = when (r?.bias) { "bullish" -> "BULLISH صعودی"; "bearish" -> "BEARISH نزولی"; else -> "LOADING... در حال تحلیل" }
+    val score = r?.confluence ?: 0
+    val sideColor = when (r?.direction) { "long" -> Green; "short" -> Red; else -> Gold }
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { onOpenChart() },
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = CardC)
+        colors = CardDefaults.elevatedCardColors(containerColor = CardC),
+        border = BorderStroke(1.dp, Gold.copy(alpha = 0.3f))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Gold)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "جمع‌بندی هوش مصنوعی",
-                    fontWeight = FontWeight.Bold,
-                    color = TextHi,
-                    fontSize = 15.sp
-                )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "امتیاز روز: ", color = TextMid, fontSize = 13.sp)
-                Text(text = "7/10", color = Gold, fontWeight = FontWeight.Black, fontSize = 18.sp)
-                Spacer(modifier = Modifier.width(8.dp))
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Green.copy(alpha = 0.15f)
-                ) {
-                    Text(
-                        text = "BULLISH BIAS",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Green
-                    )
+                Text(text = "Apex AI — تحلیل زنده XAUUSD", fontWeight = FontWeight.Black, color = Gold, fontSize = 15.sp)
+                Spacer(modifier = Modifier.weight(1f))
+                Surface(shape = RoundedCornerShape(8.dp), color = biasColor.copy(alpha = 0.15f)) {
+                    Text(text = "  $biasText  ", modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        fontSize = 10.sp, fontWeight = FontWeight.Black, color = biasColor)
                 }
             }
-
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "کانفلونس: ", color = TextMid, fontSize = 12.sp)
+                Text(text = "$score/4", color = Gold, fontWeight = FontWeight.Black, fontSize = 16.sp)
+                Spacer(modifier = Modifier.width(10.dp))
+                Surface(shape = RoundedCornerShape(8.dp), color = sideColor.copy(alpha = 0.15f)) {
+                    Text(text = "  ${r?.ai?.side ?: "انتظار"}  ",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        fontSize = 10.sp, fontWeight = FontWeight.Black, color = sideColor)
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                if (r != null) {
+                    Text("%.2f".format(r.price), color = TextHi, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+            }
             Spacer(modifier = Modifier.height(8.dp))
-
             Text(
-                text = "روند کلی در جلسهٔ فعلی صعودی است. تمرکز روی نقدینگی سمت فروش و تایید روی تایم‌فریم‌های بالاتر باشد. مدیریت ریسک را رعایت کنید.",
-                color = TextHi,
-                fontSize = 13.sp,
-                lineHeight = 20.sp
+                text = r?.ai?.summary?.ifBlank { r.note } ?: "در حال دریافت تحلیل هوشمند از سرور Apex...",
+                color = TextHi, fontSize = 12.sp, lineHeight = 20.sp, maxLines = 3
             )
-
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider(color = CardDark)
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = "تمرکز پیشنهادی برای جلسهٔ ${session.labelFa}:",
-                color = TextMid,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "ورود فقط در صورت تایید ساختار (BOS/CHoCH) و تشکیل Order Block معتبر. در زمان اخبار پرریسک ورود جدید نگیرید.",
-                color = TextHi,
-                fontSize = 12.sp,
-                lineHeight = 18.sp
-            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "ضربه بزنید برای جزئیات کامل SMC →", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.weight(1f))
+                Text(text = "جلسه: ${session.labelFa}", color = TextLow, fontSize = 10.sp)
+            }
         }
     }
 }
