@@ -47,9 +47,10 @@ SETUPS = {
     "ote_bos_retest":  {"name_fa":"پولبک BOS به ناحیه OTE",  "rr_base":2.6, "prob_base":70},
     "choch_fvg_poi":   {"name_fa":"تغییر ساختار + FVG + POI","rr_base":2.2, "prob_base":65},
     "breaker_retest":  {"name_fa":"بریکر بلاک پس از سویپ",    "rr_base":2.1, "prob_base":62},
-    "ob_rejection":    {"name_fa":"واکنش به OB تازه",         "rr_base":2.0, "prob_base":60},
+    "ob_rejection":    {"name_fa":"واکنش به ناحیه PD",         "rr_base":1.8, "prob_base":58},
     "continuation_fvg":{"name_fa":"ادامه روند از FVG",        "rr_base":2.3, "prob_base":64},
     "mmxm_direction":  {"name_fa":"الگوی MMXM (تجمیع-دستکاری)","rr_base":2.8,"prob_base":72},
+    "ote_entry":       {"name_fa":"ورود به ناحیه OTE + لیکو", "rr_base":2.2, "prob_base":63},
 }
 
 # SMC Direction constants
@@ -315,56 +316,88 @@ def _fvg(cs):
 # Order Blocks
 # =========================================================
 def _obs(cs, events, disps, atr):
+    """Order Block detection (ICT-compliant):
+    For a bullish BOS/CHoCH: find the last BEARISH candle in the consolidation
+    leg immediately before the bullish displacement (that candle is the bullish OB).
+    For bearish: last BULLISH candle before bearish displacement.
+    Also accept the break candle itself as the displacement if no earlier one exists.
+    """
     obs=[]; seen=set()
+    disps_idx = {di: (dd,ds) for di,dd,ds in disps}
     for ev in events:
         if ev["type"] not in ("BOS","CHoCH"): continue
         i=ev["index"]; d=ev["dir"]
-        # Find the displacement candle that drove the break
-        disp_idx=None
-        for k in range(i-1,max(0,i-15),-1):
-            for di,dd,ds in disps:
-                if di==k and dd==d:
-                    disp_idx=k; break
-            if disp_idx: break
+        # 1. Find displacement candle: prefer one in direction before i within last 8
+        disp_idx=None; disp_strength=0
+        for k in range(i,max(0,i-12),-1):
+            if k in disps_idx and disps_idx[k][0]==d:
+                disp_idx=k; disp_strength=disps_idx[k][1]; break
+        # 2. Fallback: any strong candle in direction (including the break candle itself)
         if disp_idx is None:
-            # fallback: strong candle preceding break
-            for k in range(i-1,max(0,i-8),-1):
+            for k in range(i,max(0,i-5),-1):
                 c=cs[k]; body=abs(c["c"]-c["o"])
                 bull=c["c"]>c["o"]
-                if ((d=="bullish" and bull and body>=atr*0.4) or
-                    (d=="bearish" and not bull and body>=atr*0.4)):
+                if ((d=="bullish" and bull and body>=atr*0.3) or
+                    (d=="bearish" and not bull and body>=atr*0.3)):
                     disp_idx=k; break
         if disp_idx is None: continue
-        # Find the LAST opposite-color candle before displacement
+        # 3. Walk BACK from displacement to find the LAST opposite-color candle (OB source)
         ob_idx=None
-        for k in range(disp_idx-1,max(0,disp_idx-25),-1):
+        # Find the contiguous run of same-direction candles before disp, then the last opposite
+        opposite_found=False
+        for k in range(disp_idx-1,max(0,disp_idx-30),-1):
             c=cs[k]; bull=c["c"]>c["o"]
-            if d=="bullish" and not bull: ob_idx=k; break
-            if d=="bearish" and bull: ob_idx=k; break
-        if ob_idx is None or ob_idx in seen: continue
+            if d=="bullish":
+                if not bull:
+                    ob_idx=k; break
+                opposite_found=True
+            else:
+                if bull:
+                    ob_idx=k; break
+                opposite_found=True
+        # Fallback: if we couldn't find opposite, use the candle right before disp
+        if ob_idx is None:
+            ob_idx = max(0, disp_idx-1)
+        if ob_idx in seen: continue
+        # Skip if ob is too far back (more than 25 bars from disp)
+        if disp_idx - ob_idx > 25: continue
         seen.add(ob_idx)
         oc=cs[ob_idx]
         rng=oc["h"]-oc["l"] or 1e-9
         body_ratio=abs(oc["c"]-oc["o"])/rng
-        wick_ratio=(min(oc["c"],oc["o"])-oc["l"])/rng if (d=="bullish") else (oc["h"]-max(oc["c"],oc["o"]))/rng
+        # Wick on the rejection side (lower wick for bullish OB = support)
+        if d=="bullish":
+            wick_ratio=(min(oc["c"],oc["o"])-oc["l"])/rng
+        else:
+            wick_ratio=(oc["h"]-max(oc["c"],oc["o"]))/rng
         avgv = _avg_vol(cs, ob_idx, 15)
         vol_mult = oc["v"]/max(1e-9,avgv)
-        quality = min(10, int(body_ratio*4 + wick_ratio*2 + vol_mult*3))
+        quality = min(10, int(body_ratio*3 + wick_ratio*3 + vol_mult*3 + disp_strength*0.3))
         obs.append({"kind":d,"index":ob_idx,"top":oc["h"],"bottom":oc["l"],
                      "open":oc["o"],"close":oc["c"],"volume":oc["v"],
                      "quality":max(3,quality),"mitigated":False,"tapped":False,
-                     "event_type":ev["type"]})
-    # Mitigation check
+                     "event_type":ev["type"],"disp_index":disp_idx})
+    # De-dup: keep only highest-quality OB at similar price (within 0.2 ATR)
+    obs.sort(key=lambda o:(o["index"],-o["quality"]))
+    dedup=[]
+    for o in obs:
+        if any(abs(o["top"]-p["top"])<atr*0.2 and o["kind"]==p["kind"] for p in dedup[-3:]):
+            continue
+        dedup.append(o)
+    obs=dedup
+    # Mitigation check (require a close beyond OB by 20%+ of the zone, not just marginal)
     for ob in obs:
         mid=(ob["top"]+ob["bottom"])/2
-        for j in range(ob["index"]+1,len(cs)):
+        zone_size=ob["top"]-ob["bottom"] or atr*0.3
+        for j in range(ob.get("disp_index",ob["index"])+1,len(cs)):
             cc=cs[j]
             if ob["kind"]=="bullish":
-                if cc["l"]<=ob["top"] and cc["l"]>=ob["bottom"]*0.999: ob["tapped"]=True
-                if cc["c"]<ob["bottom"]: ob["mitigated"]=True; break
+                if cc["l"]<=ob["top"]+zone_size*0.15: ob["tapped"]=True
+                # Mitigated: close BELOW ob bottom - 0.3×zone
+                if cc["c"]<ob["bottom"]-zone_size*0.3: ob["mitigated"]=True; break
             else:
-                if cc["h"]>=ob["bottom"] and cc["h"]<=ob["top"]*1.001: ob["tapped"]=True
-                if cc["c"]>ob["top"]: ob["mitigated"]=True; break
+                if cc["h"]>=ob["bottom"]-zone_size*0.15: ob["tapped"]=True
+                if cc["c"]>ob["top"]+zone_size*0.3: ob["mitigated"]=True; break
     return obs
 
 
@@ -552,52 +585,53 @@ def _parse_tf_mins(tf):
 # =========================================================
 def _fib_leg(leg, cs, bias, price):
     """Compute Fib levels on the latest impulsive leg.
-    For bullish: leg = (low_idx, low_price, high_idx, high_price).
-    OTE long zone = 62% to 79% retracement of the leg (i.e. price pulled back there).
+    For bullish (impulse UP then pullback):
+        - impulse range = high - low
+        - retracement = (high - price) / range  (0 at high, 1 at low)
+        - OTE long = 0.62 to 0.79 retracement (62-79% pullback)
+        - Discount = retracement >= 0.5 (below 50% of range)
+    For bearish (impulse DOWN then pullback):
+        - impulse range = high - low (high was earlier, low was later)
+        - retracement = (price - low) / range  (0 at low, 1 at high)
+        - OTE short = 0.62 to 0.79 retracement (62-79% bounce)
+        - Premium = retracement >= 0.5 (above 50% of range)
+    leg tuple: (li, lp, hi, hp) where li is index of swing-low, hi index of swing-high.
+    If li < hi → impulse went UP (low then high) = bullish leg.
+    If li > hi → impulse went DOWN (high then low) = bearish leg.
     """
     if leg is None: return None
     li,lp,hi,hp = leg
-    if hi<=li:  # bearish leg
-        # leg went from high (hi_idx earlier) to low (li_idx later) -- swap if needed
-        if li < hi:
-            # actually stored (swing_low_idx, lp, swing_high_idx, hp) always low then high? handle both
-            pass
-    # Normalize: x0 = start price of the leg, x1 = end price;
-    # If bullish (low then high): leg_low=lp, leg_high=hp, retracement = (hp - price)/(hp-lp)
-    # If bearish (high then low): leg_high = earlier swing, leg_low = later; retracement = (price-lp)/(hp-lp)
-    if li > hi:
-        # low is AFTER high → bearish leg (made high then lower low)
-        # leg high = hp at index hi (earlier), leg low = lp at li (later)
-        direction = "bearish"
-        x0 = hp; x1 = lp; rng = x0-x1
-        if rng<=0: return None
-        # retracement % from low back to high (0% = low, 100% = high)
-        retrace = (price-x1)/rng
-        # OTE short = 21% to 38% retracement up
-        return {
-            "dir":"bearish","leg_low":lp,"leg_high":hp,"range":rng,
-            "fib27":x1+rng*0.27,"fib38":x1+rng*0.38,"fib50":x1+rng*0.5,
-            "fib62":x1+rng*0.62,"fib79":x1+rng*0.79,
-            "ote_low":x1+rng*0.62,"ote_high":x1+rng*0.79,
-            "retrace_pct":retrace,
-            "in_ote": x1+rng*0.62 <= price <= x1+rng*0.79,  # OTE for shorts: 62-79 from low = premium
-            "in_premium": retrace >= 0.5,
-            "in_discount": retrace < 0.5,
-        }
-    else:
+    if li < hi:
+        # Bullish impulse: low at li (earlier), high at hi (later)
         direction = "bullish"
-        x0 = lp; x1 = hp; rng = x1-x0
-        if rng<=0: return None
-        retrace = (x1-price)/rng  # 0 = at high, 1 = at low
+        rng = hp - lp
+        if rng <= 0: return None
+        retrace = (hp - price) / rng  # how far we've pulled back from high
         return {
             "dir":"bullish","leg_low":lp,"leg_high":hp,"range":rng,
-            "fib27":x1-rng*0.27,"fib38":x1-rng*0.38,"fib50":x1-rng*0.5,
-            "fib62":x1-rng*0.62,"fib79":x1-rng*0.79,
-            "ote_low":x1-rng*0.79,"ote_high":x1-rng*0.62,  # 79% deeper to 62% shallower
+            "fib27":hp-rng*0.27,"fib38":hp-rng*0.38,"fib50":hp-rng*0.5,
+            "fib62":hp-rng*0.62,"fib79":hp-rng*0.79,
+            "ote_low":hp-rng*0.79,"ote_high":hp-rng*0.62,
             "retrace_pct":retrace,
-            "in_ote": x1-rng*0.79 <= price <= x1-rng*0.62,
-            "in_premium": retrace < 0.5,
-            "in_discount": retrace >= 0.5,
+            "in_ote": 0.62 <= retrace <= 0.79,
+            "in_premium": retrace < 0.5,    # above 50% (close to high)
+            "in_discount": retrace >= 0.5,  # below 50% (pulled back)
+        }
+    else:
+        # Bearish impulse: high at hi (earlier), low at li (later)
+        direction = "bearish"
+        rng = hp - lp
+        if rng <= 0: return None
+        retrace = (price - lp) / rng
+        return {
+            "dir":"bearish","leg_low":lp,"leg_high":hp,"range":rng,
+            "fib27":lp+rng*0.27,"fib38":lp+rng*0.38,"fib50":lp+rng*0.5,
+            "fib62":lp+rng*0.62,"fib79":lp+rng*0.79,
+            "ote_low":lp+rng*0.62,"ote_high":lp+rng*0.79,
+            "retrace_pct":retrace,
+            "in_ote": 0.62 <= retrace <= 0.79,
+            "in_premium": retrace >= 0.5,
+            "in_discount": retrace < 0.5,
         }
 
 
@@ -745,21 +779,26 @@ def _detect(cs, bias, active_obs, active_fvgs, br, liq, price, atr, of, fib, vwa
 
     def liq_for(direction):
         want = "sellside_liq" if direction==LONG else "buyside_liq"
+        best=None; best_ago=999
         for l in reversed(liq):
-            if l["kind"]==want and len(cs)-l.get("sweep",l["index"])<=15:
-                return l
-        return None
+            if l["kind"]==want:
+                ago=len(cs)-l.get("sweep",l["index"])
+                if ago<=25 and ago<best_ago:
+                    best_ago=ago; best=l
+        return best
 
     def near_ob(direction):
         best_o=None; bd=1e18
         for o in active_obs:
             if o["kind"]!=direction: continue
+            ob_size = max(atr*0.3, o["top"]-o["bottom"])
+            tol = max(atr*1.0, ob_size*1.2)
             if direction==LONG:
-                if price<=o["top"]+atr*0.4 and price>=o["bottom"]-atr*0.5:
+                if price <= o["top"]+tol*0.3 and price >= o["bottom"]-tol*0.4:
                     d=abs(price-(o["top"]+o["bottom"])/2)
                     if d<bd: bd=d; best_o=o
             else:
-                if price>=o["bottom"]-atr*0.4 and price<=o["top"]+atr*0.5:
+                if price >= o["bottom"]-tol*0.3 and price <= o["top"]+tol*0.4:
                     d=abs(price-(o["top"]+o["bottom"])/2)
                     if d<bd: bd=d; best_o=o
         return best_o
@@ -768,12 +807,14 @@ def _detect(cs, bias, active_obs, active_fvgs, br, liq, price, atr, of, fib, vwa
         best_b=None; bd=1e18
         for b in br:
             if b.get("kind")!=direction: continue
+            b_size = max(atr*0.3, b["top"]-b["bottom"])
+            tol = max(atr*0.9, b_size*1.2)
             if direction==LONG:
-                if price<=b["top"]+atr*0.4 and price>=b["bottom"]-atr*0.5:
+                if price <= b["top"]+tol*0.3 and price >= b["bottom"]-tol*0.4:
                     d=abs(price-(b["top"]+b["bottom"])/2)
                     if d<bd: bd=d; best_b=b
             else:
-                if price>=b["bottom"]-atr*0.4 and price<=b["top"]+atr*0.5:
+                if price >= b["bottom"]-tol*0.3 and price <= b["top"]+tol*0.4:
                     d=abs(price-(b["top"]+b["bottom"])/2)
                     if d<bd: bd=d; best_b=b
         return best_b
@@ -782,12 +823,14 @@ def _detect(cs, bias, active_obs, active_fvgs, br, liq, price, atr, of, fib, vwa
         best_g=None; bd=1e18
         for g in active_fvgs:
             if g["kind"]!=direction: continue
+            g_size = max(atr*0.2, abs(g["top"]-g["bottom"]))
+            tol = max(atr*0.8, g_size*1.5)
             if direction==LONG:
-                if price<=g["top"]+atr*0.5 and price>=g["bottom"]-atr*0.4:
+                if price <= g["top"]+tol and price >= g["bottom"]-tol*0.6:
                     d=abs(price-(g["top"]+g["bottom"])/2)
                     if d<bd: bd=d; best_g=g
             else:
-                if price>=g["bottom"]-atr*0.5 and price<=g["top"]+atr*0.4:
+                if price >= g["bottom"]-tol and price <= g["top"]+tol*0.6:
                     d=abs(price-(g["top"]+g["bottom"])/2)
                     if d<bd: bd=d; best_g=g
         return best_g
@@ -804,11 +847,16 @@ def _detect(cs, bias, active_obs, active_fvgs, br, liq, price, atr, of, fib, vwa
 
     vwap_above = price > vwap
 
+    # Map SMC side ("bullish"/"bearish") to trade direction (long/short)
+    def side_for(direction):
+        return "bullish" if direction==LONG else "bearish"
+
     for direction in (LONG,SHORT):
-        ob=near_ob(direction); brk=near_brk(direction); fvg=near_fvg(direction)
+        sd = side_for(direction)
+        ob=near_ob(sd); brk=near_brk(sd); fvg=near_fvg(sd)
         sweep=liq_for(direction)
         zone=ob or brk
-        in_ote = bool(fib and fib.get("in_ote")) and fib.get("dir")==direction
+        in_ote = bool(fib and fib.get("in_ote")) and fib.get("dir")==sd
         ob_q=ob["quality"] if ob else (brk["quality"] if brk else 0)
         fvg_q=fvg["quality"] if fvg else 0
         poi_count = 0; poi_reasons=[]
@@ -865,6 +913,43 @@ def _detect(cs, bias, active_obs, active_fvgs, br, liq, price, atr, of, fib, vwa
                 elow=fvg["bottom"]; ehigh=fvg["top"]; sl=fvg["bottom"]-atr*0.4
             else:
                 elow=fvg["bottom"]; ehigh=fvg["top"]; sl=fvg["top"]+atr*0.4
+        # OTE + sweep + premium/discount confluence (without needing an explicit OB)
+        elif in_ote and sweep and (fib and ((direction==LONG and fib.get("in_discount")) or (direction==SHORT and fib.get("in_premium")))):
+            stype = "ote_entry"
+            entry = price
+            # SL below/above the liquidity sweep with ATR buffer
+            if direction==LONG:
+                sl = sweep["price"] - atr*0.4
+                elow = price - atr*0.3; ehigh = price + atr*0.2
+            else:
+                sl = sweep["price"] + atr*0.4
+                elow = price - atr*0.2; ehigh = price + atr*0.3
+        # Deep premium/discount retracement (85-100%) + sweep = strong reversal
+        elif fib and sweep and sweep.get("follow_through") and \
+             ((direction==LONG and fib.get("in_discount") and fib.get("retrace_pct",0)>=0.85) or
+              (direction==SHORT and fib.get("in_premium") and fib.get("retrace_pct",0)>=0.85)):
+            stype = "liq_sweep_entry"
+            entry = price
+            if direction==LONG:
+                sl = min(fib["leg_low"], sweep["price"]) - atr*0.5
+                if sl >= entry: sl = entry - atr*1.2
+                elow = price - atr*0.3; ehigh = price + atr*0.2
+            else:
+                sl = max(fib["leg_high"], sweep["price"]) + atr*0.5
+                if sl <= entry: sl = entry + atr*1.2
+                elow = price - atr*0.2; ehigh = price + atr*0.3
+        # Premium/Discount + OF alignment (weak, grade C/D, smaller size)
+        elif (fib and ((direction==LONG and fib.get("in_discount") and fib.get("retrace_pct",0)>0.58) or
+                       (direction==SHORT and fib.get("in_premium") and fib.get("retrace_pct",0)>0.58))) and \
+             of["pressure"]==("buy" if direction==LONG else "sell"):
+            stype = "ob_rejection"  # treat as rejection; weaker
+            entry = price
+            if direction==LONG:
+                sl = fib["leg_low"] - atr*0.3
+                elow = price - atr*0.3; ehigh = price + atr*0.2
+            else:
+                sl = fib["leg_high"] + atr*0.3
+                elow = price - atr*0.2; ehigh = price + atr*0.3
 
         if stype is None or entry is None or sl is None: continue
         risk = abs(entry-sl)
@@ -901,11 +986,11 @@ def _detect(cs, bias, active_obs, active_fvgs, br, liq, price, atr, of, fib, vwa
 # Grading
 # =========================================================
 def _grade(conf, prob, rr):
-    if conf>=80 and prob>=85 and rr>=2.8: return "A+"
-    if conf>=70 and prob>=78 and rr>=2.3: return "A"
-    if conf>=60 and prob>=70 and rr>=1.9: return "B"
-    if conf>=48 and prob>=62 and rr>=1.5: return "C"
-    if conf>=35 and prob>=55: return "D"
+    if conf>=70 and prob>=80 and rr>=2.3: return "A+"
+    if conf>=55 and prob>=72 and rr>=1.9: return "A"
+    if conf>=42 and prob>=64 and rr>=1.6: return "B"
+    if conf>=28 and prob>=57 and rr>=1.3: return "C"
+    if conf>=12 and prob>=52 and rr>=1.2: return "D"
     return "F"
 
 
@@ -1066,7 +1151,9 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
         entry=setup["entry"]; sl=setup["sl"]; tp1=setup["tp1"]; tp2=setup["tp2"]; tp3=setup["tp3"]; inv=setup["invalidation"]
         ezone={"high":setup["entry_high"],"low":setup["entry_low"]}
         setup_fa=SETUPS.get(setup["type"],{}).get("name_fa",setup["type"])
-        if rr<1.2: direction=NEUTRAL
+        if rr<1.0: direction=NEUTRAL
+        # If confluence is very low (no supporting factors), mark as F/neutral despite setup found
+        if conf < 8: direction=NEUTRAL
         grade = _grade(conf, setup["probability"], rr)
 
     # ---- Watching (nearby setups not yet confirmed) ----

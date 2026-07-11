@@ -217,8 +217,11 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
                 ChipS(when(pr){"buy"->"OF: خرید";"sell"->"OF: فروش";else->"OF: خنثی"}, when(pr){"buy"->UpC;"sell"->DnC;else->TL})
                 if (r.orderflow.volumeSpike) ChipS("VOL ↑", Gold)
                 if (r.orderflow.absorption) ChipS("ABSRB", BrkC)
-                if (r.orderflow.cvdDivergence != null) ChipS("DIV "+if(r.orderflow.cvdDivergence=="bullish")"▲"else"▼",
-                    if(r.orderflow.cvdDivergence=="bullish")UpC else DnC)
+                if (r.orderflow.cvdDivergence != null) {
+                    val divArrow = if (r.orderflow.cvdDivergence == "bullish") "▲" else "▼"
+                    val divCol = if (r.orderflow.cvdDivergence == "bullish") UpC else DnC
+                    ChipS("DIV $divArrow", divCol)
+                }
                 ChipS(when(r.premiumZone){"premium"->"پرمیوم";"discount"->"دیسکانت";else->"تعادل"}, GoldDim)
                 if (r.newsBlocked) ChipS("⚠️ خبر", DnC)
                 if (r.mtfAligned) ChipS("MTF ✓", UpC)
