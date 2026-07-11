@@ -579,3 +579,34 @@ data class NewsEventGroups(
     val live: List<NewsEvent> = emptyList(),
     val past: List<NewsEvent> = emptyList()
 )
+
+// ---- Phase C: SMC / Smart Money Concepts ----
+data class SmcLevel(val entry: Float? = null, val sl: Float? = null, val tp: Float? = null)
+data class SmcEvent(val kind: String = "", val dir: String = "", val index: Int = 0, val price: Float = 0f, val time: Long? = null)
+data class SmcZone(val kind: String = "", val side: String = "", val index: Int = 0, val top: Float = 0f, val bottom: Float = 0f, val mitigated: Boolean = false)
+data class SmcLabel(val kind: String = "", val dir: String = "", val index: Int = 0, val price: Float = 0f)
+data class SmcLine(val kind: String = "", val price: Float = 0f)
+data class SmcOverlay(
+    val lines: List<SmcLine> = emptyList(),
+    val zones: List<SmcZone> = emptyList(),
+    val labels: List<SmcLabel> = emptyList()
+)
+data class SmcReport(
+    val symbol: String = "",
+    val timeframe: String = "",
+    val price: Float = 0f,
+    val bias: String = "neutral",
+    val direction: String = "neutral",
+    val confluence: Int = 0,
+    val note: String = "",
+    val status: String = "",
+    val levels: SmcLevel = SmcLevel(),
+    val events: List<SmcEvent> = emptyList(),
+    @SerializedName("order_blocks") val orderBlocks: List<SmcZone> = emptyList(),
+    val fvg: List<SmcZone> = emptyList(),
+    val breakers: List<SmcZone> = emptyList(),
+    val inducements: List<SmcLabel> = emptyList(),
+    val overlay: SmcOverlay = SmcOverlay(),
+    @SerializedName("candles_count") val candlesCount: Int = 0,
+    @SerializedName("created_by") val createdBy: String = "Amin Omidi"
+)
