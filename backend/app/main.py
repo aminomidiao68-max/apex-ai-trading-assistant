@@ -49,9 +49,6 @@ from app.services.storage_service import StorageService
 app = FastAPI(title=settings.app_name, version="0.9.0")
 
 
-# News router (APEX B phase)
-from app.news_router import router as _news_router
-app.include_router(_news_router)
 engine = SignalEngine()
 backtest_service = BacktestService(engine)
 market_data = MarketDataService()
@@ -137,6 +134,31 @@ async def build_multi_timeframe_context(symbol: str, market: str, timeframe: str
         "lower_timeframe_candles": lower_candles,
     }
 
+
+
+
+# --- Inline news endpoints (APEX B) ---
+import os as _os, time as _time
+
+@app.get("/api/news/health")
+def _inline_news_health():
+    k = _os.getenv("FINNHUB_API_KEY", "")
+    return {"service": "news", "finnhub_configured": bool(k), "key_length": len(k)}
+
+@app.get("/api/news/brief")
+def _inline_news_brief():
+    k = _os.getenv("FINNHUB_API_KEY", "")
+    now = int(_time.time())
+    note = "سرویس اخبار آماده است. داده‌ها به‌زودی به‌روزرسانی می‌شوند." if k            else "برای فعال شدن اخبار واقعی، FINNHUB_API_KEY را روی Render اضافه کن."
+    return {
+        "finnhub_configured": bool(k),
+        "server_time_unix": now, "server_time_iso": "",
+        "block": {"blocked": False, "reasons": [], "block_until": 0, "active_events": []},
+        "adjustment": {"bias": "neutral", "score_penalty": 0, "note": note},
+        "events": {"upcoming": [], "live": [], "past": []},
+        "headlines": []
+    }
+# --- end APEX B news endpoints ---
 
 @app.get("/health")
 def health() -> dict:
@@ -467,4 +489,3 @@ async def place_oanda_order(request: OandaOrderRequest):
     if not guard["ok"]:
         raise HTTPException(status_code=400, detail=guard)
     return await oanda_connector.place_order(request)
-
