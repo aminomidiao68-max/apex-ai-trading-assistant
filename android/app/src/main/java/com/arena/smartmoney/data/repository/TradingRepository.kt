@@ -136,4 +136,4 @@ class TradingRepository(
                 symbol = symbol, timeframe = interval, note = "خطا در بارگذاری تحلیل: ${e.message}", status = "error"
             )
         }
-    }
+}

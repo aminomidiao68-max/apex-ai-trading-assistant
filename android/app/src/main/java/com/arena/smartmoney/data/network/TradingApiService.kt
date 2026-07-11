@@ -179,9 +179,6 @@ interface TradingApiService {
 
     @GET("v1/news/brief")
     suspend fun getNewsBrief(): NewsBrief
-
-}
-
     @GET("v1/analysis/smc")
     suspend fun getSmcAnalysis(
         @Query("symbol") symbol: String = "XAUUSD",
@@ -189,3 +186,4 @@ interface TradingApiService {
         @Query("interval") interval: String = "15min",
         @Query("limit") limit: Int = 220
     ): SmcReport
+}
