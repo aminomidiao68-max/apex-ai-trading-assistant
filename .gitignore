@@ -19,3 +19,4 @@ android/build/
 backend/.env
 backend/.env.*.local
 *.log
+rcheck.py
