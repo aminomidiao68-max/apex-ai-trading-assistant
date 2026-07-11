@@ -13,21 +13,19 @@ except Exception as e:
 from .news_fallback import build_offline_brief
 
 async def build_news_brief():
-    # Try Finnhub live first; if not configured or key invalid, fall back to Persian calendar
     if FINNHUB_AVAILABLE:
         try:
             fh = get_finnhub()
             if fh and fh.is_configured:
                 from datetime import datetime, timezone
-                import asyncio
                 try:
                     cal = await fh.get_economic_calendar()
                     h1 = await fh.get_general_news("general")
-                    # Finnhub returns list even with invalid key; but invalid key returns {"error":"Invalid API key"}
-                    if isinstance(cal, dict) and cal.get("error"):
-                        raise RuntimeError(cal["error"])
-                    if isinstance(h1, dict) and h1.get("error"):
-                        raise RuntimeError(h1["error"])
+                    # Treat None/dict-as-error as failure
+                    cal_ok = isinstance(cal, list)
+                    h1_ok = isinstance(h1, list)
+                    if not cal_ok or not h1_ok:
+                        raise RuntimeError(f"finnhub returned non-list: cal={type(cal).__name__}, news={type(h1).__name__}")
                     now = datetime.now(timezone.utc)
                     return {
                         "finnhub_configured": True,
@@ -43,5 +41,4 @@ async def build_news_brief():
                     logger.warning(f"Finnhub fetch failed, falling back: {inner}")
         except Exception as e:
             logger.warning(f"Finnhub init failed: {e}")
-    # Fallback
     return build_offline_brief()
