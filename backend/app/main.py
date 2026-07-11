@@ -500,10 +500,11 @@ async def scan_signals(min_confluence: int = 2):
             return {"symbol":sym,"market":mkt_eff,"timeframe":tf,
                     "bias":r["bias"],"direction":r["direction"],"confluence":r["confluence"],
                     "rr":r.get("rr",0),"price":r["price"],"note":r["note"],
-                    "probability":r.get("probability",0),"setup_type":r.get("setup_type","-"),
+                    "probability":r.get("probability",0),
+                    "setup_type":r.get("setup_type","-"),"setupType":r.get("setup_type","-"),
                     "grade":r.get("grade","-"),
                     "levels":r["levels"],"tp1":r.get("tp1"),"tp2":r.get("tp2"),"tp3":r.get("tp3"),
-                    "ai":r["ai"],"status":"ok"}
+                    "ai":r["ai"],"status":"ok","total_scanned":0}
         except Exception as e:
             log.warning("scan %s@%s failed: %s", sym, tf, e)
             return None
