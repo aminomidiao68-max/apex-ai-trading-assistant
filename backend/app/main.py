@@ -215,19 +215,37 @@ def apex_news_health():
     return {"service": "news", "finnhub_configured": bool(k), "key_length": len(k)}
 
 @app.get("/api/v1/news/brief")
-def apex_news_brief():
+async def apex_news_brief():
+    """Real news brief from Finnhub via news_engine_v2, with graceful fallback."""
+    import logging
+    logger = logging.getLogger("apex.api.news")
     k = os.getenv("FINNHUB_API_KEY", "")
-    now = int(time.time())
-    note = "اخبار در حال پردازش است." if k else "FINNHUB_API_KEY هنوز ست نشده."
-    return {
-        "finnhub_configured": bool(k),
-        "server_time_unix": now,
-        "server_time_iso": "",
-        "block": {"blocked": False, "reasons": [], "block_until": 0, "active_events": []},
-        "adjustment": {"bias": "neutral", "score_penalty": 0, "note": note},
-        "events": {"upcoming": [], "live": [], "past": []},
-        "headlines": []
-    }
+    try:
+        from app.news_engine_v2 import build_news_brief
+        data = await build_news_brief()
+        data.setdefault("finnhub_configured", bool(k))
+        data.setdefault("server_time_unix", int(time.time()))
+        data.setdefault("server_time_iso", "")
+        data.setdefault("block", {"blocked": False, "reasons": [], "block_until": 0, "active_events": []})
+        default_note = "اخبار واقعی Finnhub در حال پردازش است." if k else "کلید Finnhub (FINNHUB_API_KEY) روی Render ست نشده است."
+        adj = data.get("adjustment") or {}
+        adj.setdefault("bias", "neutral"); adj.setdefault("score_penalty", 0); adj.setdefault("note", default_note)
+        data["adjustment"] = adj
+        data.setdefault("events", {"upcoming": [], "live": [], "past": []})
+        data.setdefault("headlines", [])
+        return data
+    except Exception as e:
+        logger.exception("news brief failed, returning stub")
+        return {
+            "finnhub_configured": bool(k),
+            "server_time_unix": int(time.time()),
+            "server_time_iso": "",
+            "block": {"blocked": False, "reasons": [], "block_until": 0, "active_events": []},
+            "adjustment": {"bias": "neutral", "score_penalty": 0, "note": f"خطا در دریافت اخبار: {e}"},
+            "events": {"upcoming": [], "live": [], "past": []},
+            "headlines": []
+        }
+
 
 @app.get("/api/v1/news/mock")
 def get_mock_news(market: str = "forex") -> dict:

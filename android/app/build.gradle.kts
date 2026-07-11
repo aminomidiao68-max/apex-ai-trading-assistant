@@ -13,8 +13,8 @@ if (keystorePropertiesFile.exists()) {
 
 val debugApiBaseUrl = System.getenv("APEX_DEBUG_API_BASE_URL") ?: "http://10.0.2.2:8000/"
 val debugWsBaseUrl = System.getenv("APEX_DEBUG_WS_BASE_URL") ?: "ws://10.0.2.2:8000/ws/market"
-val releaseApiBaseUrl = System.getenv("APEX_API_BASE_URL") ?: "https://api.example.com/"
-val releaseWsBaseUrl = System.getenv("APEX_WS_BASE_URL") ?: "wss://api.example.com/ws/market"
+val releaseApiBaseUrl = System.getenv("APEX_API_BASE_URL") ?: "https://apex-ai-trading-assistant.onrender.com/"
+val releaseWsBaseUrl = System.getenv("APEX_WS_BASE_URL") ?: "wss://apex-ai-trading-assistant.onrender.com/ws/market"
 
 android {
     namespace = "com.arena.smartmoney"
