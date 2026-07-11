@@ -75,7 +75,7 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
     var sym by remember { mutableStateOf("XAUUSD") }
     var mkt by remember { mutableStateOf("forex") }
     var tf  by remember { mutableStateOf("15min") }
-    var scale by remember { mutableFloatStateOf(1f) }
+    var scale by remember { mutableStateOf(1f) }
 
     fun load() {
         scope.launch {
@@ -273,13 +273,11 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
 // ========== Candlestick Canvas with SMC overlay ==========
 @Composable
 private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: Float, onScale: (Float) -> Unit) {
-    var sizePx by remember { mutableIntStateOf(0) }
     Canvas(modifier = modifier
         .background(BgDark, RoundedCornerShape(10.dp))
         .pointerInput(Unit) { detectTransformGestures { _, _, zoom, _ -> onScale(zoom) } }
     ) {
         val w = size.width; val h = size.height
-        sizePx = w.toInt()
         val candles = report.candles
         if (candles.isEmpty()) return@Canvas
         // visible window

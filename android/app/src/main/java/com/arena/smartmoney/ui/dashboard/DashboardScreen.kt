@@ -437,7 +437,6 @@ private fun LiquidityCard(
 }
 
 @Composable
-@Composable
 private fun SummaryCard(session: Session, onOpenChart: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     var rep by remember { mutableStateOf<SmcReport?>(null) }
@@ -451,10 +450,10 @@ private fun SummaryCard(session: Session, onOpenChart: () -> Unit = {}) {
     val biasText = when (r?.bias) { "bullish" -> "BULLISH صعودی"; "bearish" -> "BEARISH نزولی"; else -> "LOADING... در حال تحلیل" }
     val score = r?.confluence ?: 0
     val sideColor = when (r?.direction) { "long" -> Green; "short" -> Red; else -> Gold }
-    ElevatedCard(
+    Card(
         modifier = Modifier.fillMaxWidth().clickable { onOpenChart() },
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = CardC),
+        colors = CardDefaults.cardColors(containerColor = CardC),
         border = BorderStroke(1.dp, Gold.copy(alpha = 0.3f))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
