@@ -177,9 +177,9 @@ interface TradingApiService {
         }
     }
 
-    @GET("v1/news/brief")
+    @GET("api/v1/news/brief")
     suspend fun getNewsBrief(): NewsBrief
-    @GET("v1/analysis/smc")
+    @GET("api/v1/analysis/smc")
     suspend fun getSmcAnalysis(
         @Query("symbol") symbol: String = "XAUUSD",
         @Query("market") market: String = "forex",

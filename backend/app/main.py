@@ -575,32 +575,3 @@ async def place_oanda_order(request: OandaOrderRequest):
     if not guard["ok"]:
         raise HTTPException(status_code=400, detail=guard)
     return await oanda_connector.place_order(request)
-
-@app.get("/api/v1/analysis/smc")
-async def get_smc_analysis(
-    symbol: str = Query("XAUUSD"),
-    market: str = Query("forex"),
-    interval: str = Query("15min"),
-    limit: int = Query(220, ge=50, le=500),
-):
-    import logging as _lg
-    _log = _lg.getLogger("apex.api.smc")
-    try:
-        raw = await fetch_live_candles(symbol=symbol, market=market, timeframe=interval)
-    except Exception as e:
-        _log.exception("smc candles fetch failed")
-        return {"symbol":symbol.upper(),"timeframe":interval,"price":0,"bias":"neutral","direction":"neutral","confluence":0,"note":f"خطا در دریافت داده: {e}","status":"fetch_failed","levels":{"entry":None,"sl":None,"tp":None},"events":[],"order_blocks":[],"fvg":[],"breakers":[],"inducements":[],"overlay":{"lines":[],"zones":[],"labels":[]},"candles_count":0,"created_by":"Amin Omidi"}
-    items=[]
-    for c in raw[-limit:]:
-        d = c.model_dump() if hasattr(c,"model_dump") else (dict(c) if isinstance(c,dict) else {})
-        t=d.get("t",d.get("time",d.get("datetime",0))); o=d.get("o",d.get("open",0)); h=d.get("h",d.get("high",0)); l=d.get("l",d.get("low",0)); cl=d.get("c",d.get("close",0)); v=d.get("v",d.get("volume",0))
-        try: items.append({"t":float(t),"o":float(o),"h":float(h),"l":float(l),"c":float(cl),"v":float(v)})
-        except Exception: pass
-    try:
-        from app.services.smc_engine import analyze
-        rep = analyze(items, symbol=symbol.upper(), timeframe=interval)
-        rep["status"] = "ok"
-        return rep
-    except Exception as e:
-        _log.exception("smc analysis failed")
-        return {"symbol":symbol.upper(),"timeframe":interval,"price":items[-1]["c"] if items else 0,"bias":"neutral","direction":"neutral","confluence":0,"note":f"خطا در تحلیل SMC: {e}","status":"analysis_failed","levels":{"entry":None,"sl":None,"tp":None},"events":[],"order_blocks":[],"fvg":[],"breakers":[],"inducements":[],"overlay":{"lines":[],"zones":[],"labels":[]},"candles_count":len(items),"created_by":"Amin Omidi"}

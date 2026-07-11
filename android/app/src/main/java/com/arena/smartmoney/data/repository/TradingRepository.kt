@@ -127,8 +127,6 @@ class TradingRepository(
         }
     }
 
-}
-
     suspend fun getSmcAnalysis(symbol: String = "XAUUSD", market: String = "forex", interval: String = "15min", limit: Int = 220): SmcReport {
         return try { api.getSmcAnalysis(symbol, market, interval, limit) }
         catch (e: Exception) {
@@ -136,4 +134,5 @@ class TradingRepository(
                 symbol = symbol, timeframe = interval, note = "خطا در بارگذاری تحلیل: ${e.message}", status = "error"
             )
         }
+    }
 }
