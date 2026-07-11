@@ -36,6 +36,9 @@ class FinnhubClient:
                 logger.warning("Finnhub %s -> %s", path, r.status_code)
                 return None
             data = r.json()
+            if isinstance(data, dict) and data.get("error"):
+                logger.warning("Finnhub error: %s", data.get("error"))
+                return None
             self._cache[key] = (now, data)
             return data
         except Exception as e:
