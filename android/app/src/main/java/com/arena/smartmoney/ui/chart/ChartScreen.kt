@@ -78,15 +78,20 @@ private val SYMBOLS = listOf("XAUUSD","EURUSD","GBPUSD","USDJPY","AUDUSD","BTCUS
 private val TIMEFRAMES = listOf("1m","5m","15m","30m","1h","4h","1d")
 
 @Composable
-fun ChartScreen(onBack: (() -> Unit)? = null) {
+fun ChartScreen(
+    onBack: (() -> Unit)? = null,
+    initialSymbol: String = "XAUUSD",
+    initialMarket: String = "",
+    initialTimeframe: String = "15m",
+) {
     val repo = remember { TradingRepository() }
     val scope = rememberCoroutineScope()
     var r by remember { mutableStateOf(SmcReport()) }
     var loading by remember { mutableStateOf(true) }
-    var sym by remember { mutableStateOf("XAUUSD") }
-    var mkt by remember { mutableStateOf("") }
-    var tf  by remember { mutableStateOf("15m") }
-    var scale by remember { mutableStateOf(defaultChartScale("15m")) }
+    var sym by remember(initialSymbol) { mutableStateOf(initialSymbol) }
+    var mkt by remember(initialMarket) { mutableStateOf(initialMarket) }
+    var tf by remember(initialTimeframe) { mutableStateOf(initialTimeframe) }
+    var scale by remember(initialTimeframe) { mutableStateOf(defaultChartScale(initialTimeframe)) }
     var signals by remember { mutableStateOf<List<SmcSignal>>(emptyList()) }
     var scanLoading by remember { mutableStateOf(false) }
     var refreshNonce by remember { mutableIntStateOf(0) }

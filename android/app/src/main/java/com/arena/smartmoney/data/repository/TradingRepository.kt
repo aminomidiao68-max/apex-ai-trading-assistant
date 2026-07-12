@@ -142,4 +142,6 @@ class TradingRepository(
         return try { api.scanSignals(minConfluence) }
         catch (e: Exception) { SmcScanResponse() }
     }
+
+    suspend fun scanTradeSetups(force: Boolean = false) = api.scanTradeSetups(force)
 }

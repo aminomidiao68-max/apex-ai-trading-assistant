@@ -692,6 +692,50 @@ data class SmcScanResponse(
     @SerializedName("watching_count") val watchingCount: Int = 0,
     @SerializedName("created_by") val createdBy: String = "Amin Omidi"
 )
+
+data class TradeSetupDto(
+    val id: String = "",
+    val symbol: String = "",
+    val market: String = "",
+    val timeframe: String = "",
+    val status: String = "forming",
+    @SerializedName("setup_type") val setupType: String = "-",
+    @SerializedName("setup_family") val setupFamily: String = "SMC/ICT",
+    val direction: String = "neutral",
+    val bias: String = "neutral",
+    val grade: String = "-",
+    val confluence: Int = 0,
+    val probability: Int = 0,
+    val rr: Float = 0f,
+    val price: Float = 0f,
+    val entry: Float? = null,
+    @SerializedName("stop_loss") val stopLoss: Float? = null,
+    val tp1: Float? = null,
+    val tp2: Float? = null,
+    val tp3: Float? = null,
+    val invalidation: Float? = null,
+    @SerializedName("omega_compliant") val omegaCompliant: Boolean = false,
+    @SerializedName("action_label") val actionLabel: String = "WAIT",
+    @SerializedName("mtf_aligned") val mtfAligned: Boolean = false,
+    @SerializedName("htf_bias") val htfBias: String? = null,
+    val note: String = "",
+    @SerializedName("missing_confirmations") val missingConfirmations: List<String> = emptyList(),
+    val factors: List<String> = emptyList()
+)
+
+data class TradeSetupsResponseDto(
+    val confirmed: List<TradeSetupDto> = emptyList(),
+    val forming: List<TradeSetupDto> = emptyList(),
+    val invalidated: List<TradeSetupDto> = emptyList(),
+    @SerializedName("confirmed_count") val confirmedCount: Int = 0,
+    @SerializedName("forming_count") val formingCount: Int = 0,
+    @SerializedName("invalidated_count") val invalidatedCount: Int = 0,
+    @SerializedName("total_scanned") val totalScanned: Int = 0,
+    @SerializedName("generated_at") val generatedAt: String = "",
+    val cached: Boolean = false,
+    @SerializedName("cache_age_seconds") val cacheAgeSeconds: Float = 0f
+)
+
 data class SmcEntryZone(
     val high: Float = 0f,
     val low: Float = 0f

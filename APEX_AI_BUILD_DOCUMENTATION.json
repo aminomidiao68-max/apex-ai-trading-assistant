@@ -4,7 +4,7 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "2.1.9",
+    "current_version": "2.2.0",
     "status": "Stabilized MVP - Live Execution Disabled"
   },
   "architecture": {
@@ -305,6 +305,20 @@
             "Latest EQH/EQL reference levels",
             "IDM dots retained without chart clutter",
             "Zone end_idx added and rebased safely"
+          ]
+        },
+        {
+          "version": "v2.2.0 Trading Setups Hub",
+          "date": "2026-07-12T16:30:00Z",
+          "features": [
+            "Bottom navigation reduced to Dashboard, Setups, Risk, Broker and Profile",
+            "Chart and Signals remain available from Dashboard and setup details",
+            "New cached scanner across 10 symbols and 7 timeframes",
+            "Confirmed, forming and invalidated setup sections",
+            "Setup filters by symbol and timeframe",
+            "Setup cards with grade, probability, confluence, RR, entry, safe SL and TP1",
+            "Tap setup to open its live symbol/timeframe chart",
+            "Eight core SMC/ICT setup classifiers exposed without synthetic signals"
           ]
         }
       ]
@@ -819,8 +833,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "1.4",
-    "last_updated": "2026-07-12T15:40:00Z",
+    "documentation_version": "1.5",
+    "last_updated": "2026-07-12T16:30:00Z",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

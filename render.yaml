@@ -11,7 +11,7 @@ services:
       - key: APP_ENV
         value: production
       - key: APP_VERSION
-        value: 2.1.9
+        value: 2.2.0
       - key: DEFAULT_TIMEZONE
         value: UTC
       - key: CORS_ALLOWED_ORIGINS

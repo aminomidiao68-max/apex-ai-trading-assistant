@@ -45,6 +45,7 @@ import com.arena.smartmoney.data.model.TradeJournalCreateRequestDto
 import com.arena.smartmoney.data.model.TradeJournalItemDto
 import com.arena.smartmoney.data.model.TradeJournalStatsDto
 import com.arena.smartmoney.data.model.TradesResponse
+import com.arena.smartmoney.data.model.TradeSetupsResponseDto
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -210,4 +211,7 @@ interface TradingApiService {
 
     @GET("api/v1/signals/scan")
     suspend fun scanSignals(@Query("min_confluence") minConfluence: Int = 2): SmcScanResponse
+
+    @GET("api/v1/setups/scan")
+    suspend fun scanTradeSetups(@Query("force") force: Boolean = false): TradeSetupsResponseDto
 }

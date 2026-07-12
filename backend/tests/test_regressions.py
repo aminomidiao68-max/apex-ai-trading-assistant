@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import math
 import os
 import tempfile
@@ -129,6 +130,28 @@ def test_provider_errors_never_expose_api_keys(monkeypatch):
     assert "top_secret_value" not in body
     assert "apikey=" not in body
     assert "provider_unavailable" in body
+
+
+def test_trade_setup_scanner_covers_matrix_and_uses_cache(monkeypatch):
+    candles = _candles(260)
+
+    async def fake_fetch(symbol: str, market: str, timeframe: str):
+        return candles
+
+    monkeypatch.setattr(main, "fetch_live_candles", fake_fetch)
+    main._SETUP_SCAN_CACHE["timestamp"] = 0.0
+    main._SETUP_SCAN_CACHE["payload"] = None
+    response = asyncio.run(main.scan_trade_setups(force=True))
+    assert response["total_scanned"] == 70
+    assert response["confirmed_count"] == len(response["confirmed"])
+    assert response["forming_count"] == len(response["forming"])
+    assert all(item["status"] == "confirmed" for item in response["confirmed"])
+    assert all(item["status"] == "forming" for item in response["forming"])
+    assert all(item["setup_type"] not in ("", "-") for item in response["confirmed"] + response["forming"])
+
+    cached = asyncio.run(main.scan_trade_setups(force=False))
+    assert cached["cached"] is True
+    assert cached["total_scanned"] == 70
 
 
 def test_risk_direction_validation():

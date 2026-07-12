@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Person
@@ -32,6 +33,8 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.content.ContextCompat
 import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -55,11 +58,13 @@ import com.arena.smartmoney.ui.readiness.ReadinessScreen
 import com.arena.smartmoney.ui.risk.RiskCalculatorScreen
 import com.arena.smartmoney.ui.settings.SettingsScreen
 import com.arena.smartmoney.ui.signals.SignalsScreen
+import com.arena.smartmoney.ui.setups.TradeSetupsScreen
 
 sealed class AppRoute(val route: String, val label: String) {
     data object Dashboard : AppRoute("dashboard", "Dashboard")
     data object Signals : AppRoute("signals", "Signals")
     data object Chart : AppRoute("chart", "Chart")
+    data object Setups : AppRoute("setups", "Trading Setups")
     data object Risk : AppRoute("risk", "Risk")
     data object Broker : AppRoute("broker", "Broker")
     data object Profile : AppRoute("profile", "Profile")
@@ -130,8 +135,7 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
     val t = rememberTranslator()
     val items = listOf(
         AppRoute.Dashboard,
-        AppRoute.Signals,
-        AppRoute.Chart,
+        AppRoute.Setups,
         AppRoute.Risk,
         AppRoute.Broker,
         AppRoute.Profile
@@ -148,6 +152,7 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
                         AppRoute.Dashboard -> Icons.Default.Dashboard
                         AppRoute.Signals -> Icons.Default.Analytics
                         AppRoute.Chart -> Icons.Default.ShowChart
+                        AppRoute.Setups -> Icons.Default.AutoAwesome
                         AppRoute.Risk -> Icons.Default.Calculate
                         AppRoute.Broker -> Icons.Default.Settings
                         AppRoute.Profile -> Icons.Default.Person
@@ -162,6 +167,7 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
                         AppRoute.Dashboard -> t("Dashboard", "داشبورد")
                         AppRoute.Signals -> t("Signals", "سیگنال‌ها")
                         AppRoute.Chart -> t("Chart", "نمودار")
+                        AppRoute.Setups -> t("Setups", "ستاپ‌ها")
                         AppRoute.Risk -> t("Risk", "ریسک")
                         AppRoute.Broker -> t("Broker", "بروکر")
                         AppRoute.Profile -> t("Profile", "پروفایل")
@@ -204,7 +210,8 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
                     onOpenNews = { navController.navigate("news") },
                     onOpenJournal = { navController.navigate(AppRoute.Journal.route) },
                     onOpenSignals = { navController.navigate(AppRoute.Signals.route) },
-                    onOpenChart = { navController.navigate(AppRoute.Chart.route) }
+                    onOpenChart = { navController.navigate(AppRoute.Chart.route) },
+                    onOpenSetups = { navController.navigate(AppRoute.Setups.route) }
                 )
             }
 
@@ -215,6 +222,28 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
                 SignalsScreen(onOpenJournal = { navController.navigate(AppRoute.Journal.route) })
             }
             composable(AppRoute.Chart.route) { ChartScreen() }
+            composable(AppRoute.Setups.route) {
+                TradeSetupsScreen(
+                    onOpenChart = { symbol, market, timeframe ->
+                        navController.navigate("chart/$symbol/$market/$timeframe")
+                    }
+                )
+            }
+            composable(
+                route = "chart/{symbol}/{market}/{timeframe}",
+                arguments = listOf(
+                    navArgument("symbol") { type = NavType.StringType },
+                    navArgument("market") { type = NavType.StringType },
+                    navArgument("timeframe") { type = NavType.StringType },
+                ),
+            ) { backStackEntry ->
+                ChartScreen(
+                    onBack = { navController.popBackStack() },
+                    initialSymbol = backStackEntry.arguments?.getString("symbol") ?: "XAUUSD",
+                    initialMarket = backStackEntry.arguments?.getString("market") ?: "",
+                    initialTimeframe = backStackEntry.arguments?.getString("timeframe") ?: "15m",
+                )
+            }
             composable(AppRoute.Risk.route) { RiskCalculatorScreen() }
             composable(AppRoute.Broker.route) { BrokerScreen() }
             composable(AppRoute.Profile.route) {

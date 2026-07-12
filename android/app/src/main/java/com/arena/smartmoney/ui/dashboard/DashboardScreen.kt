@@ -87,9 +87,10 @@ fun DashboardScreen(
     onOpenAnalytics: () -> Unit = {},
     onOpenMarketPro: () -> Unit = {},
     onOpenProAnalysis: () -> Unit = {},
-    // Chart
+    // Chart / trading setups
     onNavigateToChart: () -> Unit = {},
     onOpenChart: () -> Unit = {},
+    onOpenSetups: () -> Unit = {},
     // News
     onNavigateToNews: () -> Unit = {},
     onOpenNews: () -> Unit = {},
@@ -121,6 +122,7 @@ fun DashboardScreen(
     val goChart = {
         onNavigateToChart(); onOpenChart()
     }
+    val goSetups = { onOpenSetups() }
     val goNews = {
         onNavigateToNews(); onOpenNews()
     }
@@ -220,6 +222,22 @@ fun DashboardScreen(
                                 color = Teal,
                                 modifier = Modifier.weight(1f),
                                 onClick = goJournal
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Tile(
+                                label = "ستاپ‌های معاملاتی",
+                                icon = Icons.Default.AutoAwesome,
+                                color = Gold,
+                                modifier = Modifier.weight(1f),
+                                onClick = goSetups
+                            )
+                            Tile(
+                                label = "بک‌تست",
+                                icon = Icons.Default.Science,
+                                color = Blue,
+                                modifier = Modifier.weight(1f),
+                                onClick = goBacktest
                             )
                         }
                     }

@@ -787,6 +787,194 @@ async def scan_signals(min_confluence: int = Query(default=40, ge=0, le=100)):
     }
 
 
+_SETUP_SYMBOLS = [
+    ("XAUUSD", "forex"), ("EURUSD", "forex"), ("GBPUSD", "forex"),
+    ("USDJPY", "forex"), ("AUDUSD", "forex"), ("US30", "forex"),
+    ("NAS100", "forex"), ("BTCUSDT", "crypto"), ("ETHUSDT", "crypto"),
+    ("SOLUSDT", "crypto"),
+]
+_SETUP_TIMEFRAMES = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+_SETUP_SCAN_CACHE: dict = {"timestamp": 0.0, "payload": None}
+_SETUP_SCAN_LOCK = _asyncio.Lock()
+_SETUP_CACHE_TTL = 300
+
+
+def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, status: str) -> dict:
+    watching = sorted(
+        report.get("watching") or [], key=lambda item: float(item.get("distance", 1e18))
+    )
+    watch = watching[0] if watching else None
+    direction = report.get("direction", "neutral")
+    entry = (report.get("levels") or {}).get("entry")
+    stop_loss = (report.get("levels") or {}).get("sl")
+    tp1 = report.get("tp1")
+    tp2 = report.get("tp2")
+    tp3 = report.get("tp3")
+    if status == "forming" and direction not in ("long", "short") and watch:
+        direction = watch.get("direction", "neutral")
+        entry = watch.get("entry")
+        stop_loss = watch.get("sl")
+        tp1 = watch.get("tp")
+        tp2 = None
+        tp3 = None
+
+    reasons = [str(item) for item in report.get("omega_reasons") or []]
+    if direction in ("long", "short") and report.get("htf_bias"):
+        expected = "bullish" if direction == "long" else "bearish"
+        if report.get("htf_bias") != expected:
+            reasons.append("HTF conflict")
+    if status == "forming" and not reasons:
+        reasons.append("Waiting for structure/entry confirmation")
+
+    setup_type = report.get("setup_type") or "-"
+    return {
+        "id": f"{symbol}:{timeframe}:{direction}:{setup_type}",
+        "symbol": symbol,
+        "market": market,
+        "timeframe": timeframe,
+        "status": status,
+        "setup_type": setup_type,
+        "setup_family": "SMC/ICT",
+        "direction": direction,
+        "bias": report.get("bias", "neutral"),
+        "grade": report.get("grade", "-"),
+        "confluence": report.get("confluence", 0),
+        "probability": report.get("probability", 0),
+        "rr": round(float(report.get("rr") or 0), 2),
+        "price": report.get("price", 0),
+        "entry": entry,
+        "stop_loss": stop_loss,
+        "tp1": tp1,
+        "tp2": tp2,
+        "tp3": tp3,
+        "invalidation": report.get("invalidation"),
+        "omega_compliant": bool(report.get("omega_compliant")),
+        "action_label": report.get("action_label", "WAIT"),
+        "mtf_aligned": bool(report.get("mtf_aligned")),
+        "htf_bias": report.get("htf_bias"),
+        "note": report.get("note", ""),
+        "missing_confirmations": reasons[:4],
+        "factors": [
+            item.get("name", "") for item in (report.get("confluence_factors") or [])[:5]
+            if item.get("name")
+        ],
+    }
+
+
+@app.get("/api/v1/setups/scan")
+async def scan_trade_setups(force: bool = Query(default=False)):
+    """Scan 10 symbols × 7 timeframes and return confirmed/forming setups.
+
+    Results are cached for five minutes. Only actual detected setup types are
+    returned; an empty result is a valid market state, not a synthetic signal.
+    """
+    now = _time.time()
+    cached = _SETUP_SCAN_CACHE.get("payload")
+    age = now - float(_SETUP_SCAN_CACHE.get("timestamp") or 0)
+    if cached and not force and age < _SETUP_CACHE_TTL:
+        return {**cached, "cached": True, "cache_age_seconds": round(age, 1)}
+
+    async with _SETUP_SCAN_LOCK:
+        now = _time.time()
+        cached = _SETUP_SCAN_CACHE.get("payload")
+        age = now - float(_SETUP_SCAN_CACHE.get("timestamp") or 0)
+        if cached and not force and age < _SETUP_CACHE_TTL:
+            return {**cached, "cached": True, "cache_age_seconds": round(age, 1)}
+
+        from app.services.smc_engine import analyze
+
+        news_blocked = False
+        try:
+            from app.news_engine_v2 import build_news_brief
+
+            brief = await build_news_brief()
+            news_blocked = bool((brief.get("block") or {}).get("blocked"))
+        except Exception:
+            pass
+
+        semaphore = _asyncio.Semaphore(6)
+
+        async def job(symbol: str, market: str, timeframe: str):
+            async with semaphore:
+                try:
+                    raw = await fetch_live_candles(symbol, market, timeframe)
+                    items = _norm_candles(raw)
+                    if len(items) < 30:
+                        return None
+                    htf = {
+                        "1m": "5m", "5m": "15m", "15m": "1h", "30m": "4h",
+                        "1h": "4h", "4h": "1d",
+                    }.get(timeframe)
+                    htf_bias = None
+                    if htf:
+                        higher = _norm_candles(_resample_candles(raw, htf))
+                        if len(higher) >= 30:
+                            htf_bias = analyze(higher, symbol=symbol, timeframe=htf).get("bias")
+                    report = analyze(
+                        items,
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        htf_bias=htf_bias,
+                        news_blocked=news_blocked,
+                    )
+                    report["htf_bias"] = htf_bias
+                    confirmed = (
+                        report.get("omega_compliant")
+                        and report.get("grade") in ("A+", "A", "B")
+                        and report.get("direction") in ("long", "short")
+                        and bool(report.get("plan_lines"))
+                    )
+                    has_forming_setup = (
+                        report.get("setup_type") not in (None, "", "-")
+                        and (
+                            report.get("direction") in ("long", "short")
+                            or bool(report.get("watching"))
+                        )
+                        and int(report.get("confluence") or 0) >= 15
+                    )
+                    if confirmed:
+                        return _setup_payload(report, symbol, market, timeframe, "confirmed")
+                    if has_forming_setup:
+                        return _setup_payload(report, symbol, market, timeframe, "forming")
+                    return None
+                except Exception:
+                    return None
+
+        matrix = [
+            (symbol, market, timeframe)
+            for symbol, market in _SETUP_SYMBOLS
+            for timeframe in _SETUP_TIMEFRAMES
+        ]
+        results = await _asyncio.gather(*(job(*item) for item in matrix))
+        setups = [item for item in results if item]
+        confirmed = sorted(
+            (item for item in setups if item["status"] == "confirmed"),
+            key=lambda item: (item["grade"] == "A+", item["confluence"], item["probability"], item["rr"]),
+            reverse=True,
+        )[:20]
+        forming = sorted(
+            (item for item in setups if item["status"] == "forming"),
+            key=lambda item: (item["confluence"], item["probability"], item["rr"]),
+            reverse=True,
+        )[:20]
+        generated_at = datetime.now(timezone.utc).isoformat()
+        payload = {
+            "confirmed": confirmed,
+            "forming": forming,
+            "invalidated": [],
+            "confirmed_count": len(confirmed),
+            "forming_count": len(forming),
+            "invalidated_count": 0,
+            "total_scanned": len(matrix),
+            "generated_at": generated_at,
+            "cached": False,
+            "cache_age_seconds": 0,
+        }
+        _SETUP_SCAN_CACHE["timestamp"] = _time.time()
+        _SETUP_SCAN_CACHE["payload"] = payload
+        return payload
+
+
 @app.websocket("/ws/market")
 async def market_websocket(websocket: WebSocket, symbol: str = "BTCUSDT", market: str = "crypto"):
     await websocket.accept()
