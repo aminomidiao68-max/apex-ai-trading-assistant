@@ -720,8 +720,10 @@ def _poi_stacking(active_obs, active_fvgs, br, fib, price, atr):
 # Confluence scoring (20 factors)
 # =========================================================
 def _score_confluence(direction, bias, fib, ob_q, fvg_q, of, liq_side, mtf, sess_w, news,
-                      trend_str, poi_count, in_ote, vwap_above, disp_strength, grade_session):
+                      trend_str, poi_count, in_ote, vwap_above, disp_strength, grade_session,
+                      ind=None, trade_dir=NEUTRAL):
     factors=[]; score=0
+    ind = ind or {}
     def add(name, pts, why=""):
         nonlocal score
         score+=pts
@@ -742,6 +744,34 @@ def _score_confluence(direction, bias, fib, ob_q, fvg_q, of, liq_side, mtf, sess
         if poi_count>=3: add("تلاقی POIها",8,"چند ناحیه SMC روی هم افتاده‌اند")
         if vwap_above: add("قیمت زیر VWAP",4,"بازگشت به میانگین حجمی")
         if disp_strength>=7: add("جابجایی قوی",6,"کندل مومنتوم تایید کننده")
+        # ---- Hidden indicators (long) ----
+        if ind.get("rsi_os"): add("RSI اشباع فروش (<30)",5,"واگرایی خرید قوی")
+        elif ind.get("rsi") and ind["rsi"]<40: add("RSI پایین",2,"ضعف فروش")
+        if ind.get("rsi_ob"): add("RSI اشباع خرید (>70)",-4,"ریسک برگشت")
+        if ind.get("macd",{}).get("hist",0)>0: add("هیستوگرام MACD مثبت",4,"مومنتوم صعودی")
+        elif ind.get("macd",{}).get("hist",0)<0: add("هیستوگرام MACD منفی",-3,"مومنتوم هنوز منفی")
+        if ind.get("mfi_os"): add("MFI اشباع فروش",4,"پول هوشمند در حال خرید")
+        if ind.get("cmf_positive"): add("Chaikin Money Flow مثبت",3,"جریان ورود پول")
+        if ind.get("cmf_negative"): add("CMF منفی",-3,"جریان خروج پول")
+        if ind.get("psar_up"): add("Parabolic SAR صعودی",4,"سیگنال خرید SAR")
+        else: add("Parabolic SAR نزولی",-2,"سیگنال فروش SAR")
+        if ind.get("ichimoku",{}).get("above"): add("قیمت بالای ابر ایچی‌موکو",4,"روند صعودی قوی")
+        if ind.get("ema",{}).get("aligned"): add("EMA20/50/200 هم‌راستا صعودی",6,"طالیایی/مرگ‌کراس صعودی")
+        if ind.get("ema",{}).get("golden"): add("تقاطع طلایی EMA50/200",5,"سیگنال طلایی")
+        if ind.get("rsi_divergence")=="bullish": add("واگرایی مثبت RSI",6,"برگشت صعودی محتمل")
+        if ind.get("macd_divergence")=="bullish": add("واگرایی مثبت MACD",5,"تایید برگشت")
+        if ind.get("rsi_divergence")=="bearish": add("واگرایی منفی RSI",-5,"هشدار برگشت")
+        if ind.get("macd_divergence")=="bearish": add("واگرایی منفی MACD",-4,"هشدار")
+        pats=ind.get("patterns",[])
+        if "hammer_bullish" in pats or "bullish_engulfing" in pats: add("الگوی کندلی صعودی",4,"همر/پوشای صعودی")
+        if "shooting_star_bearish" in pats or "bearish_engulfing" in pats: add("الگوی کندلی نزولی",-2,"ستاره/پوشای نزولی")
+        if ind.get("bb_breakout_up"): add("شکست سقف بولینگر",3,"بریک‌اوت صعودی")
+        if ind.get("bb_squeeze"): add("فشردگی بولینگر",-3,"نوسان کم قبل از حرکت بزرگ")
+        if ind.get("adx_strong"): add("ADX قوی (>25)",3,"روند قدرتمند")
+        if ind.get("cci_oversold"): add("CCI اشباع فروش",2,"ناحیه خرید افراطی")
+        if ind.get("williams_oversold"): add("Williams %R اشباع فروش",2,"حمایت قوی")
+        if ind.get("stoch",{}).get("k",50)<20: add("استوکاستیک اشباع فروش",2,"سیگنال خرید")
+        if ind.get("stoch",{}).get("k",50)>80: add("استوکاستیک اشباع خرید",-2,"مقاومت")
     elif direction==SHORT:
         if bias=="bearish": add("ساختار نزولی (LL/LH)",12,"سوئینگ‌های پایین‌تر تایید شده")
         if fib and fib.get("in_premium"): add("ناحیه پرمیوم (>50% فیب)",8,"قیمت در نیمه بالایی لگ نزولی")
@@ -758,6 +788,34 @@ def _score_confluence(direction, bias, fib, ob_q, fvg_q, of, liq_side, mtf, sess
         if poi_count>=3: add("تلاقی POIها",8,"چند ناحیه SMC روی هم افتاده‌اند")
         if not vwap_above: add("قیمت بالای VWAP",4,"بازگشت به میانگین حجمی")
         if disp_strength>=7: add("جابجایی قوی",6,"کندل مومنتوم تایید کننده")
+        # ---- Hidden indicators (short) ----
+        if ind.get("rsi_ob"): add("RSI اشباع خرید (>70)",5,"واگرایی فروش قوی")
+        elif ind.get("rsi") and ind["rsi"]>60: add("RSI بالا",2,"ضعف خرید")
+        if ind.get("rsi_os"): add("RSI اشباع فروش (<30)",-4,"ریسک برگشت")
+        if ind.get("macd",{}).get("hist",0)<0: add("هیستوگرام MACD منفی",4,"مومنتوم نزولی")
+        elif ind.get("macd",{}).get("hist",0)>0: add("هیستوگرام MACD مثبت",-3,"مومنتوم هنوز مثبت")
+        if ind.get("mfi_ob"): add("MFI اشباع خرید",4,"پول هوشمند در حال فروش")
+        if ind.get("cmf_negative"): add("Chaikin Money Flow منفی",3,"جریان خروج پول")
+        if ind.get("cmf_positive"): add("CMF مثبت",-3,"جریان ورود پول")
+        if not ind.get("psar_up",True): add("Parabolic SAR نزولی",4,"سیگنال فروش SAR")
+        else: add("Parabolic SAR صعودی",-2,"سیگنال خرید SAR")
+        if not ind.get("ichimoku",{}).get("above",True): add("قیمت زیر ابر ایچی‌موکو",4,"روند نزولی قوی")
+        if ind.get("ema",{}).get("aligned"): add("EMA20/50/200 هم‌راستا نزولی",6,"کراس مرگ تأیید شده")
+        if ind.get("ema",{}).get("death"): add("تقاطع مرگ EMA50/200",5,"سیگنال نزولی مرگ")
+        if ind.get("rsi_divergence")=="bearish": add("واگرایی منفی RSI",6,"برگشت نزولی محتمل")
+        if ind.get("macd_divergence")=="bearish": add("واگرایی منفی MACD",5,"تایید برگشت")
+        if ind.get("rsi_divergence")=="bullish": add("واگرایی مثبت RSI",-5,"هشدار برگشت")
+        if ind.get("macd_divergence")=="bullish": add("واگرایی مثبت MACD",-4,"هشدار")
+        pats=ind.get("patterns",[])
+        if "shooting_star_bearish" in pats or "bearish_engulfing" in pats: add("الگوی کندلی نزولی",4,"ستاره/پوشای نزولی")
+        if "hammer_bullish" in pats or "bullish_engulfing" in pats: add("الگوی کندلی صعودی",-2,"همر/پوشای صعودی")
+        if ind.get("bb_breakout_dn"): add("شکست کف بولینگر",3,"بریک‌اوت نزولی")
+        if ind.get("bb_squeeze"): add("فشردگی بولینگر",-3,"نوسان کم قبل از حرکت")
+        if ind.get("adx_strong"): add("ADX قوی (>25)",3,"روند قدرتمند")
+        if ind.get("cci_overbought"): add("CCI اشباع خرید",2,"مقاومت CCI")
+        if ind.get("williams_overbought"): add("Williams %R اشباع خرید",2,"مقاومت")
+        if ind.get("stoch",{}).get("k",50)>80: add("استوکاستیک اشباع خرید",2,"سیگنال فروش")
+        if ind.get("stoch",{}).get("k",50)<20: add("استوکاستیک اشباع فروش",-2,"حمایت")
     # Shared
     if mtf: add("همراستایی با HTF",12,"تایم‌فریم بالا هم‌جهت")
     if sess_w>=1.4: add("کیل‌زون همپوشانی LDN-NY",10,"بیشترین نوسان و حجم نهادی")
@@ -767,6 +825,8 @@ def _score_confluence(direction, bias, fib, ob_q, fvg_q, of, liq_side, mtf, sess
     if trend_str<30: add("بازار رنج/نوسانی",-10,"ساختار متلاطم")
     if of.get("climax"): add("نشانه خستگی (Climax)",-6,"احتمال برگشت بالا")
     if news: add("پنجره اخبار پرریسک",-30,"از ورود اکیداً خودداری کنید")
+    # Bollinger extreme width = volatility spike = high risk
+    if ind.get("bollinger",{}).get("width",0)>0.04: add("نوسان بسیار بالا (بولینگر)",-3,"ریسک اسلایپج")
     return max(0,min(100,score)), factors
 
 
@@ -1116,24 +1176,81 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
 
     mtf_align = (htf_bias == bias and htf_bias is not None)
 
+    # ---- Hidden indicator suite (not drawn on chart, used for AI confluence) ----
+    ind = calc_all_indicators(cs)
+
     direction = setup["direction"] if setup else NEUTRAL
     if setup:
         score, factors = _score_confluence(
             direction, bias, fib, setup.get("ob_quality",0), setup.get("fvg_quality",0),
             of, liq_side, mtf_align, sess_w, news_blocked, trend_str,
             setup.get("poi_count",0), setup.get("in_ote",False), setup.get("vwap_above",False),
-            setup.get("disp_strength",0), sess_w,
+            setup.get("disp_strength",0), sess_w, ind, direction,
         )
-        conf = score
-        prob = max(55, min(95, setup["base_prob"] + int((conf-55)*0.55)))
-        if news_blocked: prob = max(25, prob-45)
-        # Bias mismatch penalty
-        if direction==LONG and bias=="bearish": prob = max(45, prob-12); conf = max(20, conf-15)
-        if direction==SHORT and bias=="bullish": prob = max(45, prob-12); conf = max(20, conf-15)
-        if trend_str < 30: prob = max(45, prob-10)
+        conf = max(0, min(100, score))
+        prob = max(50, min(95, setup["base_prob"] + int((conf-50)*0.55)))
+        if news_blocked: prob = max(20, prob-45)
+        if direction==LONG and bias=="bearish": prob = max(40, prob-12); conf = max(15, conf-15)
+        if direction==SHORT and bias=="bullish": prob = max(40, prob-12); conf = max(15, conf-15)
+        if trend_str < 25: prob = max(42, prob-12)
+        # Indicator-based probability adjustments
+        if direction==LONG:
+            if ind["rsi_os"]: prob += 4
+            if ind["rsi_ob"]: prob -= 5
+            if ind["macd"]["hist"]>0 and ind["macd"]["hist"]>ind["macd"]["signal"]/10: prob += 3
+            if ind["macd"]["hist"]<0: prob -= 2
+            if ind["mfi_os"]: prob += 3
+            if ind["mfi_ob"]: prob -= 3
+            if ind["cmf_positive"]: prob += 2
+            if ind["cmf_negative"]: prob -= 3
+            if ind["psar_up"]: prob += 3
+            else: prob -= 1
+            if ind["ichimoku"]["above"]: prob += 3
+            if ind["ema"]["aligned"] and [c["c"] for c in cs][-1] > ind["ema"]["ema50"]: prob += 4
+            if ind["ema"]["golden"]: prob += 4
+            if ind["rsi_divergence"]=="bullish": prob += 5
+            if ind["rsi_divergence"]=="bearish": prob -= 4
+            if ind["macd_divergence"]=="bullish": prob += 4
+            if ind["macd_divergence"]=="bearish": prob -= 4
+            if "hammer_bullish" in ind["patterns"] or "bullish_engulfing" in ind["patterns"]: prob += 3
+            if "shooting_star_bearish" in ind["patterns"] or "bearish_engulfing" in ind["patterns"]: prob -= 2
+            if ind["bb_breakout_up"]: prob += 2
+            if ind["bb_squeeze"]: prob -= 3
+            if ind["adx_strong"]: prob += 3
+            if ind["cci_oversold"]: prob += 2
+            if ind["williams_oversold"]: prob += 2
+            if ind["stoch"]["k"]<20: prob += 2
+            if ind["stoch"]["k"]>80: prob -= 2
+        else:
+            if ind["rsi_ob"]: prob += 4
+            if ind["rsi_os"]: prob -= 5
+            if ind["macd"]["hist"]<0: prob += 3
+            if ind["macd"]["hist"]>0: prob -= 2
+            if ind["mfi_ob"]: prob += 3
+            if ind["mfi_os"]: prob -= 3
+            if ind["cmf_negative"]: prob += 2
+            if ind["cmf_positive"]: prob -= 3
+            if not ind["psar_up"]: prob += 3
+            else: prob -= 1
+            if not ind["ichimoku"]["above"]: prob += 3
+            if ind["ema"]["aligned"] and [c["c"] for c in cs][-1] < ind["ema"]["ema50"]: prob += 4
+            if ind["ema"]["death"]: prob += 4
+            if ind["rsi_divergence"]=="bearish": prob += 5
+            if ind["rsi_divergence"]=="bullish": prob -= 4
+            if ind["macd_divergence"]=="bearish": prob += 4
+            if ind["macd_divergence"]=="bullish": prob -= 4
+            if "shooting_star_bearish" in ind["patterns"] or "bearish_engulfing" in ind["patterns"]: prob += 3
+            if "hammer_bullish" in ind["patterns"] or "bullish_engulfing" in ind["patterns"]: prob -= 2
+            if ind["bb_breakout_dn"]: prob += 2
+            if ind["bb_squeeze"]: prob -= 3
+            if ind["adx_strong"]: prob += 3
+            if ind["cci_overbought"]: prob += 2
+            if ind["williams_overbought"]: prob += 2
+            if ind["stoch"]["k"]>80: prob += 2
+            if ind["stoch"]["k"]<20: prob -= 2
+        prob = max(45, min(95, prob))
         setup["probability"] = prob; setup["confluence"] = conf
     else:
-        # Provide watching-mode confluence (0-55) even without setup
         base_conf = 0
         if bias=="bullish": base_conf+=10
         if bias=="bearish": base_conf+=10
@@ -1142,8 +1259,15 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
         if liq_side: base_conf+=6
         if sess_w>=1.0: base_conf+=5
         if trend_str>=60: base_conf+=6
-        conf=min(55, base_conf)
-        factors=[]; prob=0
+        # Indicator base
+        if ind["adx_strong"]: base_conf+=4
+        if ind["ema"]["aligned"]: base_conf+=4
+        if ind["cmf_positive"] and bias=="bullish": base_conf+=2
+        if ind["cmf_negative"] and bias=="bearish": base_conf+=2
+        if ind["macd"]["hist"]>0 and bias=="bullish": base_conf+=2
+        if ind["macd"]["hist"]<0 and bias=="bearish": base_conf+=2
+        conf = min(60, base_conf)
+        factors = []; prob = 0
 
     rr = setup["rr"] if setup else 0.0
     entry=sl=tp1=tp2=tp3=inv=ezone=None; setup_fa=None; grade="F"
@@ -1307,3 +1431,202 @@ def detect_smc_features(candles,trend="neutral"):
             "entry":(r.get("levels") or {}).get("entry"),"sl":(r.get("levels") or {}).get("sl"),
             "tp":(r.get("levels") or {}).get("tp"),"confluence":r.get("confluence",0),
             "direction":r.get("direction","neutral")}
+
+
+# ====================================================================
+# Indicator Suite (v7 Professional Oscillators — hidden from chart)
+# These feed into confluence/probability scoring but are NOT drawn.
+# ====================================================================
+def _ema_arr(values, n):
+    if not values: return []
+    k = 2/(n+1); out = [values[0]]
+    for v in values[1:]: out.append(v*k + out[-1]*(1-k))
+    return out
+
+def _rsi(closes, n=14):
+    if len(closes) < n+1: return 50.0
+    gains=[]; losses=[]
+    for i in range(1,len(closes)):
+        d = closes[i]-closes[i-1]
+        gains.append(max(d,0)); losses.append(max(-d,0))
+    ag = sum(gains[:n])/n; al = sum(losses[:n])/n
+    for i in range(n,len(gains)):
+        ag = (ag*(n-1)+gains[i])/n; al = (al*(n-1)+losses[i])/n
+    if al == 0: return 100.0
+    rs = ag/al
+    return 100 - 100/(1+rs)
+
+def _macd(closes, fast=12, slow=26, sig=9):
+    if len(closes)<slow+sig: return {"macd":0,"signal":0,"hist":0}
+    ef = _ema_arr(closes, fast); es = _ema_arr(closes, slow)
+    macd_line = [ef[i]-es[i] for i in range(len(es))]
+    sig_line = _ema_arr(macd_line, sig) if len(macd_line)>=sig else macd_line
+    hist = macd_line[-1]-sig_line[-1] if sig_line else 0
+    return {"macd":macd_line[-1],"signal":sig_line[-1],"hist":hist}
+
+def _stoch_rsi(closes, n=14, k=3, d=3):
+    if len(closes)<n*2: return {"k":50,"d":50}
+    rsi_series = []
+    for i in range(n, len(closes)):
+        seg = closes[i-n:i+1]
+        g=sum(max(seg[j]-seg[j-1],0) for j in range(1,len(seg)))/n
+        l=sum(max(seg[j-1]-seg[j],0) for j in range(1,len(seg)))/n
+        rsi_series.append(100 if l==0 else 100-100/(1+g/l))
+    if len(rsi_series)<k: return {"k":50,"d":50}
+    lo = min(rsi_series[-n:]); hi = max(rsi_series[-n:])
+    k_val = 50 if hi==lo else (rsi_series[-1]-lo)/(hi-lo)*100
+    return {"k":k_val,"d":k_val}
+
+def _bollinger(closes, n=20, mult=2.0):
+    if len(closes)<n: return {"upper":closes[-1],"middle":closes[-1],"lower":closes[-1],"width":0}
+    seg = closes[-n:]; m = sum(seg)/n
+    var = sum((x-m)**2 for x in seg)/n; sd = math.sqrt(var)
+    return {"upper":m+mult*sd,"middle":m,"lower":m-mult*sd,"width":(2*mult*sd)/m if m else 0}
+
+def _adx(highs,lows,closes,n=14):
+    if len(closes)<n*2: return 25.0
+    plus_dm=[]; minus_dm=[]; tr=[]
+    for i in range(1,len(closes)):
+        up = highs[i]-highs[i-1]; dn = lows[i-1]-lows[i]
+        plus_dm.append(up if up>dn and up>0 else 0)
+        minus_dm.append(dn if dn>up and dn>0 else 0)
+        tr.append(max(highs[i]-lows[i],abs(highs[i]-closes[i-1]),abs(lows[i]-closes[i-1])))
+    atr = sum(tr[:n])/n; pdi=ndi=dx=None
+    for i in range(n,len(tr)):
+        atr = (atr*(n-1)+tr[i])/n
+        sp = sum(plus_dm[i-n+1:i+1])/n; sm = sum(minus_dm[i-n+1:i+1])/n
+        pdi = sp/atr*100 if atr else 0; ndi = sm/atr*100 if atr else 0
+        dx = abs(pdi-ndi)/(pdi+ndi)*100 if (pdi+ndi) else 0
+    return dx or 25.0
+
+def _cci(highs,lows,closes,n=20):
+    if len(closes)<n: return 0.0
+    tp = [(highs[i]+lows[i]+closes[i])/3 for i in range(len(closes))]
+    seg = tp[-n:]; ma = sum(seg)/n
+    md = sum(abs(x-ma) for x in seg)/n
+    return (tp[-1]-ma)/(0.015*md) if md else 0
+
+def _williams_r(highs,lows,closes,n=14):
+    if len(closes)<n: return -50.0
+    hh=max(highs[-n:]); ll=min(lows[-n:])
+    return -100*(hh-closes[-1])/(hh-ll) if hh!=ll else -50
+
+def _mfi(highs,lows,closes,vols,n=14):
+    if len(closes)<n+1: return 50.0
+    pmf=nmf=0
+    for i in range(-n,0):
+        tp=(highs[i]+lows[i]+closes[i])/3; prev=(highs[i-1]+lows[i-1]+closes[i-1])/3
+        mf = tp*vols[i]
+        if tp>prev: pmf+=mf
+        else: nmf+=mf
+    if nmf==0: return 100.0
+    return 100 - 100/(1+pmf/nmf)
+
+def _cmf(highs,lows,closes,vols,n=20):
+    if len(closes)<n: return 0.0
+    mfvs=[]
+    for i in range(-n,0):
+        rng=highs[i]-lows[i]
+        clv = ((closes[i]-lows[i])-(highs[i]-closes[i]))/rng if rng else 0
+        mfvs.append(clv*vols[i])
+    return sum(mfvs)/max(1e-9,sum(vols[-n:]))
+
+def _psar(highs,lows,closes,af=0.02,maxaf=0.2):
+    if len(closes)<5: return closes[-1], True
+    sar = lows[0]; ep=highs[0]; up=True; a=af
+    for i in range(1,len(closes)):
+        if up:
+            sar = sar+a*(ep-sar)
+            if lows[i]<sar: up=False; sar=ep; ep=lows[i]; a=af
+            else:
+                if highs[i]>ep: ep=highs[i]; a=min(a+af,maxaf)
+        else:
+            sar = sar+a*(sar-ep)
+            if highs[i]>sar: up=True; sar=ep; ep=highs[i]; a=af
+            else:
+                if lows[i]<ep: ep=lows[i]; a=min(a+af,maxaf)
+    return sar, up
+
+def _ichimoku(highs,lows,closes,tenkan=9,kijun=26,senkou=52):
+    if len(closes)<max(kijun,senkou): return {"tenkan":closes[-1],"kijun":closes[-1],"ssa":closes[-1],"ssb":closes[-1],"above":False}
+    tk = (max(highs[-tenkan:])+min(lows[-tenkan:]))/2
+    kj = (max(highs[-kijun:])+min(lows[-kijun:]))/2
+    sb = (max(highs[-senkou:])+min(lows[-senkou:]))/2
+    sa = (tk+kj)/2
+    return {"tenkan":tk,"kijun":kj,"ssa":sa,"ssb":sb,"above":closes[-1]>max(sa,sb)}
+
+def _ema_cross(closes):
+    if len(closes)<200: return {"ema20":closes[-1],"ema50":closes[-1],"ema200":closes[-1],"golden":False,"death":False,"aligned":False}
+    e20=_ema_arr(closes,20)[-1]; e50=_ema_arr(closes,50)[-1]; e200=_ema_arr(closes,200)[-1]
+    golden = e50>e200 and _ema_arr(closes,50)[-2]<=_ema_arr(closes,200)[-2]
+    death = e50<e200 and _ema_arr(closes,50)[-2]>=_ema_arr(closes,200)[-2]
+    aligned = (e20>e50>e200) if closes[-1]>e200 else (e20<e50<e200)
+    return {"ema20":e20,"ema50":e50,"ema200":e200,"golden":golden,"death":death,"aligned":aligned}
+
+def _candlestick_patterns(cs):
+    """Detect high-quality candlestick patterns on last 3 candles."""
+    pats=[]; n=len(cs)
+    if n<3: return pats
+    for i in range(max(2,n-5),n):
+        c=cs[i]; o,h,l,cl=c["o"],c["h"],c["l"],c["c"]
+        rng=h-l or 1e-9; body=abs(cl-o)
+        # Pin bar (hammer/shooting star)
+        upper_wick=h-max(cl,o); lower_wick=min(cl,o)-l
+        if lower_wick>body*2 and upper_wick<body*0.5 and cl>o: pats.append("hammer_bullish")
+        if upper_wick>body*2 and lower_wick<body*0.5 and cl<o: pats.append("shooting_star_bearish")
+        # Engulfing
+        p=cs[i-1]; pb=abs(p["c"]-p["o"])
+        if cl>p["h"] and p["c"]<p["o"] and cl>o and body>pb: pats.append("bullish_engulfing")
+        if cl<p["l"] and p["c"]>p["o"] and cl<o and body>pb: pats.append("bearish_engulfing")
+        # Doji
+        if body/rng<0.1: pats.append("doji")
+    return list(set(pats))
+
+def _divergence(cs, indicator_vals, window=20):
+    """Check bullish/bearish divergence between price and indicator."""
+    if len(cs)<window or len(indicator_vals)<window: return None
+    p_highs=[]; p_lows=[]; i_highs=[]; i_lows=[]
+    for j in range(-window,0):
+        p_highs.append(cs[j]["h"]); p_lows.append(cs[j]["l"])
+    for j in range(-window,0):
+        i_highs.append(indicator_vals[j] if -j<=len(indicator_vals) else indicator_vals[-1])
+        i_lows.append(i_highs[-1])
+    # Higher price high but lower indicator high = bearish div
+    ph1=max(p_highs[:window//2]); ph2=max(p_highs[window//2:])
+    ih1=max(i_highs[:window//2]); ih2=max(i_highs[window//2:])
+    pl1=min(p_lows[:window//2]); pl2=min(p_lows[window//2:])
+    il1=min(i_lows[:window//2]); il2=min(i_lows[window//2:])
+    if ph2>ph1 and ih2<ih1: return "bearish"
+    if pl2<pl1 and il2>il1: return "bullish"
+    return None
+
+def calc_all_indicators(cs):
+    closes=[c["c"] for c in cs]; highs=[c["h"] for c in cs]; lows=[c["l"] for c in cs]; vols=[c["v"] for c in cs]
+    rsi=_rsi(closes); macd=_macd(closes); stoch=_stoch_rsi(closes); bb=_bollinger(closes); adx=_adx(highs,lows,closes)
+    cci=_cci(highs,lows,closes); wr=_williams_r(highs,lows,closes); mfi=_mfi(highs,lows,closes,vols)
+    cmf=_cmf(highs,lows,closes,vols); psar,psar_up=_psar(highs,lows,closes); ich=_ichimoku(highs,lows,closes)
+    ema=_ema_cross(closes); pats=_candlestick_patterns(cs)
+    # RSI divergence
+    rsi_series=[]
+    for i in range(14,len(closes)):
+        rsi_series.append(_rsi(closes[:i+1]))
+    rsi_div = _divergence(cs, rsi_series[-60:] if len(rsi_series)>=60 else rsi_series)
+    # MACD divergence
+    macd_series=[]
+    for i in range(35,len(closes)):
+        macd_series.append(_macd(closes[:i+1])["hist"])
+    macd_div = _divergence(cs, macd_series[-60:] if len(macd_series)>=60 else macd_series)
+    return {
+        "rsi":rsi,"macd":macd,"stoch":stoch,"bollinger":bb,"adx":adx,"cci":cci,"williams_r":wr,
+        "mfi":mfi,"cmf":cmf,"psar":psar,"psar_up":psar_up,"ichimoku":ich,"ema":ema,
+        "patterns":pats,"rsi_divergence":rsi_div,"macd_divergence":macd_div,
+        "rsi_ob":rsi>70,"rsi_os":rsi<30,
+        "mfi_ob":mfi>70,"mfi_os":mfi<30,
+        "bb_squeeze":bb["width"]<0.01,
+        "bb_breakout_up":closes[-1]>bb["upper"],
+        "bb_breakout_dn":closes[-1]<bb["lower"],
+        "adx_strong":adx>25,"adx_weak":adx<20,
+        "cci_overbought":cci>100,"cci_oversold":cci<-100,
+        "cmf_positive":cmf>0.05,"cmf_negative":cmf<-0.05,
+        "williams_overbought":wr>-20,"williams_oversold":wr<-80,
+    }
