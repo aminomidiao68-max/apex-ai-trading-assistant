@@ -166,7 +166,20 @@ interface TradingApiService {
                 level = HttpLoggingInterceptor.Level.BODY
             }
             val client = OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    val req = chain.request().newBuilder()
+                        .header("User-Agent", "ApexAI-Android/1.0")
+                        .header("Accept", "application/json")
+                        .header("Connection", "close")
+                        .build()
+                    chain.proceed(req)
+                }
                 .addInterceptor(logger)
+                .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .callTimeout(90, java.util.concurrent.TimeUnit.SECONDS)
+                .retryOnConnectionFailure(true)
                 .build()
 
             return Retrofit.Builder()
