@@ -178,14 +178,18 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
                             }
                         }
                         // پایین چارت
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            LegendDot(BullOB, "Bullish OB")
-                            LegendDot(BearOB, "Bearish OB")
-                            LegendDot(UpC, "BOS / CHoCH")
-                            LegendDot(KzLon.copy(alpha=0.7f), "Sessions")
+                            item { LegendDot(BullOB, "Bullish OB") }
+                            item { LegendDot(BearOB, "Bearish OB") }
+                            item { LegendDot(FvgC, "FVG") }
+                            item { LegendDot(BrkC.copy(alpha = 0.55f), "Breaker") }
+                            item { LegendDot(LiqC, "BSL / SSL") }
+                            item { LegendDot(UpC, "BOS / CHoCH") }
+                            item { LegendDot(KzLon.copy(alpha=0.7f), "Sessions") }
                         }
                     }
                 }
@@ -589,27 +593,56 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         // ======== زون‌ها: OB/FVG/BRK پشت کندل‌ها ========
         for (z in report.overlay.zones) {
             if (z.kind == "KZ") continue
-            if (z.kind != "OB") continue
-            val i = z.index; if (i<startIdx || i>=totalCandles) continue
+            if (z.kind !in listOf("OB", "FVG", "iFVG", "BRK")) continue
+            val zoneStart = z.index
+            val zoneEnd = if (z.endIdx >= zoneStart) z.endIdx else totalCandles - 1
+            if (zoneEnd < startIdx || zoneStart >= totalCandles) continue
+            val visibleZoneStart = max(zoneStart, startIdx)
+            val visibleZoneEnd = min(zoneEnd, totalCandles - 1)
             val rawY1 = priceY(z.top)
             val rawY2 = priceY(z.bottom)
             if (max(rawY1, rawY2) < chartT || min(rawY1, rawY2) > chartB) continue
             val top = min(rawY1, rawY2).coerceIn(chartT, chartB)
             val bottom = max(rawY1, rawY2).coerceIn(chartT, chartB)
-            val xstart = (idxX(i) - cw * 0.6f).coerceIn(chartL, chartR)
-            val extend = z.kind == "OB" || z.kind == "BRK"
-            val xend = (if (extend) chartR else idxX(i) + cw * 2.2f).coerceIn(chartL, chartR)
+            val xstart = (idxX(visibleZoneStart) - cw / 2f).coerceIn(chartL, chartR)
+            val xend = (idxX(visibleZoneEnd) + cw / 2f).coerceIn(chartL, chartR)
             val color = when(z.kind) {
                 "OB" -> if(z.side=="bullish") BullOB else BearOB
-                "FVG" -> if(z.inverse) iFvgC else FvgC
+                "FVG" -> FvgC
                 "iFVG" -> iFvgC
                 "BRK" -> BrkC
                 else -> Color.Transparent
             }
             if (color == Color.Transparent || xend <= xstart) continue
             val zoneH = (bottom - top).coerceAtLeast(2f)
-            drawRect(color=color.copy(alpha=0.14f), topLeft=Offset(xstart, top), size=Size(xend-xstart, zoneH))
-            drawRect(color=color.copy(alpha=0.72f), topLeft=Offset(xstart, top), size=Size(xend-xstart, zoneH), style=Stroke(0.8f))
+            val fillAlpha = when (z.kind) {
+                "OB" -> 0.20f
+                "FVG", "iFVG" -> 0.11f
+                "BRK" -> 0.055f
+                else -> 0.1f
+            }
+            val borderAlpha = when (z.kind) {
+                "OB" -> 0.88f
+                "FVG", "iFVG" -> 0.62f
+                "BRK" -> 0.42f
+                else -> 0.6f
+            }
+            drawRect(
+                color=color.copy(alpha=fillAlpha),
+                topLeft=Offset(xstart, top),
+                size=Size(xend-xstart, zoneH)
+            )
+            drawRect(
+                color=color.copy(alpha=borderAlpha),
+                topLeft=Offset(xstart, top),
+                size=Size(xend-xstart, zoneH),
+                style=Stroke(
+                    width=if (z.kind == "OB") 1.1f else 0.8f,
+                    pathEffect=if (z.kind == "BRK") {
+                        PathEffect.dashPathEffect(floatArrayOf(6f, 4f))
+                    } else null
+                )
+            )
             // عنوان درون زون (مثل TV: Bearish Order Block داخل مستطیل نارنجی)
             val label = when(z.kind) {
                 "OB" -> if(z.side=="bullish") "Bullish Order Block" else "Bearish Order Block"
@@ -683,20 +716,22 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         var lastArrowRight = false
         val plottedLiquidityY = mutableListOf<Float>()
         val simpleLiquidity = report.inducements
-            .filter { it.kind == "eqh" || it.kind == "eql" }
-            .takeLast(2)
+            .filter { it.kind in listOf("buyside_liq", "sellside_liq", "eqh", "eql") }
+            .takeLast(4)
         for (lab in simpleLiquidity.asReversed()) {
-            val col = when {
-                lab.kind.contains("buyside") -> UpC
-                lab.kind.contains("sellside") -> DnC
-                lab.kind.startsWith("eq") -> TL
+            val col = when (lab.kind) {
+                "buyside_liq", "eqh" -> DnC
+                "sellside_liq", "eql" -> UpC
                 else -> TL
             }
             val y = priceY(lab.price)
             if (y < chartT || y > chartB) continue
             if (plottedLiquidityY.any { abs(it - y) < 12f }) continue
             plottedLiquidityY += y
-            drawLine(col.copy(alpha=0.42f), Offset(chartL, y), Offset(chartR, y), strokeWidth=0.7f,
+            val lineStartX = if (
+                lab.kind.contains("liq") && lab.index in startIdx until totalCandles
+            ) idxX(lab.index) else chartL
+            drawLine(col.copy(alpha=0.48f), Offset(lineStartX, y), Offset(chartR, y), strokeWidth=0.8f,
                 pathEffect=PathEffect.dashPathEffect(floatArrayOf(4f,3f)))
             val lbl = when(lab.kind) {
                 "eqh" -> "EQH →"
@@ -709,9 +744,15 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             }
             if (lbl.isNotEmpty()) {
                 val lp = NativePaint().apply { color = col.toArgb(); textSize = 11f; isAntiAlias = true; isFakeBoldText = true }
-                val ax = if (lastArrowRight) chartR - 48f else chartL + 4f
+                val ax = if (lab.kind.contains("liq")) {
+                    chartR - 42f
+                } else if (lastArrowRight) {
+                    chartR - 42f
+                } else {
+                    chartL + 4f
+                }
                 drawContext.canvas.nativeCanvas.drawText(lbl, ax, y-4f, lp)
-                lastArrowRight = !lastArrowRight
+                if (!lab.kind.contains("liq")) lastArrowRight = !lastArrowRight
             }
         }
 

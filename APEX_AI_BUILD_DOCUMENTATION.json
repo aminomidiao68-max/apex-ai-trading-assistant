@@ -4,7 +4,7 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "2.1.8",
+    "current_version": "2.1.9",
     "status": "Stabilized MVP - Live Execution Disabled"
   },
   "architecture": {
@@ -291,6 +291,20 @@
             "Only Entry, Safe SL and TP1 trade-plan lines",
             "FVG, Breaker and Fibonacci overlays hidden from main chart but retained in detail data",
             "Cleaner chart legend and increased chart height"
+          ]
+        },
+        {
+          "version": "v2.1.9 Institutional Zones",
+          "date": "2026-07-12T15:40:00Z",
+          "features": [
+            "Important OB and FVG boxes extend until first price revisit",
+            "Maximum one bullish and one bearish OB",
+            "Maximum one bullish and one bearish FVG/iFVG",
+            "Single important breaker box with faint fill and dashed border",
+            "Latest BSL and SSL liquidity lines",
+            "Latest EQH/EQL reference levels",
+            "IDM dots retained without chart clutter",
+            "Zone end_idx added and rebased safely"
           ]
         }
       ]
@@ -805,8 +819,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "1.3",
-    "last_updated": "2026-07-12T15:00:00Z",
+    "documentation_version": "1.4",
+    "last_updated": "2026-07-12T15:40:00Z",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

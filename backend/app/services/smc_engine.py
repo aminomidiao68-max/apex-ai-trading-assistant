@@ -674,6 +674,25 @@ def _vis_range(cs):
     return min(c["l"] for c in cs), max(c["h"] for c in cs)
 
 
+def _zone_return_index(cs, start_index, top, bottom, search_from=None):
+    """Return the first candle that revisits a zone, or the current candle.
+
+    Zone boxes extend to this index. For a fresh zone with no revisit they
+    extend to the right edge; once price trades back into the zone, extension
+    stops on that candle.
+    """
+    if not cs:
+        return 0
+    start = max(int(search_from if search_from is not None else start_index + 1), 0)
+    upper = max(float(top), float(bottom))
+    lower = min(float(top), float(bottom))
+    for index in range(start, len(cs)):
+        candle = cs[index]
+        if candle["l"] <= upper and candle["h"] >= lower:
+            return index
+    return len(cs) - 1
+
+
 # =========================================================
 # VWAP (approx, from start of loaded dataset)
 # =========================================================
@@ -1370,15 +1389,28 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
                       "full_height":True,"name":k["name"],"start_idx":k["start"],"end_idx":k["end"],
                       "vol":k["vol"],"color":k["color"]})
     for o in active_obs[-8:]:
-        zones.append({"kind":"OB","side":o["kind"],"index":o["index"],"top":o["top"],"bottom":o["bottom"],
-                      "full_height":False,"quality":o.get("quality",5),"fresh":not o.get("tapped",False)})
+        end_idx = _zone_return_index(
+            cs, o["index"], o["top"], o["bottom"],
+            search_from=o.get("disp_index", o["index"]) + 1,
+        )
+        zones.append({"kind":"OB","side":o["kind"],"index":o["index"],"end_idx":end_idx,
+                      "top":o["top"],"bottom":o["bottom"],"full_height":False,
+                      "quality":o.get("quality",5),"fresh":not o.get("tapped",False)})
     for g in active_fvgs[-8:]:
         tag = "iFVG" if g.get("inverse") else "FVG"
-        zones.append({"kind":tag,"side":g["kind"],"index":g["index"],"top":g["top"],"bottom":g["bottom"],
-                      "full_height":False,"size_pct":g.get("size_pct",0),"quality":g.get("quality",5)})
+        end_idx = _zone_return_index(
+            cs, g["index"], g["top"], g["bottom"], search_from=g["index"] + 2
+        )
+        zones.append({"kind":tag,"side":g["kind"],"index":g["index"],"end_idx":end_idx,
+                      "top":g["top"],"bottom":g["bottom"],"full_height":False,
+                      "size_pct":g.get("size_pct",0),"quality":g.get("quality",5)})
     for b in br[-4:]:
-        zones.append({"kind":"BRK","side":b["kind"],"index":b["index"],"top":b["top"],"bottom":b["bottom"],
-                      "full_height":False,"quality":b.get("quality",5)})
+        end_idx = _zone_return_index(
+            cs, b["index"], b["top"], b["bottom"], search_from=b["index"] + 1
+        )
+        zones.append({"kind":"BRK","side":b["kind"],"index":b["index"],"end_idx":end_idx,
+                      "top":b["top"],"bottom":b["bottom"],"full_height":False,
+                      "quality":b.get("quality",5)})
 
     labels=[]
     for ev in events[-15:]:
@@ -1454,10 +1486,13 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
         "session_active":sess_name,"session_weight":sess_w,"session_color":sess_col,
         "events":[{"kind":e["type"],"dir":e["dir"],"index":e["index"],"price":e["price"]} for e in events[-15:]],
         "order_blocks":[{"kind":o["kind"],"top":o["top"],"bottom":o["bottom"],"index":o["index"],
+                          "end_idx":_zone_return_index(cs,o["index"],o["top"],o["bottom"],o.get("disp_index",o["index"])+1),
                           "quality":o.get("quality",5),"fresh":not o.get("tapped",False)} for o in active_obs[-8:]],
         "fvg":[{"kind":g["kind"],"top":g["top"],"bottom":g["bottom"],"index":g["index"],
+                "end_idx":_zone_return_index(cs,g["index"],g["top"],g["bottom"],g["index"]+2),
                 "inverse":g.get("inverse",False),"size_pct":g.get("size_pct",0),"quality":g.get("quality",5)} for g in active_fvgs[-8:]],
         "breakers":[{"kind":b["kind"],"top":b["top"],"bottom":b["bottom"],"index":b["index"],
+                      "end_idx":_zone_return_index(cs,b["index"],b["top"],b["bottom"],b["index"]+1),
                       "quality":b.get("quality",5)} for b in br[-4:]],
         "inducements":[{"kind":l["kind"],"price":l["price"],"index":l.get("sweep",l["index"])}
                         for l in liq if "sweep" in l or l["kind"] in ("eqh","eql")],

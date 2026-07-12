@@ -284,13 +284,16 @@ def test_chart_window_rebases_all_overlay_indices():
     ):
         assert all(0 <= item["index"] < 160 for item in collection)
     assert len(prepared["killzones"]) <= 2
-    assert all(item["kind"] in ("KZ", "OB") for item in prepared["overlay"]["zones"])
+    assert all(item["kind"] in ("KZ", "OB", "FVG", "iFVG", "BRK") for item in prepared["overlay"]["zones"])
     assert len([item for item in prepared["overlay"]["zones"] if item["kind"] == "OB"]) <= 2
+    assert len([item for item in prepared["overlay"]["zones"] if item["kind"] in ("FVG", "iFVG")]) <= 2
+    assert len([item for item in prepared["overlay"]["zones"] if item["kind"] == "BRK"]) <= 1
+    assert all(item.get("end_idx", 159) >= item["index"] for item in prepared["overlay"]["zones"] if item["kind"] != "KZ")
 
 
 def test_timeframe_mapping_aggregation_and_high_tf_killzones():
     from app.services.market_data_service import MarketDataService
-    from app.services.smc_engine import _sessions
+    from app.services.smc_engine import _sessions, _zone_return_index
 
     service = MarketDataService()
     assert service._normalize_twelvedata_interval("1d") == "1day"
@@ -311,6 +314,16 @@ def test_timeframe_mapping_aggregation_and_high_tf_killzones():
     assert _sessions(raw, "4h") == ([], [])
     zones, _ = _sessions(raw, "15m")
     assert len(zones) <= 6
+
+    zone_candles = [
+        {"h": 105.0, "l": 103.0},
+        {"h": 104.0, "l": 102.0},
+        {"h": 101.0, "l": 99.5},
+        {"h": 100.0, "l": 98.0},
+    ]
+    assert _zone_return_index(
+        zone_candles, start_index=0, top=101.0, bottom=99.0, search_from=1
+    ) == 2
 
 
 def test_user_data_isolation_delete_and_openapi_security():

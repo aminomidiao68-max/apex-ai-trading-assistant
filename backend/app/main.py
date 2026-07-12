@@ -532,6 +532,25 @@ def _rebase_items(items, offset: int, total: int, keep_extended: bool = False):
     return rebased
 
 
+def _rebase_price_zones(items, offset: int, total: int):
+    rebased = []
+    for original in items or []:
+        item = dict(original)
+        try:
+            start = int(item.get("index", 0))
+            end = int(item.get("end_idx", total - 1))
+        except (TypeError, ValueError):
+            continue
+        if start >= total or end < offset:
+            continue
+        visible_start = max(start, offset)
+        visible_end = min(max(end, visible_start), total - 1)
+        item["index"] = visible_start - offset
+        item["end_idx"] = visible_end - offset
+        rebased.append(item)
+    return rebased
+
+
 def _rebase_killzones(items, offset: int, total: int):
     rebased = []
     for original in items or []:
@@ -573,9 +592,21 @@ def _prepare_chart_report(report: dict, items: list[dict], max_candles: int = 16
     report["breakers"] = _rebase_items(
         report.get("breakers"), offset, total, keep_extended=True
     )[-4:]
-    report["inducements"] = _rebase_items(
-        report.get("inducements"), offset, total
-    )[-6:]
+    all_liquidity = _rebase_items(report.get("inducements"), offset, total)
+    selected_liquidity = []
+    for kind in ("buyside_liq", "sellside_liq", "eqh", "eql"):
+        matches = [item for item in all_liquidity if item.get("kind") == kind]
+        if matches:
+            selected_liquidity.append(matches[-1])
+    # Preserve up to two additional recent sweep points for IDM dots.
+    for item in reversed(all_liquidity):
+        if item not in selected_liquidity and "liq" in str(item.get("kind", "")):
+            selected_liquidity.append(item)
+        if len(selected_liquidity) >= 6:
+            break
+    report["inducements"] = sorted(
+        selected_liquidity, key=lambda item: int(item.get("index", 0))
+    )
 
     all_killzones = _rebase_killzones(report.get("killzones"), offset, total)
     simple_killzones = [
@@ -589,24 +620,51 @@ def _prepare_chart_report(report: dict, items: list[dict], max_candles: int = 16
 
     overlay = dict(report.get("overlay") or {})
     overlay["labels"] = _rebase_items(overlay.get("labels"), offset, total)[-8:]
-    raw_ob_zones = []
+    raw_by_kind: dict[str, list[dict]] = {"OB": [], "FVG": [], "iFVG": [], "BRK": []}
     for zone in overlay.get("zones") or []:
-        if zone.get("kind") == "OB":
-            raw_ob_zones.append(zone)
-    ob_zones = _rebase_items(raw_ob_zones, offset, total, keep_extended=True)
+        kind = str(zone.get("kind", ""))
+        if kind in raw_by_kind:
+            raw_by_kind[kind].append(zone)
 
-    # The main chart shows at most one high-quality bullish OB and one bearish
-    # OB. Full FVG/Breaker collections remain in the report and lower detail
-    # cards, but no longer obscure the candles.
-    selected_obs = []
-    for side in ("bullish", "bearish"):
-        candidates = [item for item in ob_zones if item.get("side") == side]
-        if candidates:
-            selected_obs.append(
-                max(candidates, key=lambda item: (int(item.get("quality", 0)), int(item.get("index", 0))))
-            )
-    selected_obs.sort(key=lambda item: int(item.get("index", 0)))
-    overlay["zones"] = simple_killzones + selected_obs
+    rebased_by_kind = {
+        kind: _rebase_price_zones(zones, offset, total)
+        for kind, zones in raw_by_kind.items()
+    }
+    current_price = float(report.get("price") or 0)
+    atr = max(float(report.get("atr") or 0), 1e-9)
+
+    def importance(item: dict) -> tuple[float, int]:
+        midpoint = (float(item.get("top", 0)) + float(item.get("bottom", 0))) / 2
+        distance_penalty = min(abs(midpoint - current_price) / atr, 30.0) if current_price else 0
+        score = (
+            int(item.get("quality", 0)) * 100
+            + (25 if item.get("fresh", False) else 0)
+            + int(item.get("index", 0)) * 0.2
+            - distance_penalty
+        )
+        return score, int(item.get("index", 0))
+
+    def strongest_per_side(items: list[dict]) -> list[dict]:
+        selected = []
+        for side in ("bullish", "bearish"):
+            candidates = [item for item in items if item.get("side") == side]
+            if candidates:
+                selected.append(max(candidates, key=importance))
+        return sorted(selected, key=lambda item: int(item.get("index", 0)))
+
+    selected_obs = strongest_per_side(rebased_by_kind["OB"])
+    selected_fvgs = strongest_per_side(
+        rebased_by_kind["FVG"] + rebased_by_kind["iFVG"]
+    )
+    selected_breakers = sorted(
+        rebased_by_kind["BRK"], key=importance, reverse=True
+    )[:1]
+
+    # At most 2 OBs + 2 FVGs + 1 faint breaker, all with a finite extension
+    # ending on the first price revisit. This keeps only institutional zones.
+    overlay["zones"] = (
+        simple_killzones + selected_obs + selected_fvgs + selected_breakers
+    )
     report["overlay"] = overlay
     return report
 
