@@ -738,6 +738,9 @@ data class SmcReport(
     val overlay: SmcOverlay = SmcOverlay(),
     val watching: List<SmcWatching> = emptyList(),
     @SerializedName("confluence_factors") val confluenceFactors: List<SmcConfluenceFactor> = emptyList(),
-    @SerializedName("candles_count") val candlesCount: Int = 0,
-    @SerializedName("created_by") val createdBy: String = "Amin Omidi"
+    val candlesCount: Int = 0,
+    @SerializedName("created_by") val createdBy: String = "Amin Omidi",
+    @SerializedName("omega_compliant") val omegaCompliant: Boolean = false,
+    @SerializedName("omega_reasons") val omegaReasons: List<String> = emptyList(),
+    @SerializedName("action_label") val actionLabel: String = "WAIT"
 )

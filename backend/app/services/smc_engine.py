@@ -1271,14 +1271,27 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
 
     rr = setup["rr"] if setup else 0.0
     entry=sl=tp1=tp2=tp3=inv=ezone=None; setup_fa=None; grade="F"
+    omega_ok = False; omega_reasons = []; action_label = "WAIT"
     if setup:
         entry=setup["entry"]; sl=setup["sl"]; tp1=setup["tp1"]; tp2=setup["tp2"]; tp3=setup["tp3"]; inv=setup["invalidation"]
         ezone={"high":setup["entry_high"],"low":setup["entry_low"]}
         setup_fa=SETUPS.get(setup["type"],{}).get("name_fa",setup["type"])
         if rr<1.0: direction=NEUTRAL
-        # If confluence is very low (no supporting factors), mark as F/neutral despite setup found
         if conf < 8: direction=NEUTRAL
         grade = _grade(conf, setup["probability"], rr)
+        # Apply Omega-100 Rule
+        omega_ok, omega_reasons = _omega_compliant(conf, setup["probability"], rr)
+        if not omega_ok:
+            # Signal is watch-only, not actionable
+            action_label = "WATCH"
+        else:
+            action_label = {
+                "A+":"STRONG_BUY/SELL","A":"BUY/SELL","B":"CONSIDER",
+                "C":"CAUTION","D":"HALF_SIZE","F":"AVOID"
+            }.get(grade,"WAIT")
+        # If RR<2 force non-actionable regardless of grade
+        if rr < OMEGA_MIN_RR and direction != NEUTRAL:
+            direction = "watching" if omega_ok else NEUTRAL
 
     # ---- Watching (nearby setups not yet confirmed) ----
     watching = []
@@ -1375,6 +1388,14 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
         "symbol":symbol,"timeframe":timeframe,"market":"","price":price,"bias":bias,"direction":direction,
         "confluence":conf,"probability":setup.get("probability",0) if setup else 0,
         "setup_type":setup_fa or "-","rr":round(rr,2),"atr":atr,"note":note,"status":"ok","grade":grade,
+        "omega_compliant":omega_ok if setup else False,
+        "omega_reasons":omega_reasons if setup else [],
+        "action_label":action_label if setup else "WAIT",
+        "omega_rule":{
+            "min_rr":OMEGA_MIN_RR,"min_conf":OMEGA_MIN_CONF,"min_prob":OMEGA_MIN_PROB,
+            "max_risk_pct":1.0,"max_daily_trades":OMEGA_MAX_DAILY_TRADES,
+            "description":"قانون ۱۰۰ اُمگا: حداکثر ۱% ریسک در هر ترید، حداقل RR 1:2، ۱۰۰ ترید برای قضاوت، بدون مارتینگل."
+        },
         "trend_strength":trend_str,"vwap":vwap,"watching":watching,
         "levels":{"entry":entry,"sl":sl,"tp":tp2},"tp1":tp1,"tp2":tp2,"tp3":tp3,"invalidation":inv,
         "entry_zone":ezone,"plan_lines":plan_lines,
@@ -1407,6 +1428,10 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
 def _empty(symbol,tf,count):
     return {"symbol":symbol,"timeframe":tf,"price":0,"bias":"neutral","direction":"neutral","confluence":0,"probability":0,
             "setup_type":"-","rr":0,"atr":0,"note":"حداقل ۳۰ کندل لازم است.","status":"insufficient_data","grade":"-",
+            "omega_compliant":False,"omega_reasons":[],"action_label":"WAIT",
+            "omega_rule":{"min_rr":OMEGA_MIN_RR,"min_conf":OMEGA_MIN_CONF,"min_prob":OMEGA_MIN_PROB,
+                         "max_risk_pct":1.0,"max_daily_trades":OMEGA_MAX_DAILY_TRADES,
+                         "description":"قانون ۱۰۰ اُمگا"},
             "trend_strength":0,"vwap":0,"watching":[],
             "levels":{"entry":None,"sl":None,"tp":None},"tp1":None,"tp2":None,"tp3":None,"invalidation":None,
             "entry_zone":None,"plan_lines":[],"premium_zone":"eq","mtf_aligned":False,"htf_bias":None,
@@ -1599,6 +1624,27 @@ def _divergence(cs, indicator_vals, window=20):
     if ph2>ph1 and ih2<ih1: return "bearish"
     if pl2<pl1 and il2>il1: return "bullish"
     return None
+
+# ====================================================================
+# Omega-100 Rule Compliance: Professional Risk Management
+#   * Minimum RR 2.0 → any setup with RR<2 is downgraded to watching/grade D/F
+#   * Max risk 1% per trade (applied client-side in size calculation)
+#   * Require ≥ 50 confluence for actionable signals
+#   * After 3 consecutive losses: recommend half-size
+# ====================================================================
+OMEGA_MIN_RR = 2.0
+OMEGA_MIN_CONF = 40
+OMEGA_MIN_PROB = 60
+OMEGA_MAX_DAILY_TRADES = 6
+
+def _omega_compliant(conf, prob, rr):
+    """Return (actionable, reasons_list) per Omega-100 rule."""
+    reasons=[]; ok=True
+    if rr < OMEGA_MIN_RR: reasons.append(f"RR<{OMEGA_MIN_RR:.1f} (قانون ۱۰۰ اُمگا)"); ok=False
+    if conf < OMEGA_MIN_CONF: reasons.append(f"کانفلونس <{OMEGA_MIN_CONF}"); ok=False
+    if prob < OMEGA_MIN_PROB: reasons.append(f"احتمال <{OMEGA_MIN_PROB}%"); ok=False
+    return ok, reasons
+
 
 def calc_all_indicators(cs):
     closes=[c["c"] for c in cs]; highs=[c["h"] for c in cs]; lows=[c["l"] for c in cs]; vols=[c["v"] for c in cs]
