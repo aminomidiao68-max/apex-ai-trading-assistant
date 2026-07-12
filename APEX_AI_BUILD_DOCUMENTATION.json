@@ -4,7 +4,7 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "2.1.7",
+    "current_version": "2.1.8",
     "status": "Stabilized MVP - Live Execution Disabled"
   },
   "architecture": {
@@ -277,6 +277,20 @@
             "Cancelled stale Android chart requests on symbol/timeframe changes",
             "Added LTR symbol/timeframe selectors with auto-scroll",
             "Validated 10 symbols x 7 timeframes (70/70 provider and SMC matrix pass)"
+          ]
+        },
+        {
+          "version": "v2.1.8 Simplified Professional Chart",
+          "date": "2026-07-12T15:00:00Z",
+          "features": [
+            "TradingView-inspired simplified overlay",
+            "Maximum two recent London/New York killzones",
+            "Maximum one bullish and one bearish Order Block on main chart",
+            "Only four recent BOS/CHoCH events and three IDM markers",
+            "Only latest EQH/EQL reference levels",
+            "Only Entry, Safe SL and TP1 trade-plan lines",
+            "FVG, Breaker and Fibonacci overlays hidden from main chart but retained in detail data",
+            "Cleaner chart legend and increased chart height"
           ]
         }
       ]
@@ -791,8 +805,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "1.2",
-    "last_updated": "2026-07-12T14:15:00Z",
+    "documentation_version": "1.3",
+    "last_updated": "2026-07-12T15:00:00Z",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

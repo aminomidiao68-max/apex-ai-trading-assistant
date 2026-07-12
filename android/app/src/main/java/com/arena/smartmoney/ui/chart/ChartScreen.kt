@@ -168,12 +168,12 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
                         }
                         if (r.candles.isNotEmpty()) {
                             SmcCanvas(
-                                modifier = Modifier.fillMaxWidth().height(360.dp),
+                                modifier = Modifier.fillMaxWidth().height(390.dp),
                                 report = r, scale = scale,
                                 onScale = { scale = (scale * it).coerceIn(0.6f, 4f) }
                             )
                         } else {
-                            Box(Modifier.fillMaxWidth().height(360.dp), contentAlignment = Alignment.Center) {
+                            Box(Modifier.fillMaxWidth().height(390.dp), contentAlignment = Alignment.Center) {
                                 Text(if (loading) "در حال بارگذاری..." else "داده کافی نیست", color = TL, fontSize = 12.sp)
                             }
                         }
@@ -182,13 +182,10 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            LegendDot(UpC,  "Buy OB")
-                            LegendDot(DnC,  "Sell OB")
-                            LegendDot(FvgC, "FVG")
-                            LegendDot(BrkC, "Brk")
-                            LegendDot(IdmColor,"IDM")
-                            LegendDot(KzLon.copy(alpha=0.7f),"London KZ")
-                            LegendDot(KzNy.copy(alpha=0.7f),"NY KZ")
+                            LegendDot(BullOB, "Bullish OB")
+                            LegendDot(BearOB, "Bearish OB")
+                            LegendDot(UpC, "BOS / CHoCH")
+                            LegendDot(KzLon.copy(alpha=0.7f), "Sessions")
                         }
                     }
                 }
@@ -592,6 +589,7 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         // ======== زون‌ها: OB/FVG/BRK پشت کندل‌ها ========
         for (z in report.overlay.zones) {
             if (z.kind == "KZ") continue
+            if (z.kind != "OB") continue
             val i = z.index; if (i<startIdx || i>=totalCandles) continue
             val rawY1 = priceY(z.top)
             val rawY2 = priceY(z.bottom)
@@ -681,26 +679,13 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             }
         }
 
-        // ======== خطوط فیب (در صورت وجود) ========
-        for (fl in report.overlay.lines) {
-            if (!fl.kind.startsWith("fib")) continue
-            val col = when(fl.kind) {
-                "fib50" -> Color.Magenta.copy(alpha=0.5f)
-                "fib62" -> Color(0xFFfbbf24).copy(alpha=0.6f)
-                "fib79" -> Color(0xFFef4444).copy(alpha=0.6f)
-                else -> Color.Transparent
-            }
-            if (col == Color.Transparent) continue
-            val y = priceY(fl.price)
-            if (y < chartT || y > chartB) continue
-            drawLine(col, Offset(chartL, y), Offset(chartR, y), strokeWidth=0.8f,
-                pathEffect=PathEffect.dashPathEffect(floatArrayOf(3f,4f)))
-        }
-
-        // ======== EQH/EQL + لیک (با فلش → مثل TV) ========
+        // ======== Only the latest EQH/EQL reference levels ========
         var lastArrowRight = false
         val plottedLiquidityY = mutableListOf<Float>()
-        for (lab in report.inducements.takeLast(10).asReversed()) {
+        val simpleLiquidity = report.inducements
+            .filter { it.kind == "eqh" || it.kind == "eql" }
+            .takeLast(2)
+        for (lab in simpleLiquidity.asReversed()) {
             val col = when {
                 lab.kind.contains("buyside") -> UpC
                 lab.kind.contains("sellside") -> DnC
@@ -731,7 +716,7 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         }
 
         // ======== BOS/CHoCH — فلش‌دار روی کندل، خط کوتاه به لیبل (مثل TV) ========
-        for (ev in report.events.takeLast(8)) {
+        for (ev in report.events.takeLast(4)) {
             if (ev.index < startIdx || ev.index >= totalCandles) continue
             val col = if (ev.dir == "bullish") UpC else DnC
             val y = priceY(ev.price)
@@ -751,7 +736,7 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         }
 
         // ======== IDM نقاط زرد (Inducement) ========
-        for (lab in report.inducements.takeLast(8)) {
+        for (lab in report.inducements.takeLast(3)) {
             if (!lab.kind.contains("liq")) continue
             if (lab.index < startIdx || lab.index >= totalCandles) continue
             val idx = lab.index
@@ -766,12 +751,12 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         val actionable = report.grade !in listOf("F","D","-") &&
                 report.direction in listOf("long","short") && report.omegaCompliant
         if (actionable) {
-            for (pl in report.planLines) {
+            for (pl in report.planLines.filter { it.kind in listOf("entry", "sl", "tp1") }) {
                 val y = priceY(pl.price)
                 if (y < chartT-2f || y > chartB+2f) continue
                 val (c, label) = when(pl.kind) {
                     "entry" -> Gold to "Entry"
-                    "sl"    -> DnC to "Safe Stop-Loss"
+                    "sl"    -> DnC to "Safe SL"
                     "tp1"   -> UpC to "TP1"
                     "tp2"   -> UpC to "TP2"
                     "tp3"   -> UpC.copy(alpha=0.6f) to "TP3"

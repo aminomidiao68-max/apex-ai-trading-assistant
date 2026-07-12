@@ -283,6 +283,9 @@ def test_chart_window_rebases_all_overlay_indices():
         prepared["overlay"]["zones"],
     ):
         assert all(0 <= item["index"] < 160 for item in collection)
+    assert len(prepared["killzones"]) <= 2
+    assert all(item["kind"] in ("KZ", "OB") for item in prepared["overlay"]["zones"])
+    assert len([item for item in prepared["overlay"]["zones"] if item["kind"] == "OB"]) <= 2
 
 
 def test_timeframe_mapping_aggregation_and_high_tf_killzones():

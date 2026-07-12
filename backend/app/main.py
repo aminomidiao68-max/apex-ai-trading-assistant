@@ -565,7 +565,7 @@ def _prepare_chart_report(report: dict, items: list[dict], max_candles: int = 16
             "high": max(item["h"] for item in display),
         }
 
-    report["events"] = _rebase_items(report.get("events"), offset, total)[-10:]
+    report["events"] = _rebase_items(report.get("events"), offset, total)[-6:]
     report["order_blocks"] = _rebase_items(
         report.get("order_blocks"), offset, total, keep_extended=True
     )[-5:]
@@ -575,29 +575,38 @@ def _prepare_chart_report(report: dict, items: list[dict], max_candles: int = 16
     )[-4:]
     report["inducements"] = _rebase_items(
         report.get("inducements"), offset, total
-    )[-12:]
-    report["killzones"] = _rebase_killzones(
-        report.get("killzones"), offset, total
     )[-6:]
 
+    all_killzones = _rebase_killzones(report.get("killzones"), offset, total)
+    simple_killzones = [
+        item for item in all_killzones
+        if "همپوشانی" not in str(item.get("name", ""))
+        and "overlap" not in str(item.get("name", "")).lower()
+    ][-2:]
+    if not simple_killzones and all_killzones:
+        simple_killzones = all_killzones[-1:]
+    report["killzones"] = simple_killzones
+
     overlay = dict(report.get("overlay") or {})
-    overlay["labels"] = _rebase_items(overlay.get("labels"), offset, total)[-14:]
-    zones = []
-    regular_by_kind: dict[str, list[dict]] = {"OB": [], "BRK": [], "FVG": [], "iFVG": []}
-    killzones = []
+    overlay["labels"] = _rebase_items(overlay.get("labels"), offset, total)[-8:]
+    raw_ob_zones = []
     for zone in overlay.get("zones") or []:
-        if zone.get("kind") == "KZ":
-            killzones.append(zone)
-        else:
-            regular_by_kind.setdefault(str(zone.get("kind")), []).append(zone)
-    killzones = _rebase_killzones(killzones, offset, total)[-6:]
-    for kind, limit, extended in (("OB", 5, True), ("BRK", 4, True), ("FVG", 5, False), ("iFVG", 3, False)):
-        zones.extend(
-            _rebase_items(
-                regular_by_kind.get(kind), offset, total, keep_extended=extended
-            )[-limit:]
-        )
-    overlay["zones"] = killzones + zones
+        if zone.get("kind") == "OB":
+            raw_ob_zones.append(zone)
+    ob_zones = _rebase_items(raw_ob_zones, offset, total, keep_extended=True)
+
+    # The main chart shows at most one high-quality bullish OB and one bearish
+    # OB. Full FVG/Breaker collections remain in the report and lower detail
+    # cards, but no longer obscure the candles.
+    selected_obs = []
+    for side in ("bullish", "bearish"):
+        candidates = [item for item in ob_zones if item.get("side") == side]
+        if candidates:
+            selected_obs.append(
+                max(candidates, key=lambda item: (int(item.get("quality", 0)), int(item.get("index", 0))))
+            )
+    selected_obs.sort(key=lambda item: int(item.get("index", 0)))
+    overlay["zones"] = simple_killzones + selected_obs
     report["overlay"] = overlay
     return report
 
