@@ -1359,17 +1359,17 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
     for l in liq[-8:]:
         if l["kind"] in ("eqh","eql","recent_high_liq","recent_low_liq"):
             lines.append({"kind":l["kind"],"price":l["price"]})
-    lines += plan_lines
 
-    # Plan lines only for actionable setups (Omega-100 compliant or at least grade not F)
+    # Plan lines only for actionable setups (Omega-100 compliant; grade not F/WATCH)
     plan_lines=[]
-    draw_plan = bool(entry) and direction in (LONG,SHORT) and grade not in ("F",)
+    draw_plan = bool(entry) and direction in (LONG,SHORT) and grade not in ("F","D") and omega_ok
     if draw_plan:
         if entry: plan_lines.append({"kind":"entry","price":entry})
         if sl:    plan_lines.append({"kind":"sl","price":sl})
         if tp1:   plan_lines.append({"kind":"tp1","price":tp1})
         if tp2:   plan_lines.append({"kind":"tp2","price":tp2})
         if tp3:   plan_lines.append({"kind":"tp3","price":tp3})
+    lines += plan_lines
 
     note = "بازار خنثی — منتظر شکست ساختار"
     if news_blocked: note = "🚫 پنجره اخبار — معامله نکنید"

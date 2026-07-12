@@ -2,6 +2,7 @@
 package com.arena.smartmoney.ui.chart
 
 import android.graphics.Paint as NativePaint
+import android.graphics.Rect
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -36,12 +37,16 @@ import com.arena.smartmoney.data.model.SmcReport
 import com.arena.smartmoney.data.model.SmcZone
 import com.arena.smartmoney.data.repository.TradingRepository
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
-// ===== رنگ‌های لوکس تیره + طلایی =====
+// ===== رنگ‌های لوکس تیره + طلایی (پالت تریدینگ‌ویو الهام‌گرفته) =====
 private val BgDark   = Color(0xFF070A11)
+private val ChartBg  = Color(0xFF0B1220)   // پس‌زمینه چارت شبیه TV
 private val Surf     = Color(0xFF101621)
 private val Surf2    = Color(0xFF171F2D)
-private val GridLn   = Color(0xFF1C2638)
+private val GridLn   = Color(0xFF1A2536)
 private val Gold     = Color(0xFFD4AF37)
 private val GoldDim  = Color(0xFF8C7630)
 private val GoldSoft = Color(0xFF2E2714)
@@ -53,11 +58,13 @@ private val FvgC     = Color(0xFFB388FF)
 private val iFvgC    = Color(0xFF7C4DFF)
 private val BrkC     = Color(0xFFFF9F43)
 private val LiqC     = Color(0xFF54A0FF)
-private val KzAsia   = Color(0x2960A5FA)
-private val KzLon    = Color(0x2BD4AF37)
-private val KzNy     = Color(0x36EF4444)
-private val KzOver   = Color(0x44D4AF37)
+private val KzAsia   = Color(0x334C8BF5)   // آبی لندن/آسیا شبیه TV
+private val KzLon    = Color(0x554C8BF5)   // آبی London Killzone
+private val KzNy     = Color(0x55EF5350)   // قرمز NY Killzone
+private val KzOver   = Color(0x44D4AF37)   // طلایی Overlap
 private val EqColor  = Color(0xFF94A3B8)
+private val VolUp    = Color(0x6622C55E)
+private val VolDn    = Color(0x66EF4444)
 
 private val SYMBOLS = listOf("XAUUSD","EURUSD","GBPUSD","USDJPY","AUDUSD","BTCUSDT","ETHUSDT","SOLUSDT","US30","NAS100")
 private val TIMEFRAMES = listOf("1m","5m","15m","30m","1h","4h","1d")
@@ -69,14 +76,14 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
     var r by remember { mutableStateOf(SmcReport()) }
     var loading by remember { mutableStateOf(true) }
     var sym by remember { mutableStateOf("XAUUSD") }
-    var mkt by remember { mutableStateOf("") }  // auto
+    var mkt by remember { mutableStateOf("") }
     var tf  by remember { mutableStateOf("15m") }
     var scale by remember { mutableStateOf(1f) }
 
     fun load() {
         scope.launch {
             loading = true
-            try { r = repo.getSmcAnalysis(sym, mkt, tf, 220) }
+            try { r = repo.getSmcAnalysis(sym, mkt, tf, 260) }
             finally { loading = false }
         }
     }
@@ -94,7 +101,7 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
         }
     ) { pad ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(pad).padding(horizontal = 12.dp),
+            modifier = Modifier.fillMaxSize().padding(pad).padding(horizontal = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
@@ -107,34 +114,35 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
             }
             item { HeaderCard(r, sym, mkt, tf, loading) }
             item {
-                Card(colors = CardDefaults.cardColors(containerColor = Surf), shape = RoundedCornerShape(16.dp)) {
-                    Column(modifier = Modifier.padding(10.dp)) {
-                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Card(colors = CardDefaults.cardColors(containerColor = Surf), shape = RoundedCornerShape(14.dp)) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
                             Text("نمودار SMC", color = Gold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                            Text("(با زوم دو انگشت)", color = TL, fontSize = 9.sp)
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        if (r.candles.isNotEmpty()) {
-                            SmcCanvas(
-                                modifier = Modifier.fillMaxWidth().height(280.dp),
-                                report = r, scale = scale,
-                                onScale = { scale = (scale * it).coerceIn(0.5f, 4f) }
-                            )
-                        } else {
-                            Box(Modifier.fillMaxWidth().height(280.dp), contentAlignment = Alignment.Center) {
-                                Text("داده کافی برای رسم نمودار نیست", color = TL, fontSize = 12.sp)
-                            }
+                            Text("(بزرگنمایی با دو انگشت)", color = TL, fontSize = 9.sp)
                         }
                         Spacer(Modifier.height(6.dp))
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (r.candles.isNotEmpty()) {
+                            SmcCanvas(
+                                modifier = Modifier.fillMaxWidth().height(340.dp),
+                                report = r, scale = scale,
+                                onScale = { scale = (scale * it).coerceIn(0.6f, 4f) }
+                            )
+                        } else {
+                            Box(Modifier.fillMaxWidth().height(340.dp), contentAlignment = Alignment.Center) {
+                                Text(if (loading) "در حال بارگذاری..." else "داده کافی برای رسم نمودار نیست", color = TL, fontSize = 12.sp)
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        // Legend مثل عکس دوم
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
                             item { LegendDot(UpC,  "Buy OB") }
                             item { LegendDot(DnC,  "Sell OB") }
                             item { LegendDot(FvgC, "FVG") }
                             item { LegendDot(iFvgC,"iFVG") }
                             item { LegendDot(BrkC, "Brk") }
                             item { LegendDot(LiqC, "Liq") }
-                            item { LegendDot(KzLon,"KZ لندن") }
-                            item { LegendDot(KzNy, "KZ نیویورک") }
+                            item { LegendDot(KzLon.copy(alpha=0.7f),"KZ لندن") }
+                            item { LegendDot(KzNy.copy(alpha=0.7f), "KZ نیویورک") }
                         }
                     }
                 }
@@ -143,9 +151,7 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
             item { LevelsCard(r) }
             if (r.watching.isNotEmpty()) item { WatchingCard(r) }
             if (r.killzones.isNotEmpty()) item { Section("سشن‌ها و کیل‌زون‌ها", Gold) }
-            if (r.killzones.isNotEmpty()) items(r.killzones.take(4)) { kz ->
-                KzRow(kz)
-            }
+            if (r.killzones.isNotEmpty()) items(r.killzones.take(4)) { kz -> KzRow(kz) }
             val liqSweeps = r.inducements.filter { it.kind.contains("liq") || it.kind.startsWith("eq") || it.kind.contains("recent") }
             if (liqSweeps.isNotEmpty()) item { Section("بای‌ساید / سل‌ساید لیکوئیدیتی", LiqC) }
             if (liqSweeps.isNotEmpty()) items(liqSweeps.take(6)) { LiqRow(it.kind, it.price) }
@@ -201,7 +207,6 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
                 }
             }
             Spacer(Modifier.height(10.dp))
-            // First row: key metrics (grade/conf/prob/RR/TS)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 item {
                     val gradeC = when(r.grade) {
@@ -216,7 +221,6 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
                 item { ChipS("${r.candlesCount}c", TL) }
             }
             Spacer(Modifier.height(4.dp))
-            // Second row: OF/session/news
             LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 item {
                     val pr = r.orderflow.pressure
@@ -234,12 +238,38 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
                 item { ChipS(when(r.premiumZone){"premium"->"پرمیوم";"discount"->"دیسکانت";else->"تعادل"}, GoldDim) }
                 if (r.newsBlocked) item { ChipS("⚠️خبر", DnC) }
                 if (r.mtfAligned) item { ChipS("MTF✓", UpC) }
+                val actLbl = when(r.actionLabel) {
+                    "STRONG_BUY/SELL" -> "STRONG"
+                    "BUY/SELL" -> "BUY/SELL"
+                    "CONSIDER" -> "CONSIDER"
+                    "CAUTION" -> "CAUTION"
+                    "HALF_SIZE" -> "HALF"
+                    "WATCH" -> "WATCH"
+                    "AVOID" -> "AVOID"
+                    else -> r.actionLabel
+                }
+                val actCol = when(r.actionLabel) {
+                    "STRONG_BUY/SELL","BUY/SELL" -> UpC
+                    "CONSIDER" -> Gold
+                    "WATCH","CAUTION" -> GoldDim
+                    "HALF_SIZE" -> BrkC
+                    "AVOID" -> DnC
+                    else -> TL
+                }
+                item { ChipS(actLbl, actCol) }
                 item { ChipS(r.status.ifBlank { "-" }, TL) }
             }
             if (r.setupType != "-" && r.setupType.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
                 Surface(shape=RoundedCornerShape(8.dp), color=Gold.copy(alpha=0.18f)) {
                     Text("  ستاپ: ${r.setupType}  ", color=Gold, fontSize=11.sp, fontWeight=FontWeight.Black)
+                }
+            }
+            if (r.omegaReasons.isNotEmpty()) {
+                Spacer(Modifier.height(4.dp))
+                val omc = if (r.omegaCompliant) UpC else TL
+                Surface(shape=RoundedCornerShape(6.dp), color=omc.copy(alpha=0.10f)) {
+                    Text("  Ω Omega-100: " + r.omegaReasons.joinToString(" / ") + "  ", color=omc, fontSize=9.sp, fontWeight=FontWeight.Bold)
                 }
             }
             Spacer(Modifier.height(8.dp))
@@ -335,15 +365,19 @@ private fun LevelsCard(r: SmcReport) {
                 Spacer(Modifier.height(6.dp))
                 Text("محدوده ورود: ${fmt(r.entryZone.low)} — ${fmt(r.entryZone.high)}", color = TL, fontSize = 11.sp)
             }
+            // Omega rule reminder
+            Spacer(Modifier.height(6.dp))
+            Text("⚖️ Ω قانون ۱۰۰ اُمگا: حداکثر ۱% ریسک، RR≥1:2، بدون مارتینگل",
+                color = GoldDim, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
-// ========== بوم نمودار ==========
+// ========== بوم نمودار (شبیه تریدینگ‌ویو عکس دوم) ==========
 @Composable
 private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: Float, onScale: (Float)->Unit) {
     Canvas(modifier = modifier
-        .background(BgDark, RoundedCornerShape(10.dp))
+        .background(ChartBg, RoundedCornerShape(10.dp))
         .pointerInput(Unit) { detectTransformGestures { _, _, zoom, _ -> onScale(zoom) } }
     ) {
         val w = size.width; val h = size.height
@@ -351,40 +385,50 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         if (candles.isEmpty()) return@Canvas
 
         val totalCandles = candles.size
-        val visibleCount = (totalCandles / scale).toInt().coerceIn(20, totalCandles)
+        val visibleCount = (totalCandles / scale).toInt().coerceIn(30, totalCandles)
         val startIdx = (totalCandles - visibleCount).coerceAtLeast(0)
         val visible = if (startIdx == 0) candles else candles.subList(startIdx, totalCandles)
 
-        // Use visible_range if available (outlier-trimmed)
+        // محدوده قیمت (اضافه کردن padding بالا/پایین برای لیبل‌ها)
         var hi = report.visibleRange.high; var lo = report.visibleRange.low
         if (hi <= lo) { hi = visible.maxOf { it.h }; lo = visible.minOf { it.l } }
         val range = (hi - lo).takeIf { it > 0f } ?: 1f
-        val pricePad = range * 0.05f
+        val pricePad = range * 0.10f
         hi += pricePad; lo -= pricePad; val nr = hi-lo
 
-        val chartL = 4f; val chartR = w - 62f; val chartT = 28f; val chartB = h - 4f
-        val chartW = chartR - chartL; val chartH = chartB - chartT
+        // Layout: چارت اصلی + پنل حجم در پایین
+        val chartL = 48f
+        val chartR = w - 8f
+        val volH = 42f
+        val chartT = 32f      // جای کافی برای لیبل KZ
+        val chartB = h - volH - 6f
+        val chartW = chartR - chartL
+        val chartH = chartB - chartT
+        val volT = chartB + 6f
+        val volB = h - 2f
         val cw = chartW / visible.size.toFloat()
-        val bw = (cw * 0.65f).coerceAtLeast(1.5f)
+        val bw = (cw * 0.70f).coerceAtLeast(1.3f)
 
         fun priceY(p: Float) = chartT + (hi - p)/nr * chartH
         fun idxX(i: Int) = chartL + (i - startIdx)*cw + cw/2
 
-        // Grid
+        // ============ Grid + axis ============
+        drawRect(GridLn.copy(alpha=0.35f), topLeft = Offset(chartL, chartT), size = Size(chartW, chartH), style = Stroke(0.8f))
         for (i in 0..5) {
             val y = chartT + chartH*i/5f
-            drawLine(GridLn, Offset(chartL, y), Offset(chartR, y), strokeWidth=0.6f)
+            drawLine(GridLn, Offset(chartL, y), Offset(chartR, y), strokeWidth=0.5f)
         }
         val df = java.text.DecimalFormat(if (hi > 1000) "0.00" else "0.0000")
-        val axisPaint = NativePaint().apply { color = TL.toArgb(); textSize=22f; isAntiAlias=true }
+        val axisPaint = NativePaint().apply { color = TL.toArgb(); textSize=20f; isAntiAlias=true; textAlign = NativePaint.Align.LEFT }
+        val axisRight = NativePaint().apply { color = TL.toArgb(); textSize=20f; isAntiAlias=true; textAlign = NativePaint.Align.LEFT }
         for (i in 0..5) {
             val y = chartT + chartH*i/5f
             val p = hi - nr*i/5f
-            drawContext.canvas.nativeCanvas.drawText(df.format(p), w-58f, y+8f, axisPaint)
+            // قیمت‌ها در سمت راست (مثل تریدینگ‌ویو)
+            drawContext.canvas.nativeCanvas.drawText(df.format(p), chartR-60f, y-4f, axisRight)
         }
-        // zero baseline not needed
 
-        // Killzones (full-height)
+        // ============ Killzones (نیمه‌شفاف تمام‌ارتفاع مثل عکس دوم) ============
         for (kz in report.killzones) {
             val s = kz.startIdx.coerceAtLeast(startIdx); val e = kz.endIdx.coerceAtMost(totalCandles-1)
             if (e < startIdx || s > totalCandles-1) continue
@@ -395,23 +439,45 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
                 kz.name.contains("لندن") -> KzLon
                 else -> KzAsia
             }
+            // مستطیل شفاف تمام‌ارتفاع
             drawRect(kzCol, topLeft = Offset(x1, chartT), size = Size(x2-x1, chartH))
-            val kzPaint = NativePaint().apply {
-                color = kzCol.copy(alpha = 0.95f).toArgb(); textSize = 18f; isAntiAlias = true
-                isFakeBoldText = true
+            // عنوان در بالای zone (مانند "London Killzone" در TV)
+            val label = when {
+                kz.name.contains("نیویورک") && kz.name.contains("لندن") -> "Overlap Killzone\n12:00-14:00 UTC"
+                kz.name.contains("نیویورک") -> "New York Killzone\n13:00-17:00 UTC"
+                kz.name.contains("لندن") -> "London Killzone\n07:00-12:00 UTC"
+                kz.name.contains("آسیا") || kz.name.contains("توکیو") -> "Asia Killzone\n00:00-08:00 UTC"
+                else -> kz.name
             }
-            drawContext.canvas.nativeCanvas.drawText(kz.name, x1+6f, chartT-4f, kzPaint)
+            val kzPaint = NativePaint().apply {
+                color = android.graphics.Color.WHITE
+                textSize = 17f; isAntiAlias = true; isFakeBoldText = true
+                textAlign = NativePaint.Align.CENTER
+            }
+            // لیبل در بالای zone
+            val midX = (x1+x2)/2f
+            val lines = label.split("\n")
+            drawContext.canvas.nativeCanvas.drawText(lines[0], midX, chartT+14f, kzPaint)
+            if (lines.size>1) {
+                kzPaint.textSize = 13f
+                kzPaint.isFakeBoldText = false
+                kzPaint.color = TL.toArgb()
+                drawContext.canvas.nativeCanvas.drawText(lines[1], midX, chartT+28f, kzPaint)
+            }
         }
 
-        // Zones (OB/FVG/BRK) - draw slightly wider than 1 candle
+        // ============ Zones (OB/FVG/BRK) با کشیدن در پشت کندل‌ها ============
+        // جمع‌آوری برچسب‌هائی که بعداً در جلو می‌کشیم
+        data class ZoneTag(val x: Float, val y: Float, val label: String, val color: Color)
+        val tags = mutableListOf<ZoneTag>()
+
         for (z in report.overlay.zones) {
             if (z.kind == "KZ") continue
             val i = z.index; if (i<startIdx || i>=totalCandles) continue
             val top = priceY(z.top); val bot = priceY(z.bottom)
-            val xstart = idxX(i) - cw
-            // Extend OB/BRK zones forward to current price
+            val xstart = idxX(i) - cw*0.6f
             val extend = (z.kind == "OB" || z.kind == "BRK")
-            val xend = if (extend) chartR else idxX(i) + cw*2
+            val xend = if (extend) chartR else idxX(i) + cw*2.4f
             val color = when(z.kind) {
                 "OB" -> if(z.side=="bullish") UpC else DnC
                 "FVG" -> if(z.inverse) iFvgC else FvgC
@@ -419,17 +485,37 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
                 else -> Color.Transparent
             }
             if (color == Color.Transparent) continue
-            drawRect(color=color.copy(alpha=0.20f), topLeft=Offset(xstart, top), size=Size(xend-xstart, (bot-top).coerceAtLeast(2f)))
-            drawRect(color=color.copy(alpha=0.7f), topLeft=Offset(xstart, top), size=Size(xend-xstart, (bot-top).coerceAtLeast(2f)), style=Stroke(1.2f))
-            // Tag with quality stars
+            val zoneH = (bot-top).coerceAtLeast(3f)
+            // شفافیت پر کم در پشت
+            drawRect(color=color.copy(alpha=0.18f), topLeft=Offset(xstart, top), size=Size(xend-xstart, zoneH))
+            // کادر نازک دور zone
+            drawRect(color=color.copy(alpha=0.85f), topLeft=Offset(xstart, top), size=Size(xend-xstart, zoneH),
+                style=Stroke(1.2f))
+            // ستاره کیفیت
             val stars = if (z.quality >= 1) "★".repeat(z.quality.coerceAtMost(5)) else ""
-            val fresh_dot = if (z.fresh) "●" else "○"
-            val tag = "${z.kind} $fresh_dot$stars"
-            val tp = NativePaint().apply { this.color = color.toArgb(); textSize = 18f; isAntiAlias = true }
-            drawContext.canvas.nativeCanvas.drawText(tag, xstart+4f, top-4f, tp)
+            val enLabel = when(z.kind) {
+                "OB" -> if (z.side=="bullish") "Bullish Order Block" else "Bearish Order Block"
+                "BRK" -> "Breaker Block"
+                "FVG" -> if (z.inverse) "iFVG" else "Fair Value Gap"
+                else -> z.kind
+            }
+            val tag = if (stars.isNotEmpty()) "$enLabel $stars" else enLabel
+            tags.add(ZoneTag(xstart+4f, top-4f, tag, color))
         }
 
-        // Candles
+        // ============ نوار Volume (پایین چارت) ============
+        val maxVol = visible.map { abs(it.v) }.maxOrNull()?.takeIf { it>0f } ?: 1f
+        visible.forEachIndexed { idx, c ->
+            val x = idxX(idx+startIdx)
+            val up = c.c >= c.o
+            val col = if (up) VolUp else VolDn
+            val vh = ((abs(c.v)/maxVol) * (volB - volT - 2f)).coerceAtLeast(1f)
+            drawRect(col, topLeft = Offset(x-bw/2f, volB - vh), size = Size(bw, vh))
+        }
+        // خط صفر volume
+        drawLine(GridLn, Offset(chartL, volB), Offset(chartR, volB), strokeWidth = 0.6f)
+
+        // ============ کندل‌ها ============
         visible.forEachIndexed { idx, c ->
             val x = idxX(idx+startIdx)
             val up = c.c >= c.o
@@ -440,36 +526,37 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             drawRect(col, topLeft=Offset(x-bw/2, top), size=Size(bw, hgt))
         }
 
-        // VWAP line
+        // ============ خط VWAP ============
         if (report.vwap > 0f) {
             val y = priceY(report.vwap)
-            if (y >= chartT-5f && y <= chartB+5f) {
-                drawLine(Color.Cyan.copy(alpha=0.55f), Offset(chartL, y), Offset(chartR, y), strokeWidth=1f,
-                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f,3f)))
-                val vp = NativePaint().apply { color=android.graphics.Color.CYAN; textSize=17f; isAntiAlias=true }
-                drawContext.canvas.nativeCanvas.drawText("VWAP", 6f, y-4f, vp)
+            if (y >= chartT && y <= chartB) {
+                drawLine(Color(0xFFF5F0DC).copy(alpha=0.55f), Offset(chartL, y), Offset(chartR, y), strokeWidth=1f,
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f,3f)))
+                val vp = NativePaint().apply { color=Color(0xFFF5F0DC).toArgb(); textSize=16f; isAntiAlias=true }
+                drawContext.canvas.nativeCanvas.drawText("VWAP", chartL+4f, y-4f, vp)
             }
         }
-        // Fib lines from overlay (fib50/fib62/fib79)
+
+        // ============ خطوط فیبوناچی ============
         for (fl in report.overlay.lines) {
-            if (fl.kind == "vwap" || fl.kind.startsWith("fib")) {
+            if (fl.kind.startsWith("fib")) {
                 val col = when(fl.kind) {
-                    "fib50" -> Color.Magenta.copy(alpha=0.45f)
-                    "fib62" -> Color(0xFFfbbf24).copy(alpha=0.55f)
-                    "fib79" -> Color(0xFFef4444).copy(alpha=0.55f)
+                    "fib50" -> Color.Magenta.copy(alpha=0.5f)
+                    "fib62" -> Color(0xFFfbbf24).copy(alpha=0.6f)
+                    "fib79" -> Color(0xFFef4444).copy(alpha=0.6f)
                     else -> Color.Transparent
                 }
                 if (col == Color.Transparent) continue
                 val y = priceY(fl.price)
-                if (y < chartT-5f || y > chartB+5f) continue
+                if (y < chartT || y > chartB) continue
                 drawLine(col, Offset(chartL, y), Offset(chartR, y), strokeWidth=0.8f,
                     pathEffect = PathEffect.dashPathEffect(floatArrayOf(2f,4f)))
-                val fp = NativePaint().apply { this.color = col.toArgb(); textSize = 16f; isAntiAlias = true }
-                drawContext.canvas.nativeCanvas.drawText(fl.kind.uppercase(), 6f, y-4f, fp)
+                val fp = NativePaint().apply { this.color = col.toArgb(); textSize = 15f; isAntiAlias = true }
+                drawContext.canvas.nativeCanvas.drawText(fl.kind.uppercase().replace("FIB","FIB "), chartL+4f, y-4f, fp)
             }
         }
-        // Liquidity / EQ lines + labels (alternate label sides to avoid overlap)
-        var liLabelRight = false
+
+        // ============ خطوط لیکوئیدیتی / EQ ============
         for (lab in report.inducements) {
             val col = when {
                 lab.kind.contains("buyside") -> UpC
@@ -480,65 +567,119 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
                 else -> LiqC
             }
             val y = priceY(lab.price)
-            if (y < chartT-5f || y > chartB+5f) continue
-            drawLine(col.copy(alpha=0.75f), Offset(chartL, y), Offset(chartR, y), strokeWidth=0.9f,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f,4f)))
+            if (y < chartT || y > chartB) continue
+            drawLine(col.copy(alpha=0.7f), Offset(chartL, y), Offset(chartR, y), strokeWidth=0.8f,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f,4f)))
             val lbl = when(lab.kind) {
-                "buyside_liq" -> "BUY LIQ ▲"
-                "sellside_liq" -> "SELL LIQ ▼"
+                "buyside_liq" -> "BSL ▲"
+                "sellside_liq" -> "SSL ▼"
                 "eqh" -> "EQH"
                 "eql" -> "EQL"
                 "recent_high_liq" -> "H"
                 "recent_low_liq" -> "L"
                 else -> lab.kind
             }
-            val lp = NativePaint().apply { color = col.toArgb(); textSize = 16f; isAntiAlias = true }
-            if (liLabelRight) {
-                drawContext.canvas.nativeCanvas.drawText(lbl, chartR+4f, y-3f, lp)
-            } else {
-                drawContext.canvas.nativeCanvas.drawText(lbl, 6f, y-4f, lp)
-            }
-            liLabelRight = !liLabelRight
+            val lp = NativePaint().apply { color = col.toArgb(); textSize = 15f; isAntiAlias = true }
+            drawContext.canvas.nativeCanvas.drawText(lbl, chartL+4f, y-4f, lp)
         }
-        // BOS / CHoCH (label at event location, not stacked on left)
-        for (ev in report.events.takeLast(8)) {
+
+        // ============ BOS / CHoCH / IDM events روی کندل مربوطه با پیکان و لیبل ============
+        for (ev in report.events.takeLast(10)) {
             val col = if (ev.dir == "bullish") UpC else DnC
             val y = priceY(ev.price)
-            if (y < chartT-5f || y > chartB+5f) continue
-            drawLine(col.copy(alpha=0.5f), Offset(chartL, y), Offset(chartR, y), strokeWidth=0.9f,
-                pathEffect=PathEffect.dashPathEffect(floatArrayOf(3f,5f)))
+            if (y < chartT || y > chartB) continue
             val idx = ev.index.coerceIn(startIdx, totalCandles-1)
-            drawCircle(col, radius=5f, center=Offset(idxX(idx), y))
-            val lp = NativePaint().apply { color = col.toArgb(); textSize = 15f; isAntiAlias = true; isFakeBoldText=true }
-            drawContext.canvas.nativeCanvas.drawText(ev.kind, idxX(idx)+8f, y-5f, lp)
+            val x = idxX(idx)
+            // خط افقی کوتاه از کندل به سمت لیبل
+            val lbl = ev.kind
+            val isBull = ev.dir == "bullish"
+            val lp = NativePaint().apply { color = col.toArgb(); textSize = 15f; isAntiAlias = true; isFakeBoldText = true }
+            val textY = if (isBull) y + 14f else y - 6f
+            drawCircle(col, radius=4.5f, center=Offset(x, y))
+            // پیکان جهت‌دار
+            drawLine(col, Offset(x, y), Offset(x+10f, y), strokeWidth = 1.2f)
+            drawContext.canvas.nativeCanvas.drawText(lbl, x+14f, textY, lp)
+            // BOS/CHoCH arrow
+            val arrow = if (isBull) "▲" else "▼"
+            val ap = NativePaint().apply { color = col.toArgb(); textSize = 14f; isAntiAlias = true }
+            drawContext.canvas.nativeCanvas.drawText(arrow, x-14f, textY, ap)
         }
-        // Trade plan lines (entry/sl/tp) — only if actionable (grade not F)
-        if (report.grade != "F" && report.direction != "neutral" && report.direction != "watching") {
+
+        // IDM labels (from inducements with sweep)
+        for (lab in report.inducements) {
+            if (!lab.kind.contains("liq")) continue
+            val col = if (lab.kind.contains("buy")) UpC else DnC
+            val y = priceY(lab.price)
+            if (y < chartT || y > chartB) continue
+            val idx = lab.index.coerceIn(startIdx, totalCandles-1)
+            val x = idxX(idx)
+            val lp = NativePaint().apply { color = col.toArgb(); textSize = 14f; isAntiAlias = true; isFakeBoldText = true }
+            drawContext.canvas.nativeCanvas.drawText("IDM", x+6f, y-6f, lp)
+        }
+
+        // ============ Zone tags (روی همه چیز) با باکس مشکی کوچک کنار عنوان برای خوانایی ============
+        val tagBg = NativePaint().apply { color = ChartBg.toArgb(); alpha = 200 }
+        for (t in tags) {
+            val tp = NativePaint().apply { color = t.color.toArgb(); textSize = 16f; isAntiAlias = true; isFakeBoldText = true }
+            val b = Rect()
+            tp.getTextBounds(t.label, 0, t.label.length, b)
+            val pad = 3f
+            // باکس پس‌زمینه برای خوانایی
+            drawContext.canvas.nativeCanvas.drawRect(
+                t.x - pad, t.y + b.top - pad,
+                t.x + b.width() + pad*2, t.y + b.bottom() + pad, tagBg)
+            drawContext.canvas.nativeCanvas.drawText(t.label, t.x, t.y, tp)
+        }
+
+        // ============ طرح معامله (Entry/SL/TP) فقط برای ستاپ‌های معتبر ============
+        val actionable = report.grade !in listOf("F","D","-") &&
+                report.direction in listOf("long","short") &&
+                report.omegaCompliant
+        if (actionable) {
             for (pl in report.planLines) {
                 val y = priceY(pl.price)
-                if (y < chartT-5f || y > chartB+5f) continue
+                if (y < chartT || y > chartB) continue
                 val (c, label) = when(pl.kind) {
-                    "entry" -> Gold to "ENTRY"
-                    "sl"    -> DnC to "SL"
-                    "tp1"   -> UpC.copy(alpha=0.7f) to "TP1"
-                    "tp2"   -> UpC to "TP2"
-                    "tp3"   -> UpC.copy(alpha=0.5f) to "TP3"
+                    "entry" -> Gold to "Entry"
+                    "sl"    -> DnC to "Safe Stop-Loss"
+                    "tp1"   -> UpC.copy(alpha=0.85f) to "TP1"
+                    "tp2"   -> UpC to "TP2 (Target)"
+                    "tp3"   -> UpC.copy(alpha=0.6f) to "TP3"
                     else    -> continue to ""
                 }
-                drawLine(c, Offset(chartL, y), Offset(chartR, y), strokeWidth=1.6f,
-                    pathEffect=if (pl.kind=="entry") null else PathEffect.dashPathEffect(floatArrayOf(5f,3f)))
-                val lp = NativePaint().apply { color=c.toArgb(); textSize=16f; isAntiAlias=true; isFakeBoldText=true }
-                // Draw label on RIGHT side (axis side) to avoid overlap with left labels
-                drawContext.canvas.nativeCanvas.drawText(label, chartR+4f, y-3f, lp)
+                val strokeW = if (pl.kind=="entry" || pl.kind=="sl") 1.6f else 1.2f
+                drawLine(c, Offset(chartL, y), Offset(chartR, y), strokeWidth=strokeW,
+                    pathEffect=if (pl.kind=="entry") null else PathEffect.dashPathEffect(floatArrayOf(6f,3f)))
+                // برچسب سمت راست مثل TV (Safe Stop-Loss باکس)
+                val lp = NativePaint().apply { color=c.toArgb(); textSize=15f; isAntiAlias=true; isFakeBoldText=true }
+                val b = Rect(); lp.getTextBounds(label, 0, label.length, b)
+                val pad = 4f
+                val bx = chartR - b.width() - pad*2 - 8f
+                val by = y - b.height()/2f - pad
+                val tagBgC = NativePaint().apply { color = c.toArgb() }
+                drawContext.canvas.nativeCanvas.drawRect(bx, by, bx + b.width() + pad*2, by + b.height() + pad*2, tagBgC)
+                val lpt = NativePaint().apply { color = android.graphics.Color.BLACK; textSize=15f; isAntiAlias=true; isFakeBoldText=true; textAlign=NativePaint.Align.CENTER }
+                drawContext.canvas.nativeCanvas.drawText(label, bx + (b.width()+pad*2)/2f, by + b.height() + 1f, lpt)
             }
         }
-        // Current price
+
+        // ============ قیمت جاری (last price tag) ============
         val yPrice = priceY(report.price)
-        drawLine(Gold, Offset(chartL, yPrice), Offset(chartR, yPrice), strokeWidth=1.4f,
+        drawLine(Gold.copy(alpha=0.8f), Offset(chartL, yPrice), Offset(chartR, yPrice), strokeWidth=1.3f,
             pathEffect=PathEffect.dashPathEffect(floatArrayOf(4f,3f)))
-        drawCircle(Gold, radius=5f, center=Offset(chartR-2f, yPrice))
-        val cp = NativePaint().apply { color=Gold.toArgb(); textSize=22f; isAntiAlias=true; isFakeBoldText=true }
-        drawContext.canvas.nativeCanvas.drawText(df.format(report.price), 6f, yPrice+8f, cp)
+        drawCircle(Gold, radius=4.5f, center=Offset(chartR-2f, yPrice))
+        val cpLbl = df.format(report.price)
+        val cp = NativePaint().apply { color=android.graphics.Color.BLACK; textSize=19f; isAntiAlias=true; isFakeBoldText=true; textAlign=NativePaint.Align.CENTER }
+        val cpBg = NativePaint().apply { color=Gold.toArgb() }
+        val bb = Rect(); cp.getTextBounds(cpLbl, 0, cpLbl.length, bb)
+        val pad=4f
+        val bx = 6f; val by = yPrice - bb.height()/2f - pad
+        drawContext.canvas.nativeCanvas.drawRect(bx, by, bx + bb.width() + pad*2, by + bb.height() + pad*2, cpBg)
+        drawContext.canvas.nativeCanvas.drawText(cpLbl, bx + (bb.width()+pad*2)/2f, by + bb.height() + 1f, cp)
+
+        // دکور حجم در سمت چپ
+        val volLabel = NativePaint().apply { color=TL.toArgb(); textSize=14f; isAntiAlias=true }
+        drawContext.canvas.nativeCanvas.drawText("Vol", 6f, volT+12f, volLabel)
     }
 }
 
@@ -560,7 +701,7 @@ private fun ChipRow(options: List<String>, selected: String, onPick:(String)->Un
 @Composable
 private fun RowScope.Lvl(label:String, v:Float?, c:Color) {
     Card(colors=CardDefaults.cardColors(containerColor=BgDark), shape=RoundedCornerShape(12.dp), modifier=Modifier.weight(1f)) {
-        Column(Modifier.padding(10.dp), horizontalAlignment=Alignment.CenterHorizontally) {
+        Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(label, color=TL, fontSize=11.sp)
             Spacer(Modifier.height(4.dp))
             Text(if(v!=null && v>0f) fmt(v) else "-", color=c, fontSize=14.sp, fontWeight=FontWeight.Black)
@@ -581,6 +722,7 @@ private fun Zc(z:SmcZone, tag:String, c:Color, name:String="") {
                 Text("بالا: ${fmt(z.top)}", color=UpC, fontSize=12.sp)
                 Text("پایین: ${fmt(z.bottom)}", color=DnC, fontSize=12.sp)
                 if (z.sizePct>0f) Text("%.2f%%".format(z.sizePct), color=TL, fontSize=11.sp)
+                if (z.quality>0) Text("★".repeat(z.quality.coerceAtMost(5)), color=Gold, fontSize=12.sp)
             }
         }
     }
@@ -590,8 +732,8 @@ private fun KzRow(kz:SmcZone) {
     val c = when {
         kz.name.contains("نیویورک") && kz.name.contains("لندن") -> Gold
         kz.name.contains("نیویورک") -> DnC
-        kz.name.contains("لندن") -> Gold
-        else -> LiqC
+        kz.name.contains("لندن") -> LiqC
+        else -> GoldDim
     }
     Card(colors=CardDefaults.cardColors(containerColor=Surf2), shape=RoundedCornerShape(12.dp)) {
         Row(Modifier.fillMaxWidth().padding(12.dp), horizontalArrangement=Arrangement.SpaceBetween, verticalAlignment=Alignment.CenterVertically) {
@@ -639,7 +781,7 @@ private fun EventRow(kind:String, dir:String, price:Float) {
     }
 }
 @Composable private fun LegendDot(c:Color, text:String) {
-    Row(verticalAlignment=Alignment.CenterVertically) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(c))
         Spacer(Modifier.width(4.dp))
         Text(text, color=TL, fontSize=9.sp, fontWeight=FontWeight.SemiBold)
@@ -661,7 +803,7 @@ internal fun fmt(v:Float): String {
     }
 }
 
-// ======== AI Signal Board (used by Signals screen) ========
+// ======== AI Signal Board (used by Signals screen) =======
 @Composable
 fun AiSignalBoard(signals: List<com.arena.smartmoney.data.model.SmcSignal>, loading: Boolean, onRefresh: ()->Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF161C25)), shape = RoundedCornerShape(18.dp),
