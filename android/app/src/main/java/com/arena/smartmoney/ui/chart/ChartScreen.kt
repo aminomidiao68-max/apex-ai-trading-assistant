@@ -824,3 +824,49 @@ internal fun fmt(v:Float): String {
         else -> "%.4f".format(v)
     }
 }
+
+@Composable
+fun AiSignalBoard(signals: List<com.arena.smartmoney.data.model.SmcSignal>, loading: Boolean, onRefresh: ()->Unit) {
+    Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF161C25)), shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha=0.35f))) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.AutoAwesome, "ai", tint = Gold)
+                Spacer(Modifier.width(8.dp))
+                Text("Apex AI Pro SMC — اسکن زنده", color = Gold, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                Spacer(Modifier.weight(1f))
+                androidx.compose.material3.IconButton(onClick = onRefresh) {
+                    Icon(Icons.Default.Refresh, "refresh", tint = Gold)
+                }
+            }
+            if (loading) {
+                Text("در حال اسکن بازار...", color = TL, fontSize = 12.sp)
+            } else if (signals.isEmpty()) {
+                Text("ستاپ با کانفلونس بالا پیدا نشد.", color = TL, fontSize = 12.sp)
+            } else {
+                Text("${signals.size} سیگنال فعال", color = TH, fontSize = 12.sp)
+                Spacer(Modifier.height(6.dp))
+                signals.take(5).forEach { s ->
+                    val col = if (s.direction == "long") UpC else if (s.direction == "short") DnC else GoldDim
+                    val side = if (s.direction == "long") "خرید" else if (s.direction == "short") "فروش" else "انتظار"
+                    Surface(shape = RoundedCornerShape(10.dp), color = col.copy(alpha = 0.08f),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("${s.symbol} · ${s.timeframe}", color = TH, fontSize = 13.sp, fontWeight = FontWeight.Black)
+                                Text(s.note, color = TL, fontSize = 11.sp, maxLines = 1)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Surface(shape = RoundedCornerShape(6.dp), color = col.copy(alpha=0.2f)) {
+                                    Text("  $side  ", color = col, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                }
+                                Spacer(Modifier.height(3.dp))
+                                Text("${s.grade} · conf ${s.confluence} · %${s.probability} · RR 1:" + "%.1f".format(s.rr), color = col, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
