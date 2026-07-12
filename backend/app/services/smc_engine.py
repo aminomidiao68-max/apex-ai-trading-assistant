@@ -1341,13 +1341,6 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
         zones.append({"kind":"BRK","side":b["kind"],"index":b["index"],"top":b["top"],"bottom":b["bottom"],
                       "full_height":False,"quality":b.get("quality",5)})
 
-    plan_lines=[]
-    if entry: plan_lines.append({"kind":"entry","price":entry})
-    if sl:    plan_lines.append({"kind":"sl","price":sl})
-    if tp1:   plan_lines.append({"kind":"tp1","price":tp1})
-    if tp2:   plan_lines.append({"kind":"tp2","price":tp2})
-    if tp3:   plan_lines.append({"kind":"tp3","price":tp3})
-
     labels=[]
     for ev in events[-15:]:
         labels.append({"kind":ev["type"],"dir":ev["dir"],"index":ev["index"],"price":ev["price"]})
@@ -1368,14 +1361,31 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
             lines.append({"kind":l["kind"],"price":l["price"]})
     lines += plan_lines
 
+    # Plan lines only for actionable setups (Omega-100 compliant or at least grade not F)
+    plan_lines=[]
+    draw_plan = bool(entry) and direction in (LONG,SHORT) and grade not in ("F",)
+    if draw_plan:
+        if entry: plan_lines.append({"kind":"entry","price":entry})
+        if sl:    plan_lines.append({"kind":"sl","price":sl})
+        if tp1:   plan_lines.append({"kind":"tp1","price":tp1})
+        if tp2:   plan_lines.append({"kind":"tp2","price":tp2})
+        if tp3:   plan_lines.append({"kind":"tp3","price":tp3})
+
     note = "بازار خنثی — منتظر شکست ساختار"
     if news_blocked: note = "🚫 پنجره اخبار — معامله نکنید"
-    elif direction==LONG and grade in ("A+","A"): note=f"🌟 ستاپ خرید {grade} — {setup_fa}"
-    elif direction==SHORT and grade in ("A+","A"): note=f"🌟 ستاپ فروش {grade} — {setup_fa}"
-    elif direction!=NEUTRAL: note=f"ستاپ {direction} درجه {grade} — {setup_fa}"
+    elif draw_plan and grade in ("A+","A"):
+        if direction==LONG: note=f"🌟 ستاپ خرید {grade} — {setup_fa}"
+        else: note=f"🌟 ستاپ فروش {grade} — {setup_fa}"
+    elif draw_plan and grade in ("B","C"):
+        if direction==LONG: note=f"ستاپ خرید درجه {grade} — {setup_fa}"
+        else: note=f"ستاپ فروش درجه {grade} — {setup_fa}"
+    elif direction=="watching" and setup_fa:
+        note=f"👀 زیرنظر: {setup_fa} (RR {rr:.1f}، نیاز به تایید)"
+    elif grade in ("D","F") and setup_fa:
+        note=f"ستاپ ضعیف {grade} ({setup_fa}) — ورود نکنید"
     elif bias=="bullish": note="روند صعودی — منتظر پولبک به OB/Brk در ناحیه دیسکانت/OTE"
     elif bias=="bearish": note="روند نزولی — منتظر پولبک به OB/Brk در ناحیه پرمیوم/OTE"
-    if trend_str<30 and direction==NEUTRAL: note="⚠️ بازار رنج/متلاطم — تا شکست واضح سازه وارد نشوید"
+    if trend_str<30 and not draw_plan: note="⚠️ بازار رنج/متلاطم — تا شکست واضح سازه وارد نشوید"
 
     ai = _narrative(
         {"type":setup["type"]} if setup else None,

@@ -201,30 +201,40 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
                 }
             }
             Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                // Grade chip
-                val gradeC = when(r.grade) {
-                    "A+","A" -> Gold; "B" -> UpC; "C" -> GoldDim; "D" -> BrkC; else -> TL
+            // First row: key metrics (grade/conf/prob/RR/TS)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                item {
+                    val gradeC = when(r.grade) {
+                        "A+","A" -> Gold; "B" -> UpC; "C" -> GoldDim; "D" -> BrkC; else -> TL
+                    }
+                    ChipS("درجه ${r.grade}", gradeC)
                 }
-                ChipS("درجه ${r.grade}", gradeC)
-                ChipS("conf ${r.confluence}", when { r.confluence>=70->Gold; r.confluence>=40->GoldDim; else->TL })
-                ChipS("احتمال %${r.probability}", when { r.probability>=75->UpC; r.probability>=55->GoldDim; else->TL })
-                ChipS(if (r.rr > 0f) "RR 1:%.1f".format(r.rr) else "RR -", if(r.rr>=2f) UpC else TL)
-                ChipS("TS ${r.trendStrength}", when{r.trendStrength>=60->UpC;r.trendStrength<30->DnC;else->TL})
-                ChipS("${r.candlesCount}c", TL)
-                ChipS(r.status.ifBlank { "-" }, TL)
-                val pr = r.orderflow.pressure
-                ChipS(when(pr){"buy"->"OF: خرید";"sell"->"OF: فروش";else->"OF: خنثی"}, when(pr){"buy"->UpC;"sell"->DnC;else->TL})
-                if (r.orderflow.volumeSpike) ChipS("VOL ↑", Gold)
-                if (r.orderflow.absorption) ChipS("ABSRB", BrkC)
-                if (r.orderflow.cvdDivergence != null) {
-                    val divArrow = if (r.orderflow.cvdDivergence == "bullish") "▲" else "▼"
-                    val divCol = if (r.orderflow.cvdDivergence == "bullish") UpC else DnC
-                    ChipS("DIV $divArrow", divCol)
+                item { ChipS("conf ${r.confluence}", when { r.confluence>=70->Gold; r.confluence>=40->GoldDim; else->TL }) }
+                item { ChipS(if(r.probability>0) "%${r.probability}" else "احتمال -", when { r.probability>=75->UpC; r.probability>=55->GoldDim; else->TL }) }
+                item { ChipS(if (r.rr > 0f) "RR 1:%.1f".format(r.rr) else "RR -", if(r.rr>=2f) UpC else TL) }
+                item { ChipS("TS ${r.trendStrength}", when{r.trendStrength>=60->UpC;r.trendStrength<30->DnC;else->TL}) }
+                item { ChipS("${r.candlesCount}c", TL) }
+            }
+            Spacer(Modifier.height(4.dp))
+            // Second row: OF/session/news
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                item {
+                    val pr = r.orderflow.pressure
+                    ChipS(when(pr){"buy"->"OF+";"sell"->"OF−";else->"OF"}, when(pr){"buy"->UpC;"sell"->DnC;else->TL})
                 }
-                ChipS(when(r.premiumZone){"premium"->"پرمیوم";"discount"->"دیسکانت";else->"تعادل"}, GoldDim)
-                if (r.newsBlocked) ChipS("⚠️ خبر", DnC)
-                if (r.mtfAligned) ChipS("MTF ✓", UpC)
+                if (r.orderflow.volumeSpike) item { ChipS("VOL↑", Gold) }
+                if (r.orderflow.absorption) item { ChipS("ABSRB", BrkC) }
+                r.orderflow.cvdDivergence?.let {
+                    item {
+                        val divArrow = if (it == "bullish") "▲" else "▼"
+                        val divCol = if (it == "bullish") UpC else DnC
+                        ChipS("DIV$divArrow", divCol)
+                    }
+                }
+                item { ChipS(when(r.premiumZone){"premium"->"پرمیوم";"discount"->"دیسکانت";else->"تعادل"}, GoldDim) }
+                if (r.newsBlocked) item { ChipS("⚠️خبر", DnC) }
+                if (r.mtfAligned) item { ChipS("MTF✓", UpC) }
+                item { ChipS(r.status.ifBlank { "-" }, TL) }
             }
             if (r.setupType != "-" && r.setupType.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))
@@ -352,7 +362,7 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         val pricePad = range * 0.05f
         hi += pricePad; lo -= pricePad; val nr = hi-lo
 
-        val chartL = 4f; val chartR = w - 62f; val chartT = 18f; val chartB = h - 18f
+        val chartL = 4f; val chartR = w - 62f; val chartT = 28f; val chartB = h - 4f
         val chartW = chartR - chartL; val chartH = chartB - chartT
         val cw = chartW / visible.size.toFloat()
         val bw = (cw * 0.65f).coerceAtLeast(1.5f)
@@ -387,10 +397,10 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             }
             drawRect(kzCol, topLeft = Offset(x1, chartT), size = Size(x2-x1, chartH))
             val kzPaint = NativePaint().apply {
-                color = kzCol.copy(alpha = 0.95f).toArgb(); textSize = 20f; isAntiAlias = true
+                color = kzCol.copy(alpha = 0.95f).toArgb(); textSize = 18f; isAntiAlias = true
                 isFakeBoldText = true
             }
-            drawContext.canvas.nativeCanvas.drawText(kz.name, x1+6f, chartT+18f, kzPaint)
+            drawContext.canvas.nativeCanvas.drawText(kz.name, x1+6f, chartT-4f, kzPaint)
         }
 
         // Zones (OB/FVG/BRK) - draw slightly wider than 1 candle
@@ -458,7 +468,8 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
                 drawContext.canvas.nativeCanvas.drawText(fl.kind.uppercase(), 6f, y-4f, fp)
             }
         }
-        // Liquidity / EQ lines + labels
+        // Liquidity / EQ lines + labels (alternate label sides to avoid overlap)
+        var liLabelRight = false
         for (lab in report.inducements) {
             val col = when {
                 lab.kind.contains("buyside") -> UpC
@@ -473,44 +484,53 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             drawLine(col.copy(alpha=0.75f), Offset(chartL, y), Offset(chartR, y), strokeWidth=0.9f,
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f,4f)))
             val lbl = when(lab.kind) {
-                "buyside_liq" -> "BUY SIDE LIQ ▲"
-                "sellside_liq" -> "SELL SIDE LIQ ▼"
+                "buyside_liq" -> "BUY LIQ ▲"
+                "sellside_liq" -> "SELL LIQ ▼"
                 "eqh" -> "EQH"
                 "eql" -> "EQL"
                 "recent_high_liq" -> "H"
                 "recent_low_liq" -> "L"
                 else -> lab.kind
             }
-            val lp = NativePaint().apply { color = col.toArgb(); textSize = 18f; isAntiAlias = true }
-            drawContext.canvas.nativeCanvas.drawText(lbl, 6f, y-4f, lp)
+            val lp = NativePaint().apply { color = col.toArgb(); textSize = 16f; isAntiAlias = true }
+            if (liLabelRight) {
+                drawContext.canvas.nativeCanvas.drawText(lbl, chartR+4f, y-3f, lp)
+            } else {
+                drawContext.canvas.nativeCanvas.drawText(lbl, 6f, y-4f, lp)
+            }
+            liLabelRight = !liLabelRight
         }
-        // BOS / CHoCH
-        for (ev in report.events) {
+        // BOS / CHoCH (label at event location, not stacked on left)
+        for (ev in report.events.takeLast(8)) {
             val col = if (ev.dir == "bullish") UpC else DnC
             val y = priceY(ev.price)
             if (y < chartT-5f || y > chartB+5f) continue
-            drawLine(col.copy(alpha=0.9f), Offset(chartL, y), Offset(chartR, y), strokeWidth=1.2f)
+            drawLine(col.copy(alpha=0.5f), Offset(chartL, y), Offset(chartR, y), strokeWidth=0.9f,
+                pathEffect=PathEffect.dashPathEffect(floatArrayOf(3f,5f)))
             val idx = ev.index.coerceIn(startIdx, totalCandles-1)
             drawCircle(col, radius=5f, center=Offset(idxX(idx), y))
-            val lp = NativePaint().apply { color = col.toArgb(); textSize = 18f; isAntiAlias = true }
-            drawContext.canvas.nativeCanvas.drawText(ev.kind, idxX(idx)+6f, y-4f, lp)
+            val lp = NativePaint().apply { color = col.toArgb(); textSize = 15f; isAntiAlias = true; isFakeBoldText=true }
+            drawContext.canvas.nativeCanvas.drawText(ev.kind, idxX(idx)+8f, y-5f, lp)
         }
-        // Trade plan lines (entry/sl/tp)
-        for (pl in report.planLines) {
-            val y = priceY(pl.price)
-            if (y < chartT-5f || y > chartB+5f) continue
-            val (c, label) = when(pl.kind) {
-                "entry" -> Gold to "ENTRY"
-                "sl"    -> DnC to "SL"
-                "tp1"   -> UpC.copy(alpha=0.7f) to "TP1"
-                "tp2"   -> UpC to "TP2"
-                "tp3"   -> UpC.copy(alpha=0.5f) to "TP3"
-                else    -> continue to ""
+        // Trade plan lines (entry/sl/tp) — only if actionable (grade not F)
+        if (report.grade != "F" && report.direction != "neutral" && report.direction != "watching") {
+            for (pl in report.planLines) {
+                val y = priceY(pl.price)
+                if (y < chartT-5f || y > chartB+5f) continue
+                val (c, label) = when(pl.kind) {
+                    "entry" -> Gold to "ENTRY"
+                    "sl"    -> DnC to "SL"
+                    "tp1"   -> UpC.copy(alpha=0.7f) to "TP1"
+                    "tp2"   -> UpC to "TP2"
+                    "tp3"   -> UpC.copy(alpha=0.5f) to "TP3"
+                    else    -> continue to ""
+                }
+                drawLine(c, Offset(chartL, y), Offset(chartR, y), strokeWidth=1.6f,
+                    pathEffect=if (pl.kind=="entry") null else PathEffect.dashPathEffect(floatArrayOf(5f,3f)))
+                val lp = NativePaint().apply { color=c.toArgb(); textSize=16f; isAntiAlias=true; isFakeBoldText=true }
+                // Draw label on RIGHT side (axis side) to avoid overlap with left labels
+                drawContext.canvas.nativeCanvas.drawText(label, chartR+4f, y-3f, lp)
             }
-            drawLine(c, Offset(chartL, y), Offset(chartR, y), strokeWidth=1.4f,
-                pathEffect=if (pl.kind=="entry") null else PathEffect.dashPathEffect(floatArrayOf(5f,3f)))
-            val lp = NativePaint().apply { color=c.toArgb(); textSize=18f; isAntiAlias=true; isFakeBoldText=true }
-            drawContext.canvas.nativeCanvas.drawText(label, 6f, y-4f, lp)
         }
         // Current price
         val yPrice = priceY(report.price)
