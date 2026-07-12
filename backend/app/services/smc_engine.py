@@ -1300,29 +1300,28 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
     # ---- Watching (nearby setups not yet confirmed) ----
     watching = []
     if not setup or grade in ("D","F"):
-        for direction in (LONG,SHORT):
+        for wdir in (LONG,SHORT):
             ob=None; bd=1e18
             for o in active_obs:
-                if o["kind"]!=direction: continue
+                if o["kind"]!=wdir: continue
                 mid=(o["top"]+o["bottom"])/2
                 d_mid=abs(price-mid)
                 if d_mid<bd and d_mid<atr*5:
                     bd=d_mid; ob=o
             if ob is None: continue
-            wdir=direction
             # estimate entry zone
-            if direction==LONG:
+            if wdir==LONG:
                 ent=ob["top"]; sl_est=ob["bottom"]-atr*0.3; risk=ent-sl_est
                 tp_est=ent+risk*2.0; in_zone = price>=ob["bottom"]-atr*0.5
             else:
                 ent=ob["bottom"]; sl_est=ob["top"]+atr*0.3; risk=sl_est-ent
                 tp_est=ent-risk*2.0; in_zone = price<=ob["top"]+atr*0.5
             reasons=[]
-            if fib and direction==LONG and fib.get("in_discount"): reasons.append("D")
-            if fib and direction==SHORT and fib.get("in_premium"): reasons.append("P")
+            if fib and wdir==LONG and fib.get("in_discount"): reasons.append("D")
+            if fib and wdir==SHORT and fib.get("in_premium"): reasons.append("P")
             if fib and fib.get("in_ote"): reasons.append("OTE")
-            if of["pressure"]==("buy" if direction==LONG else "sell"): reasons.append("OF")
-            brk = any(b["kind"]==direction and abs(((b["top"]+b["bottom"])/2)-price)<atr*2 for b in br)
+            if of["pressure"]==("buy" if wdir==LONG else "sell"): reasons.append("OF")
+            brk = any(b["kind"]==wdir and abs(((b["top"]+b["bottom"])/2)-price)<atr*2 for b in br)
             if brk: reasons.append("BRK")
             status = "in_zone" if in_zone else ("approaching" if bd<atr*2 else "nearby")
             watching.append({"direction":wdir,"entry":ent,"sl":sl_est,"tp":tp_est,
