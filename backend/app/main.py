@@ -1,24 +1,31 @@
 from __future__ import annotations
 
 import time
-import os
-
 import asyncio
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import settings
 from app.models import (
+    AnalyticsReport,
+    AnalyticsSummary,
     AuthLoginRequest,
     AuthRegisterRequest,
+    AuthResponse,
+    AuthUser,
     BacktestRunRequest,
+    BacktestSummary,
     BacktestSweepRequest,
+    BacktestSweepSummary,
     WalkForwardRequest,
+    WalkForwardSummary,
     BinanceFuturesOrderRequest,
     ConnectorCapability,
     ExecutionPreviewRequest,
+    ExecutionPreviewResponse,
     BybitOrderRequest,
     CTraderOrderRequest,
     DeviceTokenRegisterRequest,
@@ -27,10 +34,16 @@ from app.models import (
     Mt5OrderRequest,
     NotificationTestRequest,
     OandaOrderRequest,
+    RiskPlan,
     RiskPlanRequest,
+    SignalHistoryItem,
     SignalRequest,
+    SignalResponse,
+    SystemReadinessResponse,
     TradeJournalCloseRequest,
     TradeJournalCreateRequest,
+    TradeJournalItem,
+    TradeJournalStats,
 )
 from app.services.auth_service import AuthService
 from app.services.backtest_service import BacktestService
@@ -49,11 +62,7 @@ from app.services.session_engine import evaluate_session
 from app.services.signal_engine import SignalEngine
 from app.services.storage_service import StorageService
 
-app = FastAPI(title=settings.app_name, version="0.9.0")
-
-
-
-
+app = FastAPI(title=settings.app_name, version=settings.app_version)
 
 
 engine = SignalEngine()
@@ -70,21 +79,33 @@ storage = StorageService()
 notification_service = NotificationService(storage)
 readiness_service = ReadinessService()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Native Android clients do not require CORS. Browser access is enabled only
+# for an explicit environment-specific allowlist (CORS_ALLOWED_ORIGINS).
+if settings.cors_allowed_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
 
-def extract_bearer_token(authorization: str | None) -> str:
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing Authorization header")
-    if not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Authorization must be Bearer token")
-    return authorization.split(" ", 1)[1].strip()
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def require_credentials(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+) -> HTTPAuthorizationCredentials:
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Missing or invalid Bearer token")
+    return credentials
+
+
+def current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(require_credentials),
+):
+    return auth_service.get_user_by_token(credentials.credentials)
 
 
 import asyncio as _asyncio, time as _time
@@ -117,14 +138,20 @@ async def fetch_live_candles(symbol: str, market: str, timeframe: str):
                 raise HTTPException(status_code=400, detail="market must be crypto or forex")
             _CANDLE_CACHE[cache_key] = (now, data)
             return data
-        except Exception as e:
-            last_err = e
-            msg = str(e).lower()
-            if "429" in msg or "too many" in msg:
-                await _asyncio.sleep(1.5 * (attempt+1))
-                continue
+        except HTTPException:
             raise
-    raise last_err if last_err else RuntimeError("fetch failed")
+        except Exception as exc:
+            last_err = exc
+            msg = str(exc).lower()
+            transient = any(marker in msg for marker in ("429", "too many", "timeout", "temporarily"))
+            if transient and attempt < 2:
+                await _asyncio.sleep(1.5 * (attempt + 1))
+                continue
+            break
+    raise HTTPException(
+        status_code=502,
+        detail=f"Market data provider is unavailable for {symbol.upper()} ({market}/{timeframe})",
+    ) from last_err
 
 
 async def fetch_live_snapshot(symbol: str, market: str):
@@ -180,52 +207,44 @@ def health() -> dict:
     return {"status": "ok", "app": settings.app_name, "env": settings.app_env}
 
 
-@app.get("/api/v1/system/readiness")
+@app.get("/api/v1/system/readiness", response_model=SystemReadinessResponse)
 def system_readiness():
     return readiness_service.build()
 
 
-@app.post("/api/v1/auth/register")
+@app.post("/api/v1/auth/register", response_model=AuthResponse)
 def register(request: AuthRegisterRequest):
     return auth_service.register(request)
 
 
-@app.post("/api/v1/auth/login")
+@app.post("/api/v1/auth/login", response_model=AuthResponse)
 def login(request: AuthLoginRequest):
     return auth_service.login(request)
 
 
-@app.get("/api/v1/auth/me")
-def me(authorization: str | None = Header(default=None)):
-    token = extract_bearer_token(authorization)
-    return auth_service.get_user_by_token(token)
+@app.get("/api/v1/auth/me", response_model=AuthUser)
+def me(user=Depends(current_user)):
+    return user
 
 
 @app.post("/api/v1/auth/logout", response_model=MessageResponse)
-def logout(authorization: str | None = Header(default=None)):
-    token = extract_bearer_token(authorization)
-    auth_service.logout(token)
+def logout(credentials: HTTPAuthorizationCredentials = Depends(require_credentials)):
+    auth_service.logout(credentials.credentials)
     return MessageResponse(message="Logged out successfully")
 
 
 @app.post("/api/v1/notifications/register-device")
-def register_device(request: DeviceTokenRegisterRequest, authorization: str | None = Header(default=None)):
-    token = extract_bearer_token(authorization)
-    user = auth_service.get_user_by_token(token)
+def register_device(request: DeviceTokenRegisterRequest, user=Depends(current_user)):
     return storage.register_device_token(user.id, request)
 
 
 @app.get("/api/v1/notifications/devices")
-def list_devices(authorization: str | None = Header(default=None)):
-    token = extract_bearer_token(authorization)
-    user = auth_service.get_user_by_token(token)
+def list_devices(user=Depends(current_user)):
     return {"items": [item.model_dump() for item in storage.list_device_tokens(user.id)]}
 
 
 @app.post("/api/v1/notifications/test")
-def send_test_notification(request: NotificationTestRequest, authorization: str | None = Header(default=None)):
-    token = extract_bearer_token(authorization)
-    user = auth_service.get_user_by_token(token)
+def send_test_notification(request: NotificationTestRequest, user=Depends(current_user)):
     return notification_service.send_test_notification(user.id, request.title, request.body)
 
 
@@ -241,15 +260,14 @@ def current_session() -> dict:
 
 @app.get("/api/v1/news/health")
 def apex_news_health():
-    k = os.getenv("FINNHUB_API_KEY", "")
-    return {"service": "news", "finnhub_configured": bool(k), "key_length": len(k)}
+    return {"service": "news", "finnhub_configured": bool(settings.finnhub_api_key)}
 
 @app.get("/api/v1/news/brief")
 async def apex_news_brief():
     """Real news brief from Finnhub via news_engine_v2, with graceful fallback."""
     import logging
     logger = logging.getLogger("apex.api.news")
-    k = os.getenv("FINNHUB_API_KEY", "")
+    k = settings.finnhub_api_key
     try:
         from app.news_engine_v2 import build_news_brief
         data = await build_news_brief()
@@ -282,14 +300,14 @@ def get_mock_news(market: str = "forex") -> dict:
     return {"items": mock_news(market)}
 
 
-@app.get("/api/v1/analytics/summary")
-def analytics_summary():
-    return storage.get_analytics_summary()
+@app.get("/api/v1/analytics/summary", response_model=AnalyticsSummary)
+def analytics_summary(user=Depends(current_user)):
+    return storage.get_analytics_summary(user_id=user.id)
 
 
-@app.get("/api/v1/analytics/report")
-def analytics_report():
-    return storage.get_analytics_report()
+@app.get("/api/v1/analytics/report", response_model=AnalyticsReport)
+def analytics_report(user=Depends(current_user)):
+    return storage.get_analytics_report(user_id=user.id)
 
 
 @app.get("/api/v1/market/overview")
@@ -302,7 +320,12 @@ async def get_market_overview(
 
 
 @app.get("/api/v1/market/candles")
-async def get_market_candles(symbol: str, market: str, interval: str = "15m", limit: int = 200) -> dict:
+async def get_market_candles(
+    symbol: str = Query(min_length=2, max_length=24),
+    market: str = Query(pattern="^(crypto|forex)$"),
+    interval: str = Query(default="15m", pattern="^(1m|3m|5m|15m|30m|1h|2h|4h|6h|12h|1d|1min|3min|5min|15min|30min)$"),
+    limit: int = Query(default=200, ge=20, le=500),
+) -> dict:
     candles = await fetch_live_candles(symbol=symbol, market=market, timeframe=interval)
     return {
         "symbol": symbol.upper(),
@@ -454,7 +477,7 @@ _SCAN_WATCHLIST = [
 ]
 
 @app.get("/api/v1/signals/scan")
-async def scan_signals(min_confluence: int = 2):
+async def scan_signals(min_confluence: int = Query(default=40, ge=0, le=100)):
     """Multi-symbol multi-tf professional SMC scan."""
     from app.services.smc_engine import analyze
     import asyncio, logging
@@ -503,6 +526,9 @@ async def scan_signals(min_confluence: int = 2):
                     "probability":r.get("probability",0),
                     "setup_type":r.get("setup_type","-"),"setupType":r.get("setup_type","-"),
                     "grade":r.get("grade","-"),
+                    "omega_compliant":r.get("omega_compliant",False),
+                    "omega_reasons":r.get("omega_reasons",[]),
+                    "action_label":r.get("action_label","WAIT"),
                     "levels":r["levels"],"tp1":r.get("tp1"),"tp2":r.get("tp2"),"tp3":r.get("tp3"),
                     "ai":r["ai"],"status":"ok","total_scanned":0}
         except Exception as e:
@@ -510,9 +536,25 @@ async def scan_signals(min_confluence: int = 2):
             return None
     jobs = [_job(s,m,t) for s,m,t in _SCAN_WATCHLIST]
     out = await asyncio.gather(*jobs)
-    sigs = [x for x in out if x and x["confluence"] >= min_confluence and x["direction"] in ("long","short")]
-    sigs.sort(key=lambda x: (-x["confluence"], -x["rr"]))
-    return {"signals": sigs, "total_scanned": len(_SCAN_WATCHLIST), "count": len(sigs), "created_by": "Amin Omidi"}
+    candidates = [
+        x for x in out
+        if x and x["confluence"] >= min_confluence and x["direction"] in ("long", "short")
+    ]
+    actionable = [
+        x for x in candidates
+        if x.get("omega_compliant") and x.get("grade") not in ("D", "F")
+    ]
+    watching = [x for x in candidates if x not in actionable]
+    actionable.sort(key=lambda x: (-x["confluence"], -x["rr"]))
+    watching.sort(key=lambda x: (-x["confluence"], -x["rr"]))
+    return {
+        "signals": actionable,
+        "watching": watching,
+        "total_scanned": len(_SCAN_WATCHLIST),
+        "count": len(actionable),
+        "watching_count": len(watching),
+        "created_by": "Amin Omidi",
+    }
 
 
 @app.websocket("/ws/market")
@@ -535,7 +577,7 @@ def execution_capabilities():
     return {"items": [item.model_dump() for item in execution_guard.capabilities()]}
 
 
-@app.post("/api/v1/execution/preview")
+@app.post("/api/v1/execution/preview", response_model=ExecutionPreviewResponse)
 def execution_preview(request: ExecutionPreviewRequest):
     return execution_guard.preview_order(request)
 
@@ -554,29 +596,29 @@ def execution_status() -> dict:
     }
 
 
-@app.post("/api/v1/risk/plan")
+@app.post("/api/v1/risk/plan", response_model=RiskPlan)
 def risk_plan(request: RiskPlanRequest):
     return build_risk_plan(request)
 
 
-@app.post("/api/v1/signals/analyze")
-def analyze_signal(request: SignalRequest):
+@app.post("/api/v1/signals/analyze", response_model=SignalResponse)
+def analyze_signal(request: SignalRequest, user=Depends(current_user)):
     return engine.analyze(request)
 
 
-@app.post("/api/v1/signals/analyze-and-save")
-def analyze_and_save_signal(request: SignalRequest):
+@app.post("/api/v1/signals/analyze-and-save", response_model=SignalHistoryItem)
+def analyze_and_save_signal(request: SignalRequest, user=Depends(current_user)):
     signal = engine.analyze(request)
-    saved_signal = storage.save_signal(signal)
+    saved_signal = storage.save_signal(signal, user_id=user.id)
     try:
-        notification_service.try_send_fresh_signal_alert(saved_signal)
+        notification_service.try_send_fresh_signal_alert(saved_signal, user_id=user.id)
     except Exception:
         pass
     return saved_signal
 
 
-@app.post("/api/v1/signals/live-scan")
-async def live_scan_signal(request: LiveSignalScanRequest):
+@app.post("/api/v1/signals/live-scan", response_model=SignalHistoryItem)
+async def live_scan_signal(request: LiveSignalScanRequest, user=Depends(current_user)):
     candles = await fetch_live_candles(
         symbol=request.symbol,
         market=request.market.value,
@@ -607,21 +649,28 @@ async def live_scan_signal(request: LiveSignalScanRequest):
             client_timezone=request.client_timezone,
         )
     )
-    saved_signal = storage.save_signal(signal)
+    saved_signal = storage.save_signal(signal, user_id=user.id)
     try:
-        notification_service.try_send_fresh_signal_alert(saved_signal)
+        notification_service.try_send_fresh_signal_alert(saved_signal, user_id=user.id)
     except Exception:
         pass
     return saved_signal
 
 
 @app.get("/api/v1/signals/history")
-def signal_history(limit: int = 30):
-    return {"items": [item.model_dump() for item in storage.list_signals(limit=limit)]}
+def signal_history(
+    limit: int = Query(default=30, ge=1, le=200),
+    user=Depends(current_user),
+):
+    return {
+        "items": [
+            item.model_dump() for item in storage.list_signals(limit=limit, user_id=user.id)
+        ]
+    }
 
 
-@app.post("/api/v1/backtest/run")
-async def run_backtest(request: BacktestRunRequest):
+@app.post("/api/v1/backtest/run", response_model=BacktestSummary)
+async def run_backtest(request: BacktestRunRequest, user=Depends(current_user)):
     candles = await fetch_live_candles(
         symbol=request.symbol,
         market=request.market.value,
@@ -632,8 +681,8 @@ async def run_backtest(request: BacktestRunRequest):
     return backtest_service.run(request, candles)
 
 
-@app.post("/api/v1/backtest/sweep")
-async def run_backtest_sweep(request: BacktestSweepRequest):
+@app.post("/api/v1/backtest/sweep", response_model=BacktestSweepSummary)
+async def run_backtest_sweep(request: BacktestSweepRequest, user=Depends(current_user)):
     candles = await fetch_live_candles(
         symbol=request.symbol,
         market=request.market.value,
@@ -646,8 +695,8 @@ async def run_backtest_sweep(request: BacktestSweepRequest):
     return backtest_service.run_sweep(request, candles)
 
 
-@app.post("/api/v1/backtest/walk-forward")
-async def run_walk_forward(request: WalkForwardRequest):
+@app.post("/api/v1/backtest/walk-forward", response_model=WalkForwardSummary)
+async def run_walk_forward(request: WalkForwardRequest, user=Depends(current_user)):
     candles = await fetch_live_candles(
         symbol=request.symbol,
         market=request.market.value,
@@ -660,40 +709,51 @@ async def run_walk_forward(request: WalkForwardRequest):
     return backtest_service.run_walk_forward(request, candles)
 
 
-@app.post("/api/v1/trades")
-def create_trade(request: TradeJournalCreateRequest):
-    return storage.create_trade(request)
+@app.post("/api/v1/trades", response_model=TradeJournalItem)
+def create_trade(request: TradeJournalCreateRequest, user=Depends(current_user)):
+    return storage.create_trade(request, user_id=user.id)
 
 
 @app.get("/api/v1/trades")
-def list_trades(limit: int = 50):
-    return {"items": [item.model_dump() for item in storage.list_trades(limit=limit)]}
+def list_trades(
+    limit: int = Query(default=50, ge=1, le=200),
+    user=Depends(current_user),
+):
+    return {
+        "items": [
+            item.model_dump() for item in storage.list_trades(limit=limit, user_id=user.id)
+        ]
+    }
 
 
-@app.get("/api/v1/trades/stats")
-def trade_stats():
-    return storage.get_trade_stats()
+@app.get("/api/v1/trades/stats", response_model=TradeJournalStats)
+def trade_stats(user=Depends(current_user)):
+    return storage.get_trade_stats(user_id=user.id)
 
 
-@app.post("/api/v1/trades/{trade_id}/close")
-def close_trade(trade_id: int, request: TradeJournalCloseRequest):
+@app.post("/api/v1/trades/{trade_id}/close", response_model=TradeJournalItem)
+def close_trade(
+    trade_id: int,
+    request: TradeJournalCloseRequest,
+    user=Depends(current_user),
+):
     try:
-        return storage.close_trade(trade_id, request)
+        return storage.close_trade(trade_id, request, user_id=user.id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.delete("/api/v1/trades/{trade_id}", response_model=MessageResponse)
-def delete_trade(trade_id: int):
+def delete_trade(trade_id: int, user=Depends(current_user)):
     try:
-        storage.delete_trade(trade_id)
+        storage.delete_trade(trade_id, user_id=user.id)
         return MessageResponse(message=f"Trade {trade_id} deleted")
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/api/v1/execution/binance/order")
-async def place_binance_order(request: BinanceFuturesOrderRequest):
+async def place_binance_order(request: BinanceFuturesOrderRequest, user=Depends(current_user)):
     guard = execution_guard.validate_pre_trade(
         signal_score=request.signal_score,
         trade_allowed=request.risk_approved,
@@ -704,7 +764,7 @@ async def place_binance_order(request: BinanceFuturesOrderRequest):
 
 
 @app.post("/api/v1/execution/bybit/order")
-async def place_bybit_order(request: BybitOrderRequest):
+async def place_bybit_order(request: BybitOrderRequest, user=Depends(current_user)):
     guard = execution_guard.validate_pre_trade(
         signal_score=request.signal_score,
         trade_allowed=request.risk_approved,
@@ -715,7 +775,7 @@ async def place_bybit_order(request: BybitOrderRequest):
 
 
 @app.post("/api/v1/execution/mt5/order")
-async def place_mt5_order(request: Mt5OrderRequest):
+async def place_mt5_order(request: Mt5OrderRequest, user=Depends(current_user)):
     guard = execution_guard.validate_pre_trade(
         signal_score=request.signal_score,
         trade_allowed=request.risk_approved,
@@ -726,7 +786,7 @@ async def place_mt5_order(request: Mt5OrderRequest):
 
 
 @app.post("/api/v1/execution/ctrader/order")
-async def place_ctrader_order(request: CTraderOrderRequest):
+async def place_ctrader_order(request: CTraderOrderRequest, user=Depends(current_user)):
     guard = execution_guard.validate_pre_trade(
         signal_score=request.signal_score,
         trade_allowed=request.risk_approved,
@@ -737,7 +797,7 @@ async def place_ctrader_order(request: CTraderOrderRequest):
 
 
 @app.post("/api/v1/execution/oanda/order")
-async def place_oanda_order(request: OandaOrderRequest):
+async def place_oanda_order(request: OandaOrderRequest, user=Depends(current_user)):
     guard = execution_guard.validate_pre_trade(
         signal_score=request.signal_score,
         trade_allowed=request.risk_approved,

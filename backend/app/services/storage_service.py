@@ -5,6 +5,7 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from app.config import settings
 from app.models import (
     AnalyticsReport,
     AnalyticsSummary,
@@ -30,7 +31,8 @@ class StorageService:
         root = Path(__file__).resolve().parents[2]
         data_dir = root / "app_data"
         data_dir.mkdir(parents=True, exist_ok=True)
-        self.db_path = db_path or str(data_dir / "smartmoney.db")
+        configured_path = settings.database_path.strip()
+        self.db_path = db_path or configured_path or str(data_dir / "smartmoney.db")
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
@@ -74,6 +76,7 @@ class StorageService:
                 )
                 """
             )
+            self._ensure_column(conn, "signals", "user_id INTEGER")
             self._ensure_column(conn, "signals", "score_breakdown_json TEXT NOT NULL DEFAULT '{}'")
             self._ensure_column(conn, "signals", "setup_grade TEXT NOT NULL DEFAULT 'C'")
             self._ensure_column(conn, "signals", "execution_label TEXT NOT NULL DEFAULT 'observe'")
@@ -101,6 +104,9 @@ class StorageService:
                 )
                 """
             )
+            self._ensure_column(conn, "trades", "user_id INTEGER")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_signals_user_id_id ON signals(user_id, id DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_user_id_id ON trades(user_id, id DESC)")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS device_tokens (
@@ -128,20 +134,21 @@ class StorageService:
             )
             conn.commit()
 
-    def save_signal(self, signal: SignalResponse) -> SignalHistoryItem:
+    def save_signal(self, signal: SignalResponse, user_id: int | None = None) -> SignalHistoryItem:
         created_at = self._now()
         with self._connect() as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO signals (
-                    symbol, market, timeframe, direction, score, confidence, session_name,
+                    user_id, symbol, market, timeframe, direction, score, confidence, session_name,
                     news_blocked, entry_low, entry_high, stop_loss, take_profits_json,
                     risk_to_reward, score_breakdown_json, setup_grade, execution_label,
                     entry_model, ai_summary, confluence_tags_json, risk_flags_json,
                     reasons_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    user_id,
                     signal.symbol,
                     signal.market.value,
                     signal.timeframe,
@@ -195,25 +202,33 @@ class StorageService:
             created_at=created_at,
         )
 
-    def list_signals(self, limit: int = 30) -> list[SignalHistoryItem]:
+    def list_signals(self, limit: int = 30, user_id: int | None = None) -> list[SignalHistoryItem]:
+        limit = max(1, min(limit, 200))
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM signals ORDER BY id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+            if user_id is None:
+                rows = conn.execute(
+                    "SELECT * FROM signals ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM signals WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+                    (user_id, limit),
+                ).fetchall()
         return [self._signal_row_to_model(row) for row in rows]
 
-    def create_trade(self, request: TradeJournalCreateRequest) -> TradeJournalItem:
+    def create_trade(self, request: TradeJournalCreateRequest, user_id: int | None = None) -> TradeJournalItem:
         created_at = self._now()
         with self._connect() as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO trades (
-                    symbol, market, direction, entry_price, stop_loss, take_profit,
+                    user_id, symbol, market, direction, entry_price, stop_loss, take_profit,
                     size, pnl_amount, status, notes, created_at, closed_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    user_id,
                     request.symbol,
                     request.market.value,
                     request.direction.value,
@@ -233,25 +248,50 @@ class StorageService:
             row = conn.execute("SELECT * FROM trades WHERE id = ?", (trade_id,)).fetchone()
         return self._trade_row_to_model(row)
 
-    def list_trades(self, limit: int = 50) -> list[TradeJournalItem]:
+    def list_trades(self, limit: int = 50, user_id: int | None = None) -> list[TradeJournalItem]:
+        limit = max(1, min(limit, 200))
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM trades ORDER BY id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+            if user_id is None:
+                rows = conn.execute(
+                    "SELECT * FROM trades ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM trades WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+                    (user_id, limit),
+                ).fetchall()
         return [self._trade_row_to_model(row) for row in rows]
 
-    def close_trade(self, trade_id: int, request: TradeJournalCloseRequest) -> TradeJournalItem:
+    def close_trade(
+        self,
+        trade_id: int,
+        request: TradeJournalCloseRequest,
+        user_id: int | None = None,
+    ) -> TradeJournalItem:
         closed_at = self._now()
         with self._connect() as conn:
-            row = conn.execute("SELECT * FROM trades WHERE id = ?", (trade_id,)).fetchone()
+            if user_id is None:
+                row = conn.execute("SELECT * FROM trades WHERE id = ?", (trade_id,)).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM trades WHERE id = ? AND user_id = ?", (trade_id, user_id)
+                ).fetchone()
             if row is None:
                 raise ValueError(f"Trade {trade_id} not found")
+            if row["status"] == "closed":
+                raise ValueError(f"Trade {trade_id} is already closed")
+            if user_id is None:
+                where_sql = "id = ?"
+                where_params = (trade_id,)
+            else:
+                where_sql = "id = ? AND user_id = ?"
+                where_params = (trade_id, user_id)
             conn.execute(
-                """
+                f"""
                 UPDATE trades
                 SET exit_price = ?, pnl_amount = ?, notes = ?, status = ?, closed_at = ?
-                WHERE id = ?
+                WHERE {where_sql}
                 """,
                 (
                     request.exit_price,
@@ -259,17 +299,33 @@ class StorageService:
                     request.notes,
                     "closed",
                     closed_at,
-                    trade_id,
+                    *where_params,
                 ),
             )
             conn.commit()
-            row = conn.execute("SELECT * FROM trades WHERE id = ?", (trade_id,)).fetchone()
+            row = conn.execute(
+                f"SELECT * FROM trades WHERE {where_sql}", where_params
+            ).fetchone()
         return self._trade_row_to_model(row)
 
-    def get_trade_stats(self) -> TradeJournalStats:
+    def delete_trade(self, trade_id: int, user_id: int | None = None) -> None:
+        with self._connect() as conn:
+            if user_id is None:
+                cursor = conn.execute("DELETE FROM trades WHERE id = ?", (trade_id,))
+            else:
+                cursor = conn.execute(
+                    "DELETE FROM trades WHERE id = ? AND user_id = ?", (trade_id, user_id)
+                )
+            conn.commit()
+        if cursor.rowcount == 0:
+            raise ValueError(f"Trade {trade_id} not found")
+
+    def get_trade_stats(self, user_id: int | None = None) -> TradeJournalStats:
+        where_sql = "" if user_id is None else "WHERE user_id = ?"
+        params = () if user_id is None else (user_id,)
         with self._connect() as conn:
             row = conn.execute(
-                """
+                f"""
                 SELECT
                     COUNT(*) AS total_trades,
                     SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_trades,
@@ -278,7 +334,9 @@ class StorageService:
                     SUM(CASE WHEN pnl_amount < 0 THEN 1 ELSE 0 END) AS losses,
                     COALESCE(SUM(pnl_amount), 0) AS net_pnl
                 FROM trades
-                """
+                {where_sql}
+                """,
+                params,
             ).fetchone()
 
         total_trades = int(row["total_trades"] or 0)
@@ -299,11 +357,14 @@ class StorageService:
             net_pnl=round(net_pnl, 2),
         )
 
-    def get_analytics_summary(self) -> AnalyticsSummary:
+    def get_analytics_summary(self, user_id: int | None = None) -> AnalyticsSummary:
         since_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        where_sql = "" if user_id is None else "WHERE user_id = ?"
+        summary_params = (since_24h,) if user_id is None else (since_24h, user_id)
+        top_params = () if user_id is None else (user_id,)
         with self._connect() as conn:
             row = conn.execute(
-                """
+                f"""
                 SELECT
                     COUNT(*) AS total_saved_signals,
                     SUM(CASE WHEN direction = 'buy' THEN 1 ELSE 0 END) AS buy_signals,
@@ -312,17 +373,20 @@ class StorageService:
                     COALESCE(AVG(score), 0) AS average_signal_score,
                     SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS recent_signals_24h
                 FROM signals
+                {where_sql}
                 """,
-                (since_24h,),
+                summary_params,
             ).fetchone()
             top_rows = conn.execute(
-                """
+                f"""
                 SELECT symbol, COUNT(*) AS count
                 FROM signals
+                {where_sql}
                 GROUP BY symbol
                 ORDER BY count DESC, symbol ASC
                 LIMIT 5
-                """
+                """,
+                top_params,
             ).fetchall()
 
         top_symbols = [AnalyticsSymbolCount(symbol=item["symbol"], count=int(item["count"])) for item in top_rows]
@@ -334,24 +398,35 @@ class StorageService:
             average_signal_score=round(float(row["average_signal_score"] or 0.0), 2),
             recent_signals_24h=int(row["recent_signals_24h"] or 0),
             top_signal_symbols=top_symbols,
-            trade_stats=self.get_trade_stats(),
+            trade_stats=self.get_trade_stats(user_id=user_id),
         )
 
-    def get_analytics_report(self) -> AnalyticsReport:
+    def get_analytics_report(self, user_id: int | None = None) -> AnalyticsReport:
         since_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        summary = self.get_analytics_summary()
+        summary = self.get_analytics_summary(user_id=user_id)
+        signal_where = "" if user_id is None else "WHERE user_id = ?"
+        trade_where = "" if user_id is None else "WHERE user_id = ?"
+        signal_params = () if user_id is None else (user_id,)
+        trade_params = () if user_id is None else (user_id,)
+        notification_where = "WHERE created_at >= ?"
+        notification_params: tuple = (since_7d,)
+        if user_id is not None:
+            notification_where += " AND user_id = ?"
+            notification_params = (since_7d, user_id)
         with self._connect() as conn:
             signal_rows = conn.execute(
-                """
+                f"""
                 SELECT symbol, COUNT(*) AS count, COALESCE(AVG(score), 0) AS average_score
                 FROM signals
+                {signal_where}
                 GROUP BY symbol
                 ORDER BY count DESC, symbol ASC
                 LIMIT 10
-                """
+                """,
+                signal_params,
             ).fetchall()
             trade_rows = conn.execute(
-                """
+                f"""
                 SELECT
                     symbol,
                     COUNT(*) AS trade_count,
@@ -360,18 +435,20 @@ class StorageService:
                     COALESCE(SUM(pnl_amount), 0) AS net_pnl,
                     SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) AS closed_trades
                 FROM trades
+                {trade_where}
                 GROUP BY symbol
                 ORDER BY net_pnl DESC, trade_count DESC, symbol ASC
                 LIMIT 10
-                """
+                """,
+                trade_params,
             ).fetchall()
             notif_row = conn.execute(
-                """
+                f"""
                 SELECT COUNT(*) AS recent_notification_events_7d
                 FROM notification_events
-                WHERE created_at >= ?
+                {notification_where}
                 """,
-                (since_7d,),
+                notification_params,
             ).fetchone()
 
         signal_stats = [

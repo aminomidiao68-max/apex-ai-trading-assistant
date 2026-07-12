@@ -31,6 +31,8 @@ from datetime import datetime, timezone
 from typing import List, Dict, Tuple, Optional, Any
 import math
 
+from app.models import SignalDirection
+
 UTC = timezone.utc
 
 # ICT Killzones (UTC) with volatility weight
@@ -639,12 +641,16 @@ def _fib_leg(leg, cs, bias, price):
 # Visible price range
 # =========================================================
 def _vis_range(cs):
-    if not cs: return 0,1
-    n=len(cs)
-    if n<30: return min(c["l"] for c in cs), max(c["h"] for c in cs)
-    hs=sorted(c["h"] for c in cs); ls=sorted(c["l"] for c in cs)
-    t=max(1,n//60)
-    return ls[t], hs[n-1-t]
+    """Return a chart range that never clips candle wicks.
+
+    The previous percentile trimming could place ``low`` above the real candle
+    low (and ``high`` below the real high), so the Android chart could hide
+    legitimate price action.  Rendering code may add visual padding, but the
+    API range itself must contain every returned candle.
+    """
+    if not cs:
+        return 0, 1
+    return min(c["l"] for c in cs), max(c["h"] for c in cs)
 
 
 # =========================================================
@@ -1174,12 +1180,21 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
 
     setup = _detect(cs, bias, active_obs, active_fvgs, br, liq, price, atr, of, fib, vwap, trend_str, sess_w)
 
-    mtf_align = (htf_bias == bias and htf_bias is not None)
-
     # ---- Hidden indicator suite (not drawn on chart, used for AI confluence) ----
     ind = calc_all_indicators(cs)
 
     direction = setup["direction"] if setup else NEUTRAL
+    # HTF alignment must be measured against the proposed trade direction,
+    # not merely against the local structural bias.  The old comparison could
+    # award +12 points to a long setup while both local and HTF bias were
+    # bearish.
+    mtf_align = bool(
+        htf_bias is not None
+        and (
+            (direction == LONG and htf_bias == "bullish")
+            or (direction == SHORT and htf_bias == "bearish")
+        )
+    )
     if setup:
         score, factors = _score_confluence(
             direction, bias, fib, setup.get("ob_quality",0), setup.get("fvg_quality",0),
@@ -1458,17 +1473,158 @@ def _empty(symbol,tf,count):
             "market":"","overlay":{"lines":[],"zones":[],"labels":[]},"candles_count":count,"created_by":"Amin Omidi"}
 
 
-def detect_smc_features(candles,trend="neutral"):
-    r=analyze(candles)
-    return {"bias":r.get("bias","neutral"),
-            "bos":[e for e in r.get("events",[]) if e.get("kind")=="BOS"],
-            "choch":[e for e in r.get("events",[]) if e.get("kind")=="CHoCH"],
-            "order_blocks":r.get("order_blocks",[]),"fvg":r.get("fvg",[]),
-            "liquidity_sweeps":r.get("inducements",[]),
-            "active_ob":(r.get("order_blocks") or [None])[0] if r.get("order_blocks") else None,
-            "entry":(r.get("levels") or {}).get("entry"),"sl":(r.get("levels") or {}).get("sl"),
-            "tp":(r.get("levels") or {}).get("tp"),"confluence":r.get("confluence",0),
-            "direction":r.get("direction","neutral")}
+def detect_smc_features(candles, trend="neutral", lookback=10):
+    """Return the compact SMC contract consumed by ``SignalEngine``.
+
+    The professional :func:`analyze` response and the legacy scoring engine use
+    different schemas.  Calling ``analyze`` here used to return an incompatible
+    object (missing ``score`` and ``reasons``), which crashed every POST signal
+    analysis and all backtests.  Keep this adapter intentionally lightweight:
+    backtests call it once per rolling candle window.
+    """
+    cs = list(candles or [])
+    if len(cs) < 3:
+        return {
+            "direction": SignalDirection.neutral,
+            "score": 0.0,
+            "bos": None,
+            "choch": None,
+            "sweep": None,
+            "fvg": None,
+            "bullish_ob": None,
+            "bearish_ob": None,
+            "recent_high": 0.0,
+            "recent_low": 0.0,
+            "premium_discount": "equilibrium",
+            "equal_highs": False,
+            "equal_lows": False,
+            "displacement": None,
+            "liquidity_score": 0.0,
+            "reasons": ["Insufficient candles for SMC analysis"],
+        }
+
+    def value(candle, name):
+        if hasattr(candle, name):
+            return float(getattr(candle, name))
+        return float(candle.get(name, 0.0))
+
+    recent = cs[-(lookback + 1):]
+    last = recent[-1]
+    previous = recent[:-1]
+    recent_high = max(value(c, "high") for c in previous)
+    recent_low = min(value(c, "low") for c in previous)
+    last_open = value(last, "open")
+    last_high = value(last, "high")
+    last_low = value(last, "low")
+    last_close = value(last, "close")
+
+    bos = None
+    if last_close > recent_high:
+        bos = "bullish"
+    elif last_close < recent_low:
+        bos = "bearish"
+
+    sweep = None
+    if last_high > recent_high and last_close < recent_high:
+        sweep = "sell_side_liquidity_swept"
+    elif last_low < recent_low and last_close > recent_low:
+        sweep = "buy_side_liquidity_swept"
+
+    fvg = None
+    c1, c3 = cs[-3], cs[-1]
+    if value(c1, "high") < value(c3, "low"):
+        fvg = {"type": "bullish", "low": value(c1, "high"), "high": value(c3, "low")}
+    elif value(c1, "low") > value(c3, "high"):
+        fvg = {"type": "bearish", "low": value(c3, "high"), "high": value(c1, "low")}
+
+    bullish_ob = None
+    bearish_ob = None
+    for candle in reversed(cs[-12:-1]):
+        candle_open = value(candle, "open")
+        candle_close = value(candle, "close")
+        zone = {"low": value(candle, "low"), "high": value(candle, "high")}
+        if candle_close < candle_open and bullish_ob is None:
+            bullish_ob = zone
+        if candle_close > candle_open and bearish_ob is None:
+            bearish_ob = zone
+        if bullish_ob and bearish_ob:
+            break
+
+    direction = SignalDirection.neutral
+    score = 8.0
+    reasons = []
+    if bos == "bullish":
+        direction = SignalDirection.buy
+        score += 8.0
+        reasons.append("Bullish BOS detected")
+    elif bos == "bearish":
+        direction = SignalDirection.sell
+        score += 8.0
+        reasons.append("Bearish BOS detected")
+
+    if sweep == "buy_side_liquidity_swept":
+        direction = SignalDirection.buy
+        score += 6.0
+        reasons.append("Sell-side liquidity sweep and reclaim")
+    elif sweep == "sell_side_liquidity_swept":
+        direction = SignalDirection.sell
+        score += 6.0
+        reasons.append("Buy-side liquidity sweep and rejection")
+
+    if fvg:
+        score += 5.0
+        reasons.append(f"{fvg['type'].title()} FVG present")
+
+    full_range = max(recent_high - recent_low, 1e-9)
+    location = (last_close - recent_low) / full_range
+    premium_discount = "discount" if location < 0.5 else "premium"
+
+    tolerance = max(abs(last_close) * 0.0005, 1e-9)
+    highs = sorted(value(c, "high") for c in previous[-6:])
+    lows = sorted(value(c, "low") for c in previous[-6:])
+    equal_highs = len(highs) >= 2 and abs(highs[-1] - highs[-2]) <= tolerance
+    equal_lows = len(lows) >= 2 and abs(lows[0] - lows[1]) <= tolerance
+
+    average_range = sum(value(c, "high") - value(c, "low") for c in previous) / max(len(previous), 1)
+    body = abs(last_close - last_open)
+    displacement = None
+    if average_range > 0 and body >= average_range * 1.2:
+        displacement = "bullish" if last_close > last_open else "bearish"
+        score += 2.0
+        reasons.append(f"{displacement.title()} displacement detected")
+
+    choch = None
+    if trend == "bullish" and bos == "bearish":
+        choch = "bearish"
+    elif trend == "bearish" and bos == "bullish":
+        choch = "bullish"
+
+    liquidity_score = min(
+        10.0,
+        (4.0 if sweep else 0.0)
+        + (2.0 if equal_highs or equal_lows else 0.0)
+        + (2.0 if fvg else 0.0)
+        + (2.0 if bullish_ob or bearish_ob else 0.0),
+    )
+
+    return {
+        "direction": direction,
+        "score": min(score, 25.0),
+        "bos": bos,
+        "choch": choch,
+        "sweep": sweep,
+        "fvg": fvg,
+        "bullish_ob": bullish_ob,
+        "bearish_ob": bearish_ob,
+        "recent_high": recent_high,
+        "recent_low": recent_low,
+        "premium_discount": premium_discount,
+        "equal_highs": equal_highs,
+        "equal_lows": equal_lows,
+        "displacement": displacement,
+        "liquidity_score": liquidity_score,
+        "reasons": reasons,
+    }
 
 
 # ====================================================================

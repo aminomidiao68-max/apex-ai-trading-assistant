@@ -20,3 +20,7 @@ backend/.env
 backend/.env.*.local
 *.log
 rcheck.py
+backend/tests/*.db
+render_*_result.json
+render_auth_test.json
+render_services.json

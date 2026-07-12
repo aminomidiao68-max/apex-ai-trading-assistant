@@ -617,6 +617,15 @@ class SignalEngine:
             direction = SignalDirection.neutral
             reasons.append("Lower timeframe quality gate blocked execution")
 
+        if direction == SignalDirection.neutral:
+            # A neutral/blocked setup must never leak stale actionable levels
+            # calculated before the final quality gate.
+            entry_low = None
+            entry_high = None
+            stop_loss = None
+            take_profits = []
+            rr = None
+
         reasons = _dedupe_reasons(reasons)
         grade = _grade_from_score(total_score)
         entry_model = _entry_model(smc, direction)

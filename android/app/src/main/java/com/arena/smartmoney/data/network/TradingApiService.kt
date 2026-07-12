@@ -1,5 +1,6 @@
 package com.arena.smartmoney.data.network
 
+import com.arena.smartmoney.BuildConfig
 import com.arena.smartmoney.data.model.AnalyticsReportDto
 import com.arena.smartmoney.data.model.NewsBrief
 import com.arena.smartmoney.data.model.SmcReport
@@ -163,16 +164,22 @@ interface TradingApiService {
     companion object {
         fun create(baseUrl: String = AppConfig.apiBaseUrl): TradingApiService {
             val logger = HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY
+                redactHeader("Authorization")
+                level = if (BuildConfig.DEBUG) {
+                    HttpLoggingInterceptor.Level.BASIC
+                } else {
+                    HttpLoggingInterceptor.Level.NONE
+                }
             }
             val client = OkHttpClient.Builder()
                 .addInterceptor { chain ->
-                    val req = chain.request().newBuilder()
-                        .header("User-Agent", "ApexAI-Android/1.0")
+                    val builder = chain.request().newBuilder()
+                        .header("User-Agent", "ApexAI-Android/${BuildConfig.VERSION_NAME}")
                         .header("Accept", "application/json")
-                        .header("Connection", "close")
-                        .build()
-                    chain.proceed(req)
+                    AuthTokenProvider.authorizationHeader()?.let { value ->
+                        builder.header("Authorization", value)
+                    }
+                    chain.proceed(builder.build())
                 }
                 .addInterceptor(logger)
                 .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)

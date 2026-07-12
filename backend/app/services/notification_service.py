@@ -106,25 +106,27 @@ class NotificationService:
         return credentials.token
 
 
-def try_send_fresh_signal_alert(self, signal: SignalHistoryItem) -> None:
-    if signal.direction.value == "neutral" or signal.score < 70:
-        return
+    def try_send_fresh_signal_alert(self, signal: SignalHistoryItem, user_id: int) -> None:
+        """Notify only the owner of a newly saved actionable signal."""
+        if signal.direction.value == "neutral" or signal.score < 70:
+            return
 
-    devices = self.storage.list_all_device_tokens()
-    if not devices:
-        return
+        devices = self.storage.list_device_tokens(user_id)
+        if not devices:
+            return
 
-    title = f"{signal.symbol} {signal.direction.value.upper()} • {signal.timeframe}"
-    body = f"Score {signal.score} • Grade {signal.setup_grade} • {signal.execution_label}"
+        title = f"{signal.symbol} {signal.direction.value.upper()} • {signal.timeframe}"
+        body = f"Score {signal.score} • Grade {signal.setup_grade} • {signal.execution_label}"
 
-    if self._is_firebase_configured():
-        sent_count = self._send_fcm_notifications([device.token for device in devices], title, body)
-        mode = "firebase-live"
-    else:
-        sent_count = len(devices)
-        mode = "dry-run"
+        if self._is_firebase_configured():
+            sent_count = self._send_fcm_notifications(
+                [device.token for device in devices], title, body
+            )
+            mode = "firebase-live"
+        else:
+            sent_count = len(devices)
+            mode = "dry-run"
 
-    for user_id in sorted({device.user_id for device in devices}):
         self.storage.log_notification_event(
             user_id=user_id,
             title=title,

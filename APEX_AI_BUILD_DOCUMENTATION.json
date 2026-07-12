@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "2.1.5",
-    "status": "Product-Ready Foundation MVP"
+    "current_version": "2.1.6",
+    "status": "Stabilized MVP - Live Execution Disabled"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -16,7 +16,7 @@
         "language": "Kotlin",
         "framework": "Jetpack Compose",
         "min_sdk": 26,
-        "target_sdk": 34,
+        "target_sdk": 35,
         "path": "android/",
         "build_system": "Gradle KTS"
       },
@@ -38,8 +38,10 @@
     "mobile": {
       "core": [
         "Kotlin 1.9.24",
-        "Jetpack Compose 2024.09.03",
-        "Android 8.5.2"
+        "Jetpack Compose BOM 2024.09.03",
+        "Android Gradle Plugin 8.7.3",
+        "Gradle Wrapper 8.9",
+        "JDK 17"
       ],
       "networking": [
         "Retrofit 2.11.0",
@@ -242,6 +244,22 @@
             "Omega reasons line in header",
             "FB-style legend with KZ colors"
           ]
+        },
+        {
+          "version": "v2.1.6 Stability & Security",
+          "date": "2026-07-12T12:55:00Z",
+          "features": [
+            "Fixed SignalEngine/SMC adapter KeyError causing signal and backtest HTTP 500 errors",
+            "Fixed risk direction and stop-loss validation",
+            "Fixed HTF alignment scoring against actual trade direction",
+            "Added Bearer security scheme and user-scoped journal/analytics/signal history",
+            "Restricted CORS to an explicit allowlist",
+            "Fixed Finnhub configuration drift",
+            "Added API regression tests and backend CI",
+            "Upgraded targetSdk/compileSdk to 35, AGP 8.7.3 and Gradle wrapper 8.9",
+            "Fixed Android notification permission lint error",
+            "Kept live broker execution disabled"
+          ]
         }
       ]
     }
@@ -250,8 +268,8 @@
     "authentication": {
       "type": "Username/Password + Firebase-ready",
       "login_credentials": {
-        "demo_email": "demo@apexai.app",
-        "demo_password": "Demo12345!"
+        "availability": "Development only when SEED_DEMO_USER=true",
+        "production": "Shared demo account disabled by default"
       },
       "features": [
         "Login screen",
@@ -282,8 +300,9 @@
       ],
       "endpoints": [
         "/api/v1/signals/scan",
-        "/api/v1/signals/list",
-        "/api/v1/signals/{id}"
+        "/api/v1/signals/history",
+        "/api/v1/signals/analyze",
+        "/api/v1/signals/live-scan"
       ]
     },
     "chart_analysis": {
@@ -662,10 +681,10 @@
     },
     "mobile": {
       "prerequisites": [
-        "Android Studio latest",
-        "Android SDK 34+",
-        "Kotlin compiler",
-        "Gradle"
+        "Android Studio latest stable",
+        "Android SDK 35+",
+        "JDK 17",
+        "Gradle Wrapper 8.9"
       ],
       "steps": [
         "Open project/android folder in Android Studio",
@@ -687,7 +706,7 @@
   "deployment": {
     "backend_hosting": "Render (configured)",
     "mobile_distribution": "Google Play Store (when production-ready)",
-    "database": "SQLite (local) - can upgrade to PostgreSQL",
+    "database": "SQLite for local MVP only; PostgreSQL required before scaled production",
     "environment_variables": [
       "FINNHUB_API_KEY - for news data",
       "BINANCE_API_KEY/SECRET - for exchange connector",
@@ -754,8 +773,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "1.0",
-    "last_updated": "2026-07-12T07:30:00Z",
+    "documentation_version": "1.1",
+    "last_updated": "2026-07-12T12:55:00Z",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

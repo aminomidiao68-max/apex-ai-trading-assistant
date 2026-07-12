@@ -6,22 +6,26 @@ import hmac
 import os
 import secrets
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import HTTPException
 
+from app.config import settings
 from app.models import AuthLoginRequest, AuthRegisterRequest, AuthResponse, AuthUser
 
 
 class AuthService:
-    def __init__(self, db_path: str | None = None) -> None:
+    def __init__(self, db_path: str | None = None, seed_demo_user: bool | None = None) -> None:
         root = Path(__file__).resolve().parents[2]
         data_dir = root / "app_data"
         data_dir.mkdir(parents=True, exist_ok=True)
-        self.db_path = db_path or str(data_dir / "smartmoney.db")
+        configured_path = settings.database_path.strip()
+        self.db_path = db_path or configured_path or str(data_dir / "smartmoney.db")
         self._init_db()
-        self._seed_demo_user()
+        should_seed = settings.seed_demo_user if seed_demo_user is None else seed_demo_user
+        if should_seed:
+            self._seed_demo_user()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -89,7 +93,9 @@ class AuthService:
 
     def _create_session(self, user_id: int) -> str:
         token = secrets.token_urlsafe(32)
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=settings.session_ttl_hours)).isoformat()
         with self._connect() as conn:
+            conn.execute("DELETE FROM sessions WHERE created_at < ?", (cutoff,))
             conn.execute(
                 "INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)",
                 (token, user_id, self._now()),
@@ -127,17 +133,20 @@ class AuthService:
         return AuthResponse(access_token=token, user=self._serialize_user(row))
 
     def get_user_by_token(self, token: str) -> AuthUser:
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=settings.session_ttl_hours)).isoformat()
         with self._connect() as conn:
             row = conn.execute(
                 """
                 SELECT u.id, u.name, u.email, u.created_at
                 FROM sessions s
                 JOIN users u ON u.id = s.user_id
-                WHERE s.token = ?
+                WHERE s.token = ? AND s.created_at >= ?
                 """,
-                (token,),
+                (token, cutoff),
             ).fetchone()
             if row is None:
+                conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+                conn.commit()
                 raise HTTPException(status_code=401, detail="Invalid or expired token")
             return self._serialize_user(row)
 

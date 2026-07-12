@@ -18,14 +18,14 @@ val releaseWsBaseUrl = System.getenv("APEX_WS_BASE_URL") ?: "wss://apex-ai-tradi
 
 android {
     namespace = "com.arena.smartmoney"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.arena.smartmoney"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 52
-        versionName = "2.1.5"
+        targetSdk = 35
+        versionCode = 53
+        versionName = "2.1.6"
 
         buildConfigField("String", "API_BASE_URL", "\"$debugApiBaseUrl\"")
         buildConfigField("String", "WS_BASE_URL", "\"$debugWsBaseUrl\"")

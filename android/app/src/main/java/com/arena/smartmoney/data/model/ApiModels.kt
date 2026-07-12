@@ -678,13 +678,18 @@ data class SmcSignal(
     val probability: Int = 0,
     val grade: String = "-",
     @SerializedName("setup_type") val setupType: String = "-",
+    @SerializedName("omega_compliant") val omegaCompliant: Boolean = false,
+    @SerializedName("omega_reasons") val omegaReasons: List<String> = emptyList(),
+    @SerializedName("action_label") val actionLabel: String = "WAIT",
     val ai: SmcAiNarrative = SmcAiNarrative(),
     val status: String = "ok"
 )
 data class SmcScanResponse(
     val signals: List<SmcSignal> = emptyList(),
+    val watching: List<SmcSignal> = emptyList(),
     @SerializedName("total_scanned") val totalScanned: Int = 0,
     val count: Int = 0,
+    @SerializedName("watching_count") val watchingCount: Int = 0,
     @SerializedName("created_by") val createdBy: String = "Amin Omidi"
 )
 data class SmcEntryZone(

@@ -14,6 +14,7 @@ class ReadinessService:
         items.append(self._firebase_project_check())
         items.append(self._firebase_service_account_check())
         items.append(self._twelvedata_check())
+        items.append(self._finnhub_check())
         items.append(self._live_execution_check())
         items.extend(self._connector_checks())
 
@@ -62,6 +63,21 @@ class ReadinessService:
             return ReadinessItem(category="data", key="TWELVEDATA_API_KEY", status="ready", message="Forex and gold data provider key is configured")
         return ReadinessItem(category="data", key="TWELVEDATA_API_KEY", status="warning", message="Forex live scan will stay limited until TwelveData API key is configured")
 
+    def _finnhub_check(self) -> ReadinessItem:
+        if settings.finnhub_api_key:
+            return ReadinessItem(
+                category="news",
+                key="FINNHUB_API_KEY",
+                status="ready",
+                message="Finnhub news provider is configured",
+            )
+        return ReadinessItem(
+            category="news",
+            key="FINNHUB_API_KEY",
+            status="warning",
+            message="Finnhub is not configured; the offline news fallback will be used",
+        )
+
     def _live_execution_check(self) -> ReadinessItem:
         if settings.enable_live_execution:
             return ReadinessItem(category="execution", key="ENABLE_LIVE_EXECUTION", status="warning", message="Live execution is enabled; use only after full demo/testnet validation")
@@ -69,50 +85,50 @@ class ReadinessService:
 
     def _connector_checks(self) -> list[ReadinessItem]:
         items: list[ReadinessItem] = []
+        # Broker credentials are optional while the global live-execution switch
+        # is off. Treat them as warnings instead of blocking unrelated market,
+        # analysis, journal and backtest features.
+        inactive_status = "missing" if settings.enable_live_execution else "warning"
+        optional_suffix = "" if settings.enable_live_execution else " (optional while live execution is disabled)"
         items.append(
             ReadinessItem(
                 category="connector",
                 key="BINANCE_FUTURES",
-                status="ready" if (settings.binance_api_key and settings.binance_api_secret) else "missing",
-                message="Binance Futures credentials configured" if (settings.binance_api_key and settings.binance_api_secret) else "Binance Futures credentials are missing",
+                status="ready" if (settings.binance_api_key and settings.binance_api_secret) else inactive_status,
+                message="Binance Futures credentials configured" if (settings.binance_api_key and settings.binance_api_secret) else "Binance Futures credentials are not configured" + optional_suffix,
             )
         )
         items.append(
             ReadinessItem(
                 category="connector",
                 key="BYBIT",
-                status="ready" if (settings.bybit_api_key and settings.bybit_api_secret) else "missing",
-                message="Bybit credentials configured" if (settings.bybit_api_key and settings.bybit_api_secret) else "Bybit credentials are missing",
+                status="ready" if (settings.bybit_api_key and settings.bybit_api_secret) else inactive_status,
+                message="Bybit credentials configured" if (settings.bybit_api_key and settings.bybit_api_secret) else "Bybit credentials are not configured" + optional_suffix,
             )
         )
         items.append(
             ReadinessItem(
                 category="connector",
                 key="OANDA",
-                status="ready" if (settings.oanda_api_token and settings.oanda_account_id) else "missing",
-                message="OANDA credentials configured" if (settings.oanda_api_token and settings.oanda_account_id) else "OANDA credentials are missing",
+                status="ready" if (settings.oanda_api_token and settings.oanda_account_id) else inactive_status,
+                message="OANDA credentials configured" if (settings.oanda_api_token and settings.oanda_account_id) else "OANDA credentials are not configured" + optional_suffix,
             )
         )
         items.append(
             ReadinessItem(
                 category="connector",
                 key="MT5",
-                status="warning" if (settings.mt5_server and settings.mt5_login and settings.mt5_password) else "missing",
-                message="MT5 credentials exist but bridge integration is still required" if (settings.mt5_server and settings.mt5_login and settings.mt5_password) else "MT5 credentials/bridge setup are missing",
+                status="warning" if (settings.mt5_server and settings.mt5_login and settings.mt5_password) else inactive_status,
+                message="MT5 credentials exist but bridge integration is still required" if (settings.mt5_server and settings.mt5_login and settings.mt5_password) else "MT5 credentials/bridge are not configured" + optional_suffix,
             )
         )
         items.append(
             ReadinessItem(
                 category="connector",
                 key="CTRADER",
-                status="warning" if (settings.ctrader_client_id and settings.ctrader_access_token) else "missing",
-                message="cTrader credentials exist but full routing/session integration is still required" if (settings.ctrader_client_id and settings.ctrader_access_token) else "cTrader credentials/session setup are missing",
+                status="warning" if (settings.ctrader_client_id and settings.ctrader_access_token) else inactive_status,
+                message="cTrader credentials exist but full routing/session integration is still required" if (settings.ctrader_client_id and settings.ctrader_access_token) else "cTrader credentials/session are not configured" + optional_suffix,
             )
         )
         return items
-
-from ..finnhub_client import get_finnhub as _gfh
-_fh = _gfh()
-readiness_checks = {}
-readiness_checks["finnhub"] = {"configured": _fh.is_configured, "status": "ready" if _fh.is_configured else "waiting_for_api_key"}
 

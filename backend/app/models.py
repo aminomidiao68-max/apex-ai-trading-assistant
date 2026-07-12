@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class MarketType(str, Enum):
@@ -26,11 +26,19 @@ class ImpactLevel(str, Enum):
 
 class Candle(BaseModel):
     timestamp: datetime
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: float = 0.0
+    open: float = Field(gt=0)
+    high: float = Field(gt=0)
+    low: float = Field(gt=0)
+    close: float = Field(gt=0)
+    volume: float = Field(default=0.0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_ohlc(self):
+        if self.high < max(self.open, self.close, self.low):
+            raise ValueError("high must be greater than or equal to open, close and low")
+        if self.low > min(self.open, self.close, self.high):
+            raise ValueError("low must be less than or equal to open, close and high")
+        return self
 
 
 class OrderFlowData(BaseModel):
@@ -51,10 +59,10 @@ class NewsEvent(BaseModel):
 
 
 class TradeStats(BaseModel):
-    trades_today: int = 0
-    consecutive_losses: int = 0
-    daily_loss_pct: float = 0.0
-    open_positions: int = 0
+    trades_today: int = Field(default=0, ge=0)
+    consecutive_losses: int = Field(default=0, ge=0)
+    daily_loss_pct: float = Field(default=0.0, ge=0.0)
+    open_positions: int = Field(default=0, ge=0)
 
 
 class RiskSettings(BaseModel):
@@ -179,14 +187,30 @@ class SignalHistoryItem(BaseModel):
 
 
 class TradeJournalCreateRequest(BaseModel):
-    symbol: str
+    symbol: str = Field(min_length=2, max_length=24)
     market: MarketType
     direction: SignalDirection
     entry_price: float = Field(gt=0)
     stop_loss: float = Field(gt=0)
     take_profit: Optional[float] = Field(default=None, gt=0)
     size: float = Field(gt=0)
-    notes: str = ""
+    notes: str = Field(default="", max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_trade_levels(self):
+        if self.direction == SignalDirection.neutral:
+            raise ValueError("neutral direction cannot be journaled as an open trade")
+        if self.direction == SignalDirection.buy:
+            if self.stop_loss >= self.entry_price:
+                raise ValueError("buy stop_loss must be below entry_price")
+            if self.take_profit is not None and self.take_profit <= self.entry_price:
+                raise ValueError("buy take_profit must be above entry_price")
+        if self.direction == SignalDirection.sell:
+            if self.stop_loss <= self.entry_price:
+                raise ValueError("sell stop_loss must be above entry_price")
+            if self.take_profit is not None and self.take_profit >= self.entry_price:
+                raise ValueError("sell take_profit must be below entry_price")
+        return self
 
 
 class TradeJournalCloseRequest(BaseModel):
@@ -427,7 +451,7 @@ class ExecutionPreviewRequest(BaseModel):
     side: Literal["buy", "sell"]
     quantity: float = Field(gt=0)
     signal_score: float = Field(default=0.0, ge=0.0, le=100.0)
-    risk_approved: bool = True
+    risk_approved: bool = False
 
 
 class ExecutionPreviewResponse(BaseModel):
@@ -508,7 +532,7 @@ class BinanceFuturesOrderRequest(BaseModel):
     order_type: Literal["MARKET"] = "MARKET"
     reduce_only: bool = False
     signal_score: float = Field(default=0.0, ge=0.0, le=100.0)
-    risk_approved: bool = True
+    risk_approved: bool = False
 
 
 class BybitOrderRequest(BaseModel):
@@ -519,7 +543,7 @@ class BybitOrderRequest(BaseModel):
     order_type: Literal["Market"] = "Market"
     reduce_only: bool = False
     signal_score: float = Field(default=0.0, ge=0.0, le=100.0)
-    risk_approved: bool = True
+    risk_approved: bool = False
 
 
 class Mt5OrderRequest(BaseModel):
@@ -527,7 +551,7 @@ class Mt5OrderRequest(BaseModel):
     side: Literal["buy", "sell"]
     volume: float = Field(gt=0)
     signal_score: float = Field(default=0.0, ge=0.0, le=100.0)
-    risk_approved: bool = True
+    risk_approved: bool = False
 
 
 class CTraderOrderRequest(BaseModel):
@@ -535,7 +559,7 @@ class CTraderOrderRequest(BaseModel):
     side: Literal["buy", "sell"]
     volume: float = Field(gt=0)
     signal_score: float = Field(default=0.0, ge=0.0, le=100.0)
-    risk_approved: bool = True
+    risk_approved: bool = False
 
 
 class OandaOrderRequest(BaseModel):
@@ -544,18 +568,40 @@ class OandaOrderRequest(BaseModel):
     stop_loss_price: Optional[float] = None
     take_profit_price: Optional[float] = None
     signal_score: float = Field(default=0.0, ge=0.0, le=100.0)
-    risk_approved: bool = True
+    risk_approved: bool = False
 
 
 class AuthRegisterRequest(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     email: str = Field(min_length=5, max_length=120)
-    password: str = Field(min_length=6, max_length=120)
+    password: str = Field(min_length=8, max_length=120)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 2:
+            raise ValueError("name must contain at least two non-space characters")
+        return normalized
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        local, separator, domain = normalized.partition("@")
+        if not separator or not local or "." not in domain:
+            raise ValueError("invalid email address")
+        return normalized
 
 
 class AuthLoginRequest(BaseModel):
     email: str = Field(min_length=5, max_length=120)
     password: str = Field(min_length=6, max_length=120)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return value.strip().lower()
 
 
 class AuthUser(BaseModel):
