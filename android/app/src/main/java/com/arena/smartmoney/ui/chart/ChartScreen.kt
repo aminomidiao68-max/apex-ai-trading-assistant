@@ -96,7 +96,7 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
     fun scan() {
         scope.launch {
             scanLoading = true
-            try { signals = repo.scanSignals(40) }
+            try { signals = repo.scanSignals(40).signals }
             finally { scanLoading = false }
         }
     }
