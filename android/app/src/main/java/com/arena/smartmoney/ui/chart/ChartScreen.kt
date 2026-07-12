@@ -627,7 +627,7 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             // باکس پس‌زمینه برای خوانایی
             drawContext.canvas.nativeCanvas.drawRect(
                 t.x - pad, t.y + b.top - pad,
-                t.x + b.width + pad*2, t.y + b.bottom + pad, tagBg)
+                t.x + b.width() + pad*2, t.y + b.bottom + pad, tagBg)
             drawContext.canvas.nativeCanvas.drawText(t.label, t.x, t.y, tp)
         }
 
@@ -654,12 +654,12 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
                 val lp = NativePaint().apply { color=c.toArgb(); textSize=15f; isAntiAlias=true; isFakeBoldText=true }
                 val b = Rect(); lp.getTextBounds(label, 0, label.length, b)
                 val pad = 4f
-                val bx = chartR - b.width - pad*2 - 8f
-                val by = y - b.height/2f - pad
+                val bx = chartR - b.width() - pad*2 - 8f
+                val by = y - b.height()/2f - pad
                 val tagBgC = NativePaint().apply { color = c.toArgb() }
-                drawContext.canvas.nativeCanvas.drawRect(bx, by, bx + b.width + pad*2, by + b.height + pad*2, tagBgC)
+                drawContext.canvas.nativeCanvas.drawRect(bx, by, bx + b.width() + pad*2, by + b.height() + pad*2, tagBgC)
                 val lpt = NativePaint().apply { color = android.graphics.Color.BLACK; textSize=15f; isAntiAlias=true; isFakeBoldText=true; textAlign=NativePaint.Align.CENTER }
-                drawContext.canvas.nativeCanvas.drawText(label, bx + (b.width+pad*2)/2f, by + b.height + 1f, lpt)
+                drawContext.canvas.nativeCanvas.drawText(label, bx + (b.width()+pad*2)/2f, by + b.height() + 1f, lpt)
             }
         }
 
@@ -673,9 +673,9 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         val cpBg = NativePaint().apply { color=Gold.toArgb() }
         val bb = Rect(); cp.getTextBounds(cpLbl, 0, cpLbl.length, bb)
         val pad=4f
-        val bx = 6f; val by = yPrice - bb.height/2f - pad
-        drawContext.canvas.nativeCanvas.drawRect(bx, by, bx + bb.width + pad*2, by + bb.height + pad*2, cpBg)
-        drawContext.canvas.nativeCanvas.drawText(cpLbl, bx + (bb.width+pad*2)/2f, by + bb.height + 1f, cp)
+        val bx = 6f; val by = yPrice - bb.height()/2f - pad
+        drawContext.canvas.nativeCanvas.drawRect(bx, by, bx + bb.width() + pad*2, by + bb.height() + pad*2, cpBg)
+        drawContext.canvas.nativeCanvas.drawText(cpLbl, bx + (bb.width()+pad*2)/2f, by + bb.height() + 1f, cp)
 
         // دکور حجم در سمت چپ
         val volLabel = NativePaint().apply { color=TL.toArgb(); textSize=14f; isAntiAlias=true }
