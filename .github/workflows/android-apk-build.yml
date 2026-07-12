@@ -3,11 +3,15 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
+
+permissions:
+  contents: read
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       APEX_API_BASE_URL: ${{ vars.APEX_API_BASE_URL }}
       APEX_WS_BASE_URL: ${{ vars.APEX_WS_BASE_URL }}
@@ -16,26 +20,29 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
+      # ubuntu-latest already includes Android command-line tools. Avoid the
+      # deprecated Node 20 setup-android action that intermittently failed
+      # before Gradle even started.
       - name: Install Android API 35
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Build and test debug APK
+      - name: Build, lint and test debug APK
         working-directory: android
-        run: ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
+        run: ./gradlew --no-daemon --max-workers=2 testDebugUnitTest lintDebug assembleDebug --stacktrace
 
       - name: Upload debug APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: apex-ai-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 30
