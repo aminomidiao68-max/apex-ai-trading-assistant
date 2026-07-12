@@ -1292,10 +1292,10 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
         # If RR<2 force non-actionable regardless of grade
         if rr < OMEGA_MIN_RR and direction != NEUTRAL:
             direction = "watching" if omega_ok else NEUTRAL
-        # Force neutral for F/D grades (weak/invalid setups) to prevent UI from showing biased directions
-        if grade in ("F",) or not omega_ok:
-            if grade == "F":
-                direction = NEUTRAL
+        # Force NEUTRAL for F-grade (invalid setups) so UI doesn't show misleading direction
+        if grade == "F":
+            direction = NEUTRAL
+            action_label = "AVOID"
 
     # ---- Watching (nearby setups not yet confirmed) ----
     watching = []
