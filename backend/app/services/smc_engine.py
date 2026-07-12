@@ -530,12 +530,32 @@ def _orderflow(cs, window=20):
 # =========================================================
 # Sessions / Killzones
 # =========================================================
-def _sessions(cs):
+def _sessions(cs, timeframe="15m"):
+    """Return a small, readable set of recent intraday killzones.
+
+    Session overlays are meaningless on 4h/daily candles and rendering every
+    historical session produced the vertical stripe/label wall visible in the
+    Android chart. Keep only recent sessions and preserve original indices so
+    the API can rebase them when trimming the chart window.
+    """
+    tf_minutes = _parse_tf_mins(timeframe)
+    if tf_minutes >= 240 or not cs:
+        return [], []
+
+    valid_times = [c.get("t", 0) for c in cs if c.get("t", 0) > 0]
+    if not valid_times:
+        return [], []
+    latest_time = max(valid_times)
+    lookback_days = 3 if tf_minutes >= 60 else 2
+    cutoff = latest_time - lookback_days * 86400
+
     zones=[]; names=[]; seen=set()
     last_name=None
     for i,c in enumerate(cs):
         t=c["t"]
-        if t<=0: continue
+        if t<=0 or t < cutoff:
+            last_name=None
+            continue
         try: dt=datetime.fromtimestamp(t,tz=UTC)
         except Exception: continue
         h=dt.hour+dt.minute/60
@@ -545,17 +565,18 @@ def _sessions(cs):
         if match and match["vol"]>=0.9:
             if match["name"] not in seen:
                 seen.add(match["name"]); names.append(match["name"])
-            if last_name==match["name"]:
+            if last_name==match["name"] and zones:
                 zones[-1]["end"]=i
             else:
                 zones.append({"name":match["name"],"start":i,"end":i,"vol":match["vol"],"color":match["color"]})
             last_name=match["name"]
         else:
-            if last_name is not None:
-                zones[-1]["end"]=i-1; last_name=None
+            if last_name is not None and zones:
+                zones[-1]["end"]=i-1
+            last_name=None
     if zones and zones[-1]["end"]<zones[-1]["start"]:
         zones[-1]["end"]=zones[-1]["start"]
-    return zones, names
+    return zones[-6:], names
 
 
 def _active_session(cs):
@@ -1160,7 +1181,7 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
     br = _breakers(cs, obs)
     liq = _liquidity(cs, highs, lows, atr)
     of = _orderflow(cs)
-    kz_comp, names = _sessions(cs)
+    kz_comp, names = _sessions(cs, timeframe)
     sess_name, sess_w, sess_col = _active_session(cs)
     vwap = _vwap(cs)
     trend_str = _trend_strength(cs, events, atr)

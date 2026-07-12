@@ -114,6 +114,23 @@ def test_signal_and_backtest_endpoints_no_longer_return_500(monkeypatch):
     assert client.post("/api/v1/backtest/walk-forward", json=walk_payload, headers=auth).status_code == 200
 
 
+def test_provider_errors_never_expose_api_keys(monkeypatch):
+    async def failing_provider(*args, **kwargs):
+        raise RuntimeError("https://provider.invalid/path?apikey=TOP_SECRET_VALUE")
+
+    main._CANDLE_CACHE.clear()
+    monkeypatch.setattr(main.market_data, "fetch_forex_candles", failing_provider)
+    response = client.get(
+        "/api/v1/analysis/smc",
+        params={"symbol": "EURUSD", "market": "forex", "interval": "30m"},
+    )
+    assert response.status_code == 200
+    body = response.text.lower()
+    assert "top_secret_value" not in body
+    assert "apikey=" not in body
+    assert "provider_unavailable" in body
+
+
 def test_risk_direction_validation():
     settings = {
         "account_balance": 10000,
@@ -229,6 +246,68 @@ def test_fresh_signal_notification_is_callable_and_user_scoped(tmp_path):
             "SELECT user_id FROM notification_events ORDER BY user_id"
         ).fetchall()
     assert rows == [(1,)]
+
+
+def test_chart_window_rebases_all_overlay_indices():
+    items = [
+        {"t": float(index), "o": 100.0, "h": 101.0, "l": 99.0, "c": 100.5, "v": 1.0}
+        for index in range(260)
+    ]
+    report = {
+        "events": [{"index": 210, "kind": "BOS"}],
+        "order_blocks": [{"index": 20, "kind": "bullish"}],
+        "fvg": [{"index": 220, "kind": "bullish"}],
+        "breakers": [{"index": 30, "kind": "bearish"}],
+        "inducements": [{"index": 230, "kind": "eqh"}],
+        "killzones": [{"index": 200, "start_idx": 200, "end_idx": 220, "kind": "KZ"}],
+        "overlay": {
+            "lines": [],
+            "labels": [{"index": 210, "kind": "BOS"}],
+            "zones": [
+                {"index": 200, "start_idx": 200, "end_idx": 220, "kind": "KZ"},
+                {"index": 20, "kind": "OB"},
+                {"index": 220, "kind": "FVG"},
+            ],
+        },
+    }
+    prepared = main._prepare_chart_report(report, items, max_candles=160)
+    assert len(prepared["candles"]) == 160
+    assert prepared["events"][0]["index"] == 110
+    assert prepared["order_blocks"][0]["index"] == 0
+    assert prepared["fvg"][0]["index"] == 120
+    assert prepared["killzones"][0]["start_idx"] == 100
+    assert prepared["killzones"][0]["end_idx"] == 120
+    for collection in (
+        prepared["events"], prepared["order_blocks"], prepared["fvg"],
+        prepared["breakers"], prepared["inducements"], prepared["overlay"]["labels"],
+        prepared["overlay"]["zones"],
+    ):
+        assert all(0 <= item["index"] < 160 for item in collection)
+
+
+def test_timeframe_mapping_aggregation_and_high_tf_killzones():
+    from app.services.market_data_service import MarketDataService
+    from app.services.smc_engine import _sessions
+
+    service = MarketDataService()
+    assert service._normalize_twelvedata_interval("1d") == "1day"
+    assert service._yahoo_interval("4h") == ("60m", "1y", 4 * 3600)
+    source = _candles(16)
+    aggregated = service.aggregate_candles(source, 4 * 15 * 60)
+    assert len(aggregated) == 4
+    assert aggregated[0].open == source[0].open
+    assert aggregated[0].close == source[3].close
+    assert aggregated[0].high == max(item.high for item in source[:4])
+    assert aggregated[0].low == min(item.low for item in source[:4])
+
+    raw = [
+        {"t": item.timestamp.timestamp(), "o": item.open, "h": item.high,
+         "l": item.low, "c": item.close, "v": item.volume}
+        for item in _candles(260)
+    ]
+    assert _sessions(raw, "4h") == ([], [])
+    zones, _ = _sessions(raw, "15m")
+    assert len(zones) <= 6
 
 
 def test_user_data_isolation_delete_and_openapi_security():

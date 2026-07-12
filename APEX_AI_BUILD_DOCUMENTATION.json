@@ -4,7 +4,7 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "2.1.6",
+    "current_version": "2.1.7",
     "status": "Stabilized MVP - Live Execution Disabled"
   },
   "architecture": {
@@ -259,6 +259,24 @@
             "Upgraded targetSdk/compileSdk to 35, AGP 8.7.3 and Gradle wrapper 8.9",
             "Fixed Android notification permission lint error",
             "Kept live broker execution disabled"
+          ]
+        },
+        {
+          "version": "v2.1.7 Universal Chart Stability",
+          "date": "2026-07-12T14:15:00Z",
+          "features": [
+            "Fixed overlay index rebasing after chart candle trimming",
+            "Scaled chart from visible candles instead of hidden historical range",
+            "Limited and de-overlapped killzones, liquidity labels, structure labels and zones",
+            "Disabled session overlays on 4h and 1d charts",
+            "Added Yahoo Finance fallback for Forex, gold and indices",
+            "Added TwelveData 429 circuit breaker and stale-cache fallback",
+            "Mapped 1d to TwelveData 1day and normalized every supported timeframe",
+            "Stopped raw provider URLs and API keys from reaching API/UI errors",
+            "Built HTF candles locally to reduce provider requests",
+            "Cancelled stale Android chart requests on symbol/timeframe changes",
+            "Added LTR symbol/timeframe selectors with auto-scroll",
+            "Validated 10 symbols x 7 timeframes (70/70 provider and SMC matrix pass)"
           ]
         }
       ]
@@ -773,8 +791,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "1.1",
-    "last_updated": "2026-07-12T12:55:00Z",
+    "documentation_version": "1.2",
+    "last_updated": "2026-07-12T14:15:00Z",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

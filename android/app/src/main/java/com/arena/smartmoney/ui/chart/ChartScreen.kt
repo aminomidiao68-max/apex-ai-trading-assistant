@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,8 +28,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arena.smartmoney.data.model.SmcCandle
@@ -36,6 +39,7 @@ import com.arena.smartmoney.data.model.SmcReport
 import com.arena.smartmoney.data.model.SmcSignal
 import com.arena.smartmoney.data.model.SmcZone
 import com.arena.smartmoney.data.repository.TradingRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
@@ -82,17 +86,11 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
     var sym by remember { mutableStateOf("XAUUSD") }
     var mkt by remember { mutableStateOf("") }
     var tf  by remember { mutableStateOf("15m") }
-    var scale by remember { mutableStateOf(1f) }
+    var scale by remember { mutableStateOf(defaultChartScale("15m")) }
     var signals by remember { mutableStateOf<List<SmcSignal>>(emptyList()) }
     var scanLoading by remember { mutableStateOf(false) }
+    var refreshNonce by remember { mutableIntStateOf(0) }
 
-    fun load() {
-        scope.launch {
-            loading = true
-            try { r = repo.getSmcAnalysis(sym, mkt, tf, 260) }
-            finally { loading = false }
-        }
-    }
     fun scan() {
         scope.launch {
             scanLoading = true
@@ -100,8 +98,35 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
             finally { scanLoading = false }
         }
     }
-    LaunchedEffect(sym, tf) { load() }
-    LaunchedEffect(Unit) { scan() }
+
+    // LaunchedEffect cancels the previous Retrofit call when symbol/timeframe
+    // changes. Clearing the old report prevents a stale 5m chart from being
+    // shown under a newly selected 15m chip.
+    LaunchedEffect(sym, tf, refreshNonce) {
+        val requestedSymbol = sym
+        val requestedTimeframe = tf
+        val requestedMarket = mkt
+        loading = true
+        scale = defaultChartScale(requestedTimeframe)
+        r = SmcReport(
+            symbol = requestedSymbol,
+            timeframe = requestedTimeframe,
+            market = if (requestedMarket.isBlank()) "auto" else requestedMarket,
+            status = "loading"
+        )
+        delay(120)
+        val response = repo.getSmcAnalysis(
+            requestedSymbol, requestedMarket, requestedTimeframe, 260
+        )
+        if (sym == requestedSymbol && tf == requestedTimeframe) {
+            r = response
+            loading = false
+        }
+    }
+    LaunchedEffect(Unit) {
+        delay(2500)
+        scan()
+    }
 
     Scaffold(
         containerColor = BgDark,
@@ -110,7 +135,7 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
                 title = { Text("تحلیل هوشمند SMC", color = Gold, fontWeight = FontWeight.Black, fontSize = 19.sp) },
                 navigationIcon = { if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "back", tint = Gold) } },
                 actions = {
-                    IconButton(onClick = { load(); scan() }) { Icon(Icons.Default.Refresh, "refresh", tint = Gold) }
+                    IconButton(onClick = { refreshNonce++; scan() }) { Icon(Icons.Default.Refresh, "refresh", tint = Gold) }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BgDark)
             )
@@ -125,7 +150,7 @@ fun ChartScreen(onBack: (() -> Unit)? = null) {
                     Label("نماد")
                     ChipRow(SYMBOLS, sym) { sym = it; mkt = "" }
                     Label("تایم‌فریم")
-                    ChipRow(TIMEFRAMES, tf) { tf = it; scale = 1f }
+                    ChipRow(TIMEFRAMES, tf) { tf = it; scale = defaultChartScale(it) }
                 }
             }
             item { HeaderCard(r, sym, mkt, tf, loading) }
@@ -337,7 +362,12 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
                 }
             }
             Spacer(Modifier.height(6.dp))
-            Text(if (loading) "در حال بارگذاری..." else r.note.ifBlank { "-" }, color = TH, fontSize = 12.sp, lineHeight = 18.sp)
+            Text(
+                if (loading) "در حال بارگذاری..." else safeChartMessage(r.note),
+                color = TH,
+                fontSize = 12.sp,
+                lineHeight = 18.sp
+            )
             if (r.sessionActive != "-") {
                 Spacer(Modifier.height(4.dp))
                 Text("سشن فعال: ${r.sessionActive}  •  VWAP ${fmt(r.vwap)}", color = TL, fontSize = 11.sp)
@@ -362,8 +392,12 @@ private fun AiCard(r: SmcReport, loading: Boolean) {
                 }
             }
             Spacer(Modifier.height(6.dp))
-            Text(if (loading) "در حال تحلیل..." else r.ai.summary.ifBlank { r.note },
-                color = TH, fontSize = 12.sp, lineHeight = 20.sp)
+            Text(
+                if (loading) "در حال تحلیل..." else safeChartMessage(r.ai.summary.ifBlank { r.note }),
+                color = TH,
+                fontSize = 12.sp,
+                lineHeight = 20.sp
+            )
             Spacer(Modifier.height(4.dp))
             Text(if (loading) "" else r.ai.recommendation, color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
@@ -423,6 +457,14 @@ private fun LevelsCard(r: SmcReport) {
     }
 }
 
+private fun defaultChartScale(timeframe: String): Float = when (timeframe) {
+    "1d" -> 2.8f
+    "4h" -> 2.3f
+    "1h" -> 1.8f
+    "30m" -> 1.6f
+    else -> 1.4f
+}
+
 // ======================== بوم چارت دقیقاً به سبک TradingView ========================
 @Composable
 private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: Float, onScale: (Float)->Unit) {
@@ -435,22 +477,32 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         if (candles.isEmpty()) return@Canvas
 
         val totalCandles = candles.size
-        val visibleCount = (totalCandles / scale).toInt().coerceIn(40, totalCandles)
+        val minimumVisible = min(40, totalCandles)
+        val visibleCount = (totalCandles / scale).toInt()
+            .coerceIn(minimumVisible, totalCandles)
         val startIdx = (totalCandles - visibleCount).coerceAtLeast(0)
         val visible = if (startIdx == 0) candles else candles.subList(startIdx, totalCandles)
 
-        var hi = report.visibleRange.high; var lo = report.visibleRange.low
-        if (hi <= lo) { hi = visible.maxOf { it.h }; lo = visible.minOf { it.l } }
-        val range = (hi - lo).takeIf { it > 0f } ?: 1f
-        val pricePad = range * 0.08f
-        hi += pricePad; lo -= pricePad*0.6f; val nr = hi - lo
+        // Scale exclusively from candles that are actually visible. The API may
+        // analyse more history than it returns; using the older global range was
+        // compressing current candles into a flat line or giant vertical bars.
+        var hi = visible.maxOf { it.h }
+        var lo = visible.minOf { it.l }
+        val range = (hi - lo).takeIf { it > 0f } ?: max(abs(hi) * 0.001f, 0.0001f)
+        val pricePad = range * 0.07f
+        hi += pricePad
+        lo -= pricePad
+        val nr = (hi - lo).coerceAtLeast(0.0000001f)
 
-        // Layout: قیمت‌ها سمت راست — لبه ۵۶ پیکسل برای باکس قیمت TV
-        val axisW = 58f
-        val chartL = 2f
+        val maxVisibleVolume = visible.maxOfOrNull { abs(it.v) } ?: 0f
+        val hasVolume = maxVisibleVolume > 0f
+
+        // Wider right axis prevents Forex and high-price crypto labels clipping.
+        val axisW = 78f
+        val chartL = 3f
         val chartR = w - axisW
-        val volH = 44f
-        val chartT = 26f
+        val volH = if (hasVolume) 40f else 0f
+        val chartT = 24f
         val chartB = h - volH - 4f
         val chartW = chartR - chartL
         val chartH = chartB - chartT
@@ -475,63 +527,91 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         drawRect(Color(0xFF0F1420), topLeft = Offset(chartR, chartT), size = Size(axisW, h-chartT))
         drawLine(ChartGrid, Offset(chartR, chartT), Offset(chartR, h), strokeWidth = 1f)
 
-        val df = java.text.DecimalFormat(if (hi > 1000) "0.00" else "0.0000")
-        // برچسب‌های قیمت سمت راست (TV style: بدون کادر، در پنل تیره)
-        val axisText = NativePaint().apply { color = TL.toArgb(); textSize = 20f; isAntiAlias = true; textAlign = NativePaint.Align.LEFT }
+        val df = java.text.DecimalFormat(
+            when {
+                hi >= 1000f -> "0.00"
+                hi >= 100f -> "0.000"
+                else -> "0.00000"
+            }
+        )
+        val axisText = NativePaint().apply {
+            color = TL.toArgb()
+            textSize = 15f
+            isAntiAlias = true
+            textAlign = NativePaint.Align.LEFT
+        }
         for (i in 0..gridN) {
             val y = chartT + chartH*i/gridN
             val p = hi - nr*i/gridN
             drawContext.canvas.nativeCanvas.drawText(df.format(p), chartR+6f, y+6f, axisText)
         }
 
-        // ======== Killzones (مانند TV — لندن آبی، نیویورک قرمز، تمام‌ارتفاع) ========
-        for (kz in report.killzones) {
-            val s = kz.startIdx.coerceAtLeast(startIdx); val e = kz.endIdx.coerceAtMost(totalCandles-1)
-            if (e < startIdx || s > totalCandles-1) continue
-            val x1 = idxX(s) - cw/2; val x2 = idxX(e) + cw/2
-            val kzCol = when {
-                kz.name.contains("لندن") && kz.name.contains("نیویورک") -> KzOver
-                kz.name.contains("نیویورک") -> KzNy
-                kz.name.contains("لندن") -> KzLon
-                else -> KzAsia
+        // ======== Recent intraday Killzones only ========
+        var lastKillzoneLabelRight = -1f
+        val showKillzones = report.timeframe !in listOf("4h", "1d")
+        if (showKillzones) {
+            for (kz in report.killzones.takeLast(6)) {
+                val zoneStart = kz.startIdx.coerceAtLeast(startIdx)
+                val zoneEnd = kz.endIdx.coerceAtMost(totalCandles - 1)
+                if (zoneEnd < startIdx || zoneStart > totalCandles - 1) continue
+                val x1 = (idxX(zoneStart) - cw / 2).coerceIn(chartL, chartR)
+                val x2 = (idxX(zoneEnd) + cw / 2).coerceIn(chartL, chartR)
+                if (x2 <= x1) continue
+                val kzCol = when {
+                    kz.name.contains("لندن") && kz.name.contains("نیویورک") -> KzOver.copy(alpha = 0.16f)
+                    kz.name.contains("نیویورک") -> KzNy.copy(alpha = 0.13f)
+                    kz.name.contains("لندن") -> KzLon.copy(alpha = 0.13f)
+                    else -> KzAsia.copy(alpha = 0.10f)
+                }
+                drawRect(kzCol, topLeft = Offset(x1, chartT), size = Size(x2 - x1, chartH))
+
+                // Draw a single short label only when the zone is wide enough
+                // and it cannot collide with the previous label.
+                val zoneWidth = x2 - x1
+                val labelX = (x1 + x2) / 2f
+                if (zoneWidth >= 72f && x1 > lastKillzoneLabelRight + 8f) {
+                    val label = when {
+                        kz.name.contains("لندن") && kz.name.contains("نیویورک") -> "Overlap"
+                        kz.name.contains("نیویورک") -> "New York"
+                        kz.name.contains("لندن") -> "London"
+                        else -> "Asia"
+                    }
+                    val paint = NativePaint().apply {
+                        color = TH.toArgb()
+                        textSize = 13f
+                        isAntiAlias = true
+                        isFakeBoldText = true
+                        textAlign = NativePaint.Align.CENTER
+                    }
+                    drawContext.canvas.nativeCanvas.drawText(label, labelX, chartT + 14f, paint)
+                    lastKillzoneLabelRight = x2
+                }
             }
-            drawRect(kzCol, topLeft = Offset(x1, chartT), size = Size(x2-x1, chartH))
-            // لیبل بالای KZ (مشابه London Killzone / New York Killzone TV)
-            val lbl = when {
-                kz.name.contains("لندن") && kz.name.contains("نیویورک") -> "Overlap KZ\n12:00-14:00"
-                kz.name.contains("نیویورک") -> "New York Killzone\n13:00-17:00 UTC"
-                kz.name.contains("لندن") -> "London Killzone\n07:00-12:00 UTC"
-                else -> kz.name
-            }
-            val kp = NativePaint().apply {
-                color = android.graphics.Color.WHITE; textSize = 16f; isAntiAlias=true; isFakeBoldText=true
-                textAlign = NativePaint.Align.CENTER
-            }
-            val mx = (x1+x2)/2f
-            val ls = lbl.split("\n")
-            drawContext.canvas.nativeCanvas.drawText(ls[0], mx, chartT+14f, kp)
-            if (ls.size>1) { kp.textSize = 12f; kp.isFakeBoldText=false; kp.color = TL.toArgb()
-                drawContext.canvas.nativeCanvas.drawText(ls[1], mx, chartT+28f, kp) }
         }
 
         // ======== زون‌ها: OB/FVG/BRK پشت کندل‌ها ========
         for (z in report.overlay.zones) {
             if (z.kind == "KZ") continue
             val i = z.index; if (i<startIdx || i>=totalCandles) continue
-            val top = priceY(z.top); val bot = priceY(z.bottom)
-            val xstart = idxX(i) - cw*0.6f
-            val extend = (z.kind == "OB" || z.kind == "BRK")
-            val xend = if (extend) chartR else idxX(i) + cw*2.2f
+            val rawY1 = priceY(z.top)
+            val rawY2 = priceY(z.bottom)
+            if (max(rawY1, rawY2) < chartT || min(rawY1, rawY2) > chartB) continue
+            val top = min(rawY1, rawY2).coerceIn(chartT, chartB)
+            val bottom = max(rawY1, rawY2).coerceIn(chartT, chartB)
+            val xstart = (idxX(i) - cw * 0.6f).coerceIn(chartL, chartR)
+            val extend = z.kind == "OB" || z.kind == "BRK"
+            val xend = (if (extend) chartR else idxX(i) + cw * 2.2f).coerceIn(chartL, chartR)
             val color = when(z.kind) {
                 "OB" -> if(z.side=="bullish") BullOB else BearOB
                 "FVG" -> if(z.inverse) iFvgC else FvgC
+                "iFVG" -> iFvgC
                 "BRK" -> BrkC
                 else -> Color.Transparent
             }
-            if (color == Color.Transparent) continue
-            val zoneH = (bot-top).coerceAtLeast(3f)
-            drawRect(color=color.copy(alpha=0.22f), topLeft=Offset(xstart, top), size=Size(xend-xstart, zoneH))
-            drawRect(color=color.copy(alpha=0.9f), topLeft=Offset(xstart, top), size=Size(xend-xstart, zoneH), style=Stroke(1.0f))
+            if (color == Color.Transparent || xend <= xstart) continue
+            val zoneH = (bottom - top).coerceAtLeast(2f)
+            drawRect(color=color.copy(alpha=0.14f), topLeft=Offset(xstart, top), size=Size(xend-xstart, zoneH))
+            drawRect(color=color.copy(alpha=0.72f), topLeft=Offset(xstart, top), size=Size(xend-xstart, zoneH), style=Stroke(0.8f))
             // عنوان درون زون (مثل TV: Bearish Order Block داخل مستطیل نارنجی)
             val label = when(z.kind) {
                 "OB" -> if(z.side=="bullish") "Bullish Order Block" else "Bearish Order Block"
@@ -539,27 +619,45 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
                 "FVG" -> if (z.inverse) "iFVG" else "FVG"
                 else -> z.kind
             }
-            val zl = NativePaint().apply { this.color = color.toArgb(); textSize = 15f; isAntiAlias = true; isFakeBoldText = true }
-            val textX = xstart + 6f
-            val textY = top + zoneH/2f + 5f  // وسط زون
-            // کادر محو پشت متن برای خوانایی
-            val tr = Rect(); zl.getTextBounds(label, 0, label.length, tr)
-            val pad=3f
-            drawRect(color=ChartBg.copy(alpha=0.75f), topLeft=Offset(textX-2f, textY+tr.top-pad),
-                size = Size(tr.width()+pad*2, tr.height()+pad*2))
-            drawContext.canvas.nativeCanvas.drawText(label, textX, textY, zl)
+            if (zoneH >= 11f && xend - xstart >= 64f) {
+                val zoneLabelPaint = NativePaint().apply {
+                    this.color = color.toArgb()
+                    textSize = 12f
+                    isAntiAlias = true
+                    isFakeBoldText = true
+                }
+                val textX = xstart + 5f
+                val textY = top + zoneH / 2f + 4f
+                val textRect = Rect()
+                zoneLabelPaint.getTextBounds(label, 0, label.length, textRect)
+                val maxTextWidth = xend - textX - 3f
+                if (textRect.width() <= maxTextWidth) {
+                    drawRect(
+                        color = ChartBg.copy(alpha = 0.72f),
+                        topLeft = Offset(textX - 2f, textY + textRect.top - 2f),
+                        size = Size(textRect.width() + 4f, textRect.height() + 4f)
+                    )
+                    drawContext.canvas.nativeCanvas.drawText(label, textX, textY, zoneLabelPaint)
+                }
+            }
         }
 
-        // ======== نوار حجم ========
-        val maxVol = visible.map { abs(it.v) }.maxOrNull()?.takeIf { it>0f } ?: 1f
-        visible.forEachIndexed { idx, c ->
-            val x = idxX(idx+startIdx)
-            val up = c.c >= c.o
-            val col = if (up) VolUp else VolDn
-            val vh = ((abs(c.v)/maxVol) * (volB - volT - 2f)).coerceAtLeast(1f)
-            drawRect(col, topLeft = Offset(x-bw/2f, volB - vh), size = Size(bw, vh))
+        // ======== Volume pane (hidden when Forex provider has no volume) ========
+        if (hasVolume) {
+            val maxVol = maxVisibleVolume.coerceAtLeast(1f)
+            visible.forEachIndexed { idx, candle ->
+                val x = idxX(idx + startIdx)
+                val color = if (candle.c >= candle.o) VolUp else VolDn
+                val volumeHeight = ((abs(candle.v) / maxVol) * (volB - volT - 2f))
+                    .coerceAtLeast(1f)
+                drawRect(
+                    color,
+                    topLeft = Offset(x - bw / 2f, volB - volumeHeight),
+                    size = Size(bw, volumeHeight)
+                )
+            }
+            drawLine(ChartGrid, Offset(chartL, volB), Offset(chartR, volB), strokeWidth = 0.6f)
         }
-        drawLine(ChartGrid, Offset(chartL, volB), Offset(chartR, volB), strokeWidth = 0.6f)
 
         // ======== کندل‌ها ========
         visible.forEachIndexed { idx, c ->
@@ -601,8 +699,8 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
 
         // ======== EQH/EQL + لیک (با فلش → مثل TV) ========
         var lastArrowRight = false
-        for (lab in report.inducements) {
-            val isEq = lab.kind.startsWith("eq") || lab.kind.contains("recent")
+        val plottedLiquidityY = mutableListOf<Float>()
+        for (lab in report.inducements.takeLast(10).asReversed()) {
             val col = when {
                 lab.kind.contains("buyside") -> UpC
                 lab.kind.contains("sellside") -> DnC
@@ -611,7 +709,9 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             }
             val y = priceY(lab.price)
             if (y < chartT || y > chartB) continue
-            drawLine(col.copy(alpha=0.55f), Offset(chartL, y), Offset(chartR, y), strokeWidth=0.8f,
+            if (plottedLiquidityY.any { abs(it - y) < 12f }) continue
+            plottedLiquidityY += y
+            drawLine(col.copy(alpha=0.42f), Offset(chartL, y), Offset(chartR, y), strokeWidth=0.7f,
                 pathEffect=PathEffect.dashPathEffect(floatArrayOf(4f,3f)))
             val lbl = when(lab.kind) {
                 "eqh" -> "EQH →"
@@ -623,8 +723,8 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
                 else -> ""
             }
             if (lbl.isNotEmpty()) {
-                val lp = NativePaint().apply { color = col.toArgb(); textSize = 14f; isAntiAlias = true; isFakeBoldText = true }
-                val ax = if (lastArrowRight) chartR - 80f else chartL + 4f
+                val lp = NativePaint().apply { color = col.toArgb(); textSize = 11f; isAntiAlias = true; isFakeBoldText = true }
+                val ax = if (lastArrowRight) chartR - 48f else chartL + 4f
                 drawContext.canvas.nativeCanvas.drawText(lbl, ax, y-4f, lp)
                 lastArrowRight = !lastArrowRight
             }
@@ -632,27 +732,29 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
 
         // ======== BOS/CHoCH — فلش‌دار روی کندل، خط کوتاه به لیبل (مثل TV) ========
         for (ev in report.events.takeLast(8)) {
+            if (ev.index < startIdx || ev.index >= totalCandles) continue
             val col = if (ev.dir == "bullish") UpC else DnC
             val y = priceY(ev.price)
             if (y < chartT || y > chartB) continue
-            val idx = ev.index.coerceIn(startIdx, totalCandles-1)
+            val idx = ev.index
             val x = idxX(idx)
             val isBull = ev.dir == "bullish"
             // خط افقی کوتاه
-            val lineEndX = min(x+80f, chartR-4f)
+            val lineEndX = min(x + 48f, chartR - 48f)
             drawLine(col.copy(alpha=0.65f), Offset(x, y), Offset(lineEndX, y), strokeWidth=1.2f)
             // دایره کوچک روی کندل
             drawCircle(col, radius=3.5f, center=Offset(x, y))
             // لیبل جهت‌دار
-            val lp = NativePaint().apply { color=col.toArgb(); textSize=14f; isAntiAlias=true; isFakeBoldText=true }
+            val lp = NativePaint().apply { color=col.toArgb(); textSize=11f; isAntiAlias=true; isFakeBoldText=true }
             val arr = if (isBull) "▲ ${ev.kind}" else "▼ ${ev.kind}"
             drawContext.canvas.nativeCanvas.drawText(arr, lineEndX+4f, y-4f, lp)
         }
 
         // ======== IDM نقاط زرد (Inducement) ========
-        for (lab in report.inducements) {
+        for (lab in report.inducements.takeLast(8)) {
             if (!lab.kind.contains("liq")) continue
-            val idx = lab.index.coerceIn(startIdx, totalCandles-1)
+            if (lab.index < startIdx || lab.index >= totalCandles) continue
+            val idx = lab.index
             val x = idxX(idx); val y = priceY(lab.price)
             if (y < chartT || y > chartB) continue
             drawCircle(IdmColor, radius=3.5f, center=Offset(x, y))
@@ -673,7 +775,7 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
                     "tp1"   -> UpC to "TP1"
                     "tp2"   -> UpC to "TP2"
                     "tp3"   -> UpC.copy(alpha=0.6f) to "TP3"
-                    else    -> continue to ""
+                    else    -> continue
                 }
                 val sw = if (pl.kind=="entry" || pl.kind=="sl") 1.5f else 1.0f
                 drawLine(c, Offset(chartL, y), Offset(chartR, y), strokeWidth=sw,
@@ -691,15 +793,15 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         }
 
         // ======== قیمت لحظه‌ای (last price tag) مثل TV: برچسب روی محور راست ========
-        val yPrice = priceY(report.price)
+        val yPrice = priceY(report.price).coerceIn(chartT, chartB)
         val lastCol = if (candles.lastOrNull()?.let { it.c >= it.o } == true) UpC else DnC
         drawLine(lastCol.copy(alpha=0.9f), Offset(chartL, yPrice), Offset(chartR, yPrice), strokeWidth=1.2f,
             pathEffect=PathEffect.dashPathEffect(floatArrayOf(3f,3f)))
         drawCircle(lastCol, radius=3.5f, center=Offset(chartR-2f, yPrice))
         val plbl = df.format(report.price)
-        val pp = NativePaint().apply { color=android.graphics.Color.WHITE; textSize=19f; isAntiAlias=true; isFakeBoldText=true }
+        val pp = NativePaint().apply { color=android.graphics.Color.WHITE; textSize=13f; isAntiAlias=true; isFakeBoldText=true }
         val pr = Rect(); pp.getTextBounds(plbl,0,plbl.length,pr)
-        val ppad=5f
+        val ppad=4f
         val pbx = chartR+2f
         val pby = yPrice - pr.height()/2f - ppad
         val pbg = NativePaint().apply { color=lastCol.toArgb() }
@@ -707,8 +809,10 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         drawContext.canvas.nativeCanvas.drawText(plbl, pbx+ppad, yPrice+pr.height()/2f-2f, pp)
 
         // نام اندیکاتور/برچسب در گوشه چپ پایین چارت
-        val ol = NativePaint().apply { color=TL.toArgb(); textSize=12f; isAntiAlias=true }
-        drawContext.canvas.nativeCanvas.drawText("Volume", 6f, volT+12f, ol)
+        if (hasVolume) {
+            val volumeLabelPaint = NativePaint().apply { color=TL.toArgb(); textSize=11f; isAntiAlias=true }
+            drawContext.canvas.nativeCanvas.drawText("Volume", 6f, volT+12f, volumeLabelPaint)
+        }
     }
 }
 
@@ -716,12 +820,32 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
 @Composable private fun Label(t: String) = Text(t, color=TL, fontSize=10.sp, fontWeight=FontWeight.SemiBold)
 @Composable
 private fun ChipRow(options: List<String>, selected: String, onPick:(String)->Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        items(options) { o ->
-            val sel = o==selected
-            Surface(shape=RoundedCornerShape(8.dp), color=if(sel)Gold else Surf, modifier=Modifier.clickable{onPick(o)}) {
-                Text("  $o  ", color=if(sel)Color.Black else TH, fontSize=11.sp, fontWeight=FontWeight.Bold,
-                    modifier=Modifier.padding(vertical=8.dp))
+    val listState = rememberLazyListState()
+    LaunchedEffect(selected, options) {
+        val index = options.indexOf(selected)
+        if (index >= 0) listState.animateScrollToItem(index)
+    }
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        LazyRow(
+            state = listState,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            contentPadding = PaddingValues(horizontal = 2.dp)
+        ) {
+            items(options) { option ->
+                val selectedOption = option == selected
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (selectedOption) Gold else Surf,
+                    modifier = Modifier.clickable { onPick(option) }
+                ) {
+                    Text(
+                        text = option,
+                        color = if (selectedOption) Color.Black else TH,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
+                }
             }
         }
     }
@@ -816,6 +940,16 @@ private fun ChipS(t:String, c:Color) {
             modifier=Modifier.padding(horizontal=9.dp, vertical=4.dp))
     }
 }
+private fun safeChartMessage(message: String): String {
+    val value = message.trim()
+    if (value.isBlank()) return "-"
+    val unsafe = listOf("apikey=", "api_key=", "token=", "https://", "http://")
+        .any { value.contains(it, ignoreCase = true) }
+    return if (unsafe) {
+        "داده بازار موقتاً در دسترس نیست؛ چند لحظه دیگر دوباره تلاش کنید."
+    } else value
+}
+
 internal fun fmt(v:Float): String {
     if (v<=0f) return "-"
     return when {

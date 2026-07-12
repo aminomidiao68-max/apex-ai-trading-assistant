@@ -109,49 +109,89 @@ def current_user(
 
 
 import asyncio as _asyncio, time as _time
-_CANDLE_CACHE = {}
-_CACHE_TTL = 30  # seconds
+
+_CANDLE_CACHE: dict[tuple[str, str, str], tuple[float, list]] = {}
+_CANDLE_LOCKS: dict[tuple[str, str, str], _asyncio.Lock] = {}
+_MAX_STALE_CACHE_SECONDS = 24 * 60 * 60
+
+
+def _canonical_timeframe(timeframe: str) -> str:
+    value = (timeframe or "15m").lower().strip()
+    if value.endswith("min"):
+        value = value[:-3] + "m"
+    return {"60m": "1h", "240m": "4h", "1day": "1d"}.get(value, value)
+
+
+def _cache_ttl(timeframe: str) -> int:
+    return {
+        "1m": 45,
+        "3m": 60,
+        "5m": 90,
+        "15m": 180,
+        "30m": 300,
+        "1h": 600,
+        "2h": 900,
+        "4h": 1800,
+        "1d": 3600,
+    }.get(_canonical_timeframe(timeframe), 180)
+
 
 def _auto_market(symbol: str, market: str | None) -> str:
-    if market: return market.lower()
-    u = symbol.upper()
-    if u.endswith("USDT") or u.endswith("BTC") or u.endswith("ETH") or u in ("BTC","ETH","SOL","XRP","BNB","DOGE","ADA"):
+    if market:
+        return market.lower()
+    upper = symbol.upper()
+    if upper.endswith("USDT") or upper.endswith("BTC") or upper.endswith("ETH") or upper in (
+        "BTC", "ETH", "SOL", "XRP", "BNB", "DOGE", "ADA"
+    ):
         return "crypto"
     return "forex"
 
+
 async def fetch_live_candles(symbol: str, market: str, timeframe: str):
     market = _auto_market(symbol, market)
-    cache_key = (symbol.upper(), market, timeframe)
+    canonical_tf = _canonical_timeframe(timeframe)
+    cache_key = (symbol.upper(), market, canonical_tf)
     now = _time.time()
     cached = _CANDLE_CACHE.get(cache_key)
-    if cached and now - cached[0] < _CACHE_TTL:
+    if cached and now - cached[0] < _cache_ttl(canonical_tf):
         return cached[1]
-    last_err = None
-    for attempt in range(3):
+
+    lock = _CANDLE_LOCKS.setdefault(cache_key, _asyncio.Lock())
+    async with lock:
+        now = _time.time()
+        cached = _CANDLE_CACHE.get(cache_key)
+        if cached and now - cached[0] < _cache_ttl(canonical_tf):
+            return cached[1]
         try:
             if market == "crypto":
-                data = await market_data.fetch_binance_candles(symbol=symbol, interval=timeframe, limit=220)
+                data = await market_data.fetch_binance_candles(
+                    symbol=symbol, interval=canonical_tf, limit=260
+                )
             elif market == "forex":
-                twelve_interval = timeframe.replace("m", "min") if timeframe.endswith("m") else timeframe
-                data = await market_data.fetch_twelvedata_candles(symbol=symbol, interval=twelve_interval, outputsize=220)
+                data = await market_data.fetch_forex_candles(
+                    symbol=symbol, interval=canonical_tf, outputsize=260
+                )
             else:
                 raise HTTPException(status_code=400, detail="market must be crypto or forex")
+            if len(data) < 30:
+                raise RuntimeError("insufficient provider data")
             _CANDLE_CACHE[cache_key] = (now, data)
             return data
         except HTTPException:
             raise
         except Exception as exc:
-            last_err = exc
-            msg = str(exc).lower()
-            transient = any(marker in msg for marker in ("429", "too many", "timeout", "temporarily"))
-            if transient and attempt < 2:
-                await _asyncio.sleep(1.5 * (attempt + 1))
-                continue
-            break
-    raise HTTPException(
-        status_code=502,
-        detail=f"Market data provider is unavailable for {symbol.upper()} ({market}/{timeframe})",
-    ) from last_err
+            # A stale chart is safer and more useful than an empty chart during
+            # a temporary provider outage. The response never exposes provider
+            # URLs, API keys or raw exception strings.
+            if cached and now - cached[0] <= _MAX_STALE_CACHE_SECONDS:
+                return cached[1]
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Market data is temporarily unavailable for "
+                    f"{symbol.upper()} ({market}/{canonical_tf})"
+                ),
+            ) from exc
 
 
 async def fetch_live_snapshot(symbol: str, market: str):
@@ -159,7 +199,7 @@ async def fetch_live_snapshot(symbol: str, market: str):
     if market == "crypto":
         return await market_data.fetch_binance_ticker(symbol=symbol)
     if market == "forex":
-        return await market_data.fetch_twelvedata_quote(symbol=symbol)
+        return await market_data.fetch_forex_quote(symbol=symbol)
     raise HTTPException(status_code=400, detail="market must be crypto or forex")
 
 
@@ -351,42 +391,53 @@ async def get_smc_analysis(
     market_eff = _auto_market(symbol, market or None)
 
     def _tf_fetch(mk: str, tf: str) -> str:
-        if mk == "crypto":
-            return tf.replace("min", "m")  # binance wants "15m" not "15min"
-        # forex -> twelvedata: "15min", "1h", "4h", "1d"
-        if tf in ("1m","5m","15m","30m"):
-            return tf + "in"  # -> "1min"
-        return tf
+        # Provider-specific mappings are handled by MarketDataService.
+        return _canonical_timeframe(tf)
 
     int_fetch = _tf_fetch(market_eff, interval)
     try:
         raw = await fetch_live_candles(symbol=symbol, market=market_eff, timeframe=int_fetch)
-    except Exception as e:
+    except Exception:
         logger.exception("SMC candles fetch failed")
-        return _smc_err(symbol, interval, 0, f"خطا در دریافت داده‌های بازار: {e}")
+        return _smc_err(
+            symbol,
+            interval,
+            0,
+            "داده بازار موقتاً در دسترس نیست؛ چند لحظه دیگر دوباره تلاش کنید.",
+            code="provider_unavailable",
+        )
 
     items = _norm_candles(raw[-limit:])
     if len(items) < 30:
         return _smc_err(symbol, interval, items[-1]["c"] if items else 0, "حداقل ۳۰ کندل لازم است.", code="insufficient_data")
 
-    # Determine HTF bias (1h for 15m, 4h for 1h etc)
-    htf_bias = None; htf_used = None
+    # Build HTF candles locally from the selected data. This removes a second
+    # provider request for every tap and prevents TwelveData quota bursts.
+    htf_bias = None
+    htf_used = None
     try:
-        # Normalize interval key: strip "in" suffix if present so map keys match both "15m"/"15min"
-        key = interval.replace("min", "m")
-        htf_map = {"1m":"5m","5m":"15m","15m":"1h","30m":"4h","1h":"4h","4h":"1d","1d":"1d"}
-        htf = htf_map.get(key)
+        key = _canonical_timeframe(interval)
+        htf = {
+            "1m": "5m",
+            "3m": "15m",
+            "5m": "15m",
+            "15m": "1h",
+            "30m": "4h",
+            "1h": "4h",
+            "2h": "4h",
+            "4h": "1d",
+        }.get(key)
         if htf:
             htf_used = htf
-            htf_fetch = _tf_fetch(market_eff, htf)
-            hraw = await fetch_live_candles(symbol=symbol, market=market_eff, timeframe=htf_fetch)
+            hraw = _resample_candles(raw, htf)
             hitems = _norm_candles(hraw)
             if len(hitems) >= 30:
                 from app.services.smc_engine import analyze as _an
+
                 hrep = _an(hitems, symbol=symbol, timeframe=htf)
                 htf_bias = hrep.get("bias")
-    except Exception as e:
-        logger.warning("HTF bias fetch failed: %s", e)
+    except Exception:
+        logger.warning("HTF bias calculation failed", exc_info=True)
 
     try:
         from app.services.smc_engine import analyze
@@ -398,17 +449,28 @@ async def get_smc_analysis(
             _news_blocked = bool((_nbrief.get("block") or {}).get("blocked"))
         except Exception:
             pass
-        report = analyze(items, symbol=symbol, timeframe=interval, htf_bias=htf_bias, news_blocked=_news_blocked)
+        report = analyze(
+            items,
+            symbol=symbol,
+            timeframe=_canonical_timeframe(interval),
+            htf_bias=htf_bias,
+            news_blocked=_news_blocked,
+        )
         report["market"] = market_eff
         report["htf"] = {"timeframe": htf_used, "bias": htf_bias}
-        # visible chart candles (trim to last 120)
-        report["candles"] = items[-120:]
-        report["candles_count"] = len(items)
         report["status"] = "ok"
-        return report
-    except Exception as e:
+        return _prepare_chart_report(report, items, max_candles=160)
+    except Exception:
         logger.exception("SMC analysis failed")
-        return _smc_err(symbol, interval, items[-1]["c"] if items else 0, f"خطا در تحلیل SMC: {e}", code="analysis_failed", candles=items[-120:], count=len(items))
+        return _smc_err(
+            symbol,
+            interval,
+            items[-1]["c"] if items else 0,
+            "تحلیل نمودار موقتاً ناموفق بود؛ دوباره تلاش کنید.",
+            code="analysis_failed",
+            candles=items[-160:],
+            count=len(items),
+        )
 
 
 def _norm_candles(raw):
@@ -432,6 +494,113 @@ def _norm_candles(raw):
         try: items.append({"t":float(t),"o":float(o),"h":float(h),"l":float(l),"c":float(cl),"v":float(v)})
         except Exception: continue
     return items
+
+def _resample_candles(raw, target_timeframe: str):
+    seconds = {
+        "5m": 5 * 60,
+        "15m": 15 * 60,
+        "30m": 30 * 60,
+        "1h": 60 * 60,
+        "2h": 2 * 60 * 60,
+        "4h": 4 * 60 * 60,
+        "1d": 24 * 60 * 60,
+    }.get(_canonical_timeframe(target_timeframe))
+    if not seconds:
+        return []
+    try:
+        return market_data.aggregate_candles(list(raw), seconds)
+    except Exception:
+        return []
+
+
+def _rebase_items(items, offset: int, total: int, keep_extended: bool = False):
+    rebased = []
+    for original in items or []:
+        item = dict(original)
+        try:
+            index = int(item.get("index", 0))
+        except (TypeError, ValueError):
+            continue
+        if index >= total:
+            continue
+        if index < offset:
+            if not keep_extended:
+                continue
+            index = offset
+        item["index"] = index - offset
+        rebased.append(item)
+    return rebased
+
+
+def _rebase_killzones(items, offset: int, total: int):
+    rebased = []
+    for original in items or []:
+        item = dict(original)
+        try:
+            start = int(item.get("start_idx", item.get("index", 0)))
+            end = int(item.get("end_idx", start))
+        except (TypeError, ValueError):
+            continue
+        if end < offset or start >= total:
+            continue
+        start = max(start, offset)
+        end = min(end, total - 1)
+        item["start_idx"] = start - offset
+        item["end_idx"] = end - offset
+        item["index"] = start - offset
+        rebased.append(item)
+    return rebased
+
+
+def _prepare_chart_report(report: dict, items: list[dict], max_candles: int = 160) -> dict:
+    """Trim candles and rebase every overlay index to the returned chart window."""
+    total = len(items)
+    offset = max(0, total - max_candles)
+    display = items[offset:]
+    report["candles"] = display
+    report["candles_count"] = total
+    if display:
+        report["visible_range"] = {
+            "low": min(item["l"] for item in display),
+            "high": max(item["h"] for item in display),
+        }
+
+    report["events"] = _rebase_items(report.get("events"), offset, total)[-10:]
+    report["order_blocks"] = _rebase_items(
+        report.get("order_blocks"), offset, total, keep_extended=True
+    )[-5:]
+    report["fvg"] = _rebase_items(report.get("fvg"), offset, total)[-5:]
+    report["breakers"] = _rebase_items(
+        report.get("breakers"), offset, total, keep_extended=True
+    )[-4:]
+    report["inducements"] = _rebase_items(
+        report.get("inducements"), offset, total
+    )[-12:]
+    report["killzones"] = _rebase_killzones(
+        report.get("killzones"), offset, total
+    )[-6:]
+
+    overlay = dict(report.get("overlay") or {})
+    overlay["labels"] = _rebase_items(overlay.get("labels"), offset, total)[-14:]
+    zones = []
+    regular_by_kind: dict[str, list[dict]] = {"OB": [], "BRK": [], "FVG": [], "iFVG": []}
+    killzones = []
+    for zone in overlay.get("zones") or []:
+        if zone.get("kind") == "KZ":
+            killzones.append(zone)
+        else:
+            regular_by_kind.setdefault(str(zone.get("kind")), []).append(zone)
+    killzones = _rebase_killzones(killzones, offset, total)[-6:]
+    for kind, limit, extended in (("OB", 5, True), ("BRK", 4, True), ("FVG", 5, False), ("iFVG", 3, False)):
+        zones.extend(
+            _rebase_items(
+                regular_by_kind.get(kind), offset, total, keep_extended=extended
+            )[-limit:]
+        )
+    overlay["zones"] = killzones + zones
+    report["overlay"] = overlay
+    return report
+
 
 def _smc_err(symbol, tf, price, note, code="fetch_failed", candles=None, count=0):
     return {"symbol":symbol,"timeframe":tf,"price":price or 0,
@@ -507,17 +676,11 @@ async def scan_signals(min_confluence: int = Query(default=40, ge=0, le=100)):
             try:
                 key=tf.replace("min","m"); hm={"1m":"5m","5m":"15m","15m":"1h","30m":"4h","1h":"4h"}.get(key)
                 if hm:
-                    if mkt_eff == "crypto":
-                        hf = hm.replace("min","m")
-                    elif mkt_eff == "forex" and hm in ("1m","5m","15m","30m"):
-                        hf = hm + "in"
-                    else:
-                        hf = hm
-                    hraw = await fetch_live_candles(sym, mkt_eff, hf)
-                    hi=_norm_candles(hraw)
-                    if len(hi)>=30:
-                        hrep=analyze(hi,symbol=sym,timeframe=hm)
-                        htf_bias=hrep.get("bias")
+                    hraw = _resample_candles(raw, hm)
+                    hi = _norm_candles(hraw)
+                    if len(hi) >= 30:
+                        hrep = analyze(hi, symbol=sym, timeframe=hm)
+                        htf_bias = hrep.get("bias")
             except Exception: pass
             r = analyze(items, symbol=sym, timeframe=tf, htf_bias=htf_bias, news_blocked=_news_blocked)
             return {"symbol":sym,"market":mkt_eff,"timeframe":tf,
