@@ -347,6 +347,11 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
                 if (r.newsBlocked) item { ChipS("⚠️اخبار", DnC) }
                 if (r.mtfAligned) item { ChipS("MTF✓", UpC) }
                 val actLbl = when(r.actionLabel) {
+                    "STRONG_LONG" -> "STRONG LONG"
+                    "LONG" -> "LONG"
+                    "STRONG_SHORT" -> "STRONG SHORT"
+                    "SHORT" -> "SHORT"
+                    "NO_TRADE" -> "NO TRADE"
                     "STRONG_BUY/SELL" -> "STRONG"
                     "BUY/SELL" -> "BUY/SELL"
                     "CONSIDER" -> "CONSIDER"
@@ -357,14 +362,33 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
                     else -> r.actionLabel
                 }
                 val actCol = when(r.actionLabel) {
-                    "STRONG_BUY/SELL","BUY/SELL" -> UpC
+                    "STRONG_LONG", "LONG", "STRONG_BUY/SELL", "BUY/SELL" -> UpC
+                    "STRONG_SHORT", "SHORT", "NO_TRADE", "AVOID" -> DnC
                     "CONSIDER" -> Gold
-                    "WATCH","CAUTION" -> GoldDim
+                    "WATCH", "CAUTION" -> GoldDim
                     "HALF_SIZE" -> BrkC
-                    "AVOID" -> DnC
                     else -> TL
                 }
                 item { ChipS(actLbl, actCol) }
+            }
+            if (r.dataQuality.score > 0f) {
+                Spacer(Modifier.height(4.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    item {
+                        ChipS(
+                            "DATA Q ${"%.0f".format(r.dataQuality.score)}",
+                            if (r.dataQuality.tradable) UpC else DnC,
+                        )
+                    }
+                    item { ChipS(r.marketRegime.name.uppercase(), GoldDim) }
+                    item {
+                        ChipS(
+                            "GATES ${r.decision.hardGatesPassed}/${r.decision.hardGatesTotal}",
+                            if (r.decision.strictOmegaCompliant) UpC else DnC,
+                        )
+                    }
+                    item { ChipS(r.decision.riskTier.uppercase(), TL) }
+                }
             }
             if (r.setupType != "-" && r.setupType.isNotBlank()) {
                 Spacer(Modifier.height(6.dp))

@@ -60,6 +60,7 @@ from app.services.oanda_connector import OandaConnector
 from app.services.risk_engine import build_risk_plan
 from app.services.session_engine import evaluate_session
 from app.services.signal_engine import SignalEngine
+from app.services.strict_decision_engine import apply_strict_decision
 from app.services.storage_service import StorageService
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
@@ -472,6 +473,14 @@ async def get_smc_analysis(
         )
         report["market"] = market_eff
         report["htf"] = {"timeframe": htf_used, "bias": htf_bias}
+        report = apply_strict_decision(
+            report,
+            items,
+            market=market_eff,
+            timeframe=_canonical_timeframe(interval),
+            orderflow_source="forex_proxy" if market_eff == "forex" else "ohlcv_proxy",
+            orderflow_confidence=0.40 if market_eff == "forex" else 0.48,
+        )
         report["status"] = "ok"
         return _prepare_chart_report(report, items, max_candles=160)
     except Exception:
@@ -764,6 +773,14 @@ async def scan_signals(min_confluence: int = Query(default=40, ge=0, le=100)):
                         htf_bias = hrep.get("bias")
             except Exception: pass
             r = analyze(items, symbol=sym, timeframe=tf, htf_bias=htf_bias, news_blocked=_news_blocked)
+            r = apply_strict_decision(
+                r,
+                items,
+                market=mkt_eff,
+                timeframe=_canonical_timeframe(tf),
+                orderflow_source="forex_proxy" if mkt_eff == "forex" else "ohlcv_proxy",
+                orderflow_confidence=0.40 if mkt_eff == "forex" else 0.48,
+            )
             return {"symbol":sym,"market":mkt_eff,"timeframe":tf,
                     "bias":r["bias"],"direction":r["direction"],"confluence":r["confluence"],
                     "rr":r.get("rr",0),"price":r["price"],"note":r["note"],
@@ -872,6 +889,9 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
             item.get("name", "") for item in (report.get("confluence_factors") or [])[:5]
             if item.get("name")
         ],
+        "decision": report.get("decision") or {},
+        "data_quality": report.get("data_quality") or {},
+        "market_regime": report.get("market_regime") or {},
     }
 
 
@@ -942,6 +962,14 @@ async def scan_trade_setups(force: bool = Query(default=False)):
                         news_blocked=news_blocked,
                     )
                     report["htf_bias"] = htf_bias
+                    report = apply_strict_decision(
+                        report,
+                        items,
+                        market=market,
+                        timeframe=timeframe,
+                        orderflow_source="forex_proxy" if market == "forex" else "ohlcv_proxy",
+                        orderflow_confidence=0.40 if market == "forex" else 0.48,
+                    )
                     confirmed = (
                         report.get("omega_compliant")
                         and report.get("grade") in ("A+", "A", "B")

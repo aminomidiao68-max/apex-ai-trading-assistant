@@ -720,7 +720,10 @@ data class TradeSetupDto(
     @SerializedName("htf_bias") val htfBias: String? = null,
     val note: String = "",
     @SerializedName("missing_confirmations") val missingConfirmations: List<String> = emptyList(),
-    val factors: List<String> = emptyList()
+    val factors: List<String> = emptyList(),
+    val decision: SmcStrictDecision = SmcStrictDecision(),
+    @SerializedName("data_quality") val dataQuality: SmcDataQuality = SmcDataQuality(),
+    @SerializedName("market_regime") val marketRegime: SmcMarketRegime = SmcMarketRegime()
 )
 
 data class TradeSetupsResponseDto(
@@ -740,6 +743,36 @@ data class SmcEntryZone(
     val high: Float = 0f,
     val low: Float = 0f
 )
+
+data class SmcDataQuality(
+    val score: Float = 0f,
+    val tradable: Boolean = false,
+    val issues: List<String> = emptyList(),
+    val warnings: List<String> = emptyList()
+)
+
+data class SmcMarketRegime(
+    val name: String = "unknown",
+    val direction: String = "neutral",
+    @SerializedName("efficiency_ratio") val efficiencyRatio: Float = 0f,
+    @SerializedName("volatility_ratio") val volatilityRatio: Float = 0f,
+    @SerializedName("risk_multiplier") val riskMultiplier: Float = 0f
+)
+
+data class SmcStrictDecision(
+    val status: String = "reject",
+    val side: String = "flat",
+    @SerializedName("action_label") val actionLabel: String = "NO_TRADE",
+    @SerializedName("strict_omega_compliant") val strictOmegaCompliant: Boolean = false,
+    @SerializedName("risk_tier") val riskTier: String = "blocked",
+    @SerializedName("risk_multiplier") val riskMultiplier: Float = 0f,
+    @SerializedName("hard_gates_total") val hardGatesTotal: Int = 0,
+    @SerializedName("hard_gates_passed") val hardGatesPassed: Int = 0,
+    @SerializedName("failed_gates") val failedGates: List<String> = emptyList(),
+    @SerializedName("no_trade_reason") val noTradeReason: String? = null,
+    @SerializedName("expires_after_bars") val expiresAfterBars: Int = 0
+)
+
 data class SmcReport(
     val symbol: String = "",
     val timeframe: String = "",
@@ -790,6 +823,10 @@ data class SmcReport(
     val candlesCount: Int = 0,
     @SerializedName("created_by") val createdBy: String = "Amin Omidi",
     @SerializedName("omega_compliant") val omegaCompliant: Boolean = false,
+    @SerializedName("strict_omega_compliant") val strictOmegaCompliant: Boolean = false,
     @SerializedName("omega_reasons") val omegaReasons: List<String> = emptyList(),
-    @SerializedName("action_label") val actionLabel: String = "WAIT"
+    @SerializedName("action_label") val actionLabel: String = "WAIT",
+    val decision: SmcStrictDecision = SmcStrictDecision(),
+    @SerializedName("data_quality") val dataQuality: SmcDataQuality = SmcDataQuality(),
+    @SerializedName("market_regime") val marketRegime: SmcMarketRegime = SmcMarketRegime()
 )

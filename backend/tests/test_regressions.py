@@ -274,6 +274,62 @@ def test_fresh_signal_notification_is_callable_and_user_scoped(tmp_path):
     assert rows == [(1,)]
 
 
+def test_market_quality_and_strict_decision_gates():
+    from app.services.market_quality_engine import assess_data_quality, classify_market_regime
+    from app.services.strict_decision_engine import apply_strict_decision
+
+    candles_model = _candles(160)
+    candles = [
+        {
+            "t": item.timestamp.timestamp(), "o": item.open, "h": item.high,
+            "l": item.low, "c": item.close, "v": item.volume,
+        }
+        for item in candles_model
+    ]
+    quality = assess_data_quality(candles, "15m", "crypto")
+    assert quality["score"] >= 95
+    assert quality["tradable"] is True
+    assert classify_market_regime(candles)["name"] in {
+        "trending", "balanced", "volatile", "compressed", "choppy"
+    }
+
+    report = {
+        "direction": "long",
+        "grade": "A",
+        "confluence": 82,
+        "probability": 79,
+        "rr": 2.5,
+        "htf_bias": "bullish",
+        "setup_type": "پولبک BOS به ناحیه OTE",
+        "events": [{"kind": "BOS", "dir": "bullish"}],
+        "news_blocked": False,
+        "plan_lines": [{"kind": "entry", "price": 100.0}],
+        "overlay": {"lines": [{"kind": "entry", "price": 100.0}]},
+        "confluence_factors": [
+            {"name": "HTF alignment", "points": 12},
+            {"name": "minor conflict", "points": -2},
+        ],
+        "orderflow": {},
+        "ai": {},
+        "omega_compliant": True,
+    }
+    strict = apply_strict_decision(report, candles, "crypto", "15m")
+    assert strict["decision"]["status"] == "actionable"
+    assert strict["omega_compliant"] is True
+    assert strict["action_label"] == "STRONG_LONG"
+    assert strict["decision"]["probability_is_calibrated"] is False
+
+    weak = dict(report)
+    weak["confluence"] = 45
+    weak["probability"] = 55
+    weak["plan_lines"] = [{"kind": "entry", "price": 100.0}]
+    weak["overlay"] = {"lines": [{"kind": "entry", "price": 100.0}]}
+    downgraded = apply_strict_decision(weak, candles, "crypto", "15m")
+    assert downgraded["decision"]["status"] == "watch"
+    assert downgraded["omega_compliant"] is False
+    assert downgraded["plan_lines"] == []
+
+
 def test_chart_window_rebases_all_overlay_indices():
     items = [
         {"t": float(index), "o": 100.0, "h": 101.0, "l": 99.0, "c": 100.5, "v": 1.0}

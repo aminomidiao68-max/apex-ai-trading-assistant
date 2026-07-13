@@ -267,8 +267,16 @@ private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 SetupChip("Grade ${setup.grade}", SetupGold)
                 SetupChip("Conf ${setup.confluence}", SetupBlue)
-                SetupChip("%${setup.probability}", directionColor)
+                SetupChip("Est %${setup.probability}", directionColor)
                 SetupChip("RR 1:${"%.1f".format(setup.rr)}", SetupGreen)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                SetupChip("Q ${"%.0f".format(setup.dataQuality.score)}", SetupBlue)
+                SetupChip(setup.marketRegime.name.uppercase(), SetupGold)
+                SetupChip(
+                    "Gates ${setup.decision.hardGatesPassed}/${setup.decision.hardGatesTotal}",
+                    if (setup.decision.strictOmegaCompliant) SetupGreen else SetupRed,
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PriceBox("Entry", setup.entry, SetupGold, Modifier.weight(1f))
