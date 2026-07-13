@@ -132,6 +132,70 @@ def test_provider_errors_never_expose_api_keys(monkeypatch):
     assert "provider_unavailable" in body
 
 
+def test_setup_state_machine_lifecycle_and_cooldown():
+    from datetime import datetime, timedelta, timezone
+    from app.services.setup_state_engine import SetupStateEngine
+
+    engine = SetupStateEngine()
+    now = datetime(2026, 7, 13, 10, 0, tzinfo=timezone.utc)
+    base = {
+        "id": "BTCUSDT:15m:long:test",
+        "symbol": "BTCUSDT",
+        "market": "crypto",
+        "timeframe": "15m",
+        "status": "forming",
+        "setup_type": "test",
+        "direction": "long",
+        "price": 110.0,
+        "entry": 100.0,
+        "entry_low": 99.0,
+        "entry_high": 101.0,
+        "stop_loss": 95.0,
+        "invalidation": 95.0,
+        "confluence": 50,
+        "probability": 60,
+        "rr": 2.2,
+        "omega_compliant": False,
+        "data_quality": {"score": 80},
+        "decision": {"hard_gates_passed": 5, "hard_gates_total": 10, "expires_after_bars": 5},
+    }
+    first = engine.update([base], {"BTCUSDT:15m": 110.0}, now)
+    assert len(first["forming"]) == 1
+
+    armed = {**base, "decision": {**base["decision"], "hard_gates_passed": 8}}
+    second = engine.update([armed], {"BTCUSDT:15m": 108.0}, now + timedelta(minutes=1))
+    assert len(second["armed"]) == 1
+
+    confirmed = {
+        **armed,
+        "status": "confirmed",
+        "omega_compliant": True,
+        "confluence": 75,
+        "probability": 75,
+        "decision": {**armed["decision"], "hard_gates_passed": 10},
+    }
+    third = engine.update([confirmed], {"BTCUSDT:15m": 108.0}, now + timedelta(minutes=2))
+    assert len(third["confirmed"]) == 1
+
+    triggered_candidate = {**confirmed, "price": 100.0}
+    fourth = engine.update(
+        [triggered_candidate], {"BTCUSDT:15m": 100.0}, now + timedelta(minutes=3)
+    )
+    assert len(fourth["triggered"]) == 1
+    assert fourth["triggered"][0]["transition_reason"] == "price_entered_entry_zone"
+
+    invalidated_candidate = {**confirmed, "price": 94.0}
+    fifth = engine.update(
+        [invalidated_candidate], {"BTCUSDT:15m": 94.0}, now + timedelta(minutes=4)
+    )
+    assert len(fifth["invalidated"]) == 1
+    assert fifth["invalidated"][0]["cooldown_until"] is not None
+
+    cooldown = engine.update([confirmed], {"BTCUSDT:15m": 110.0}, now + timedelta(minutes=5))
+    assert len(cooldown["invalidated"]) == 1
+    assert not cooldown["confirmed"]
+
+
 def test_trade_setup_scanner_covers_matrix_and_uses_cache(monkeypatch):
     candles = _candles(260)
 
@@ -158,9 +222,14 @@ def test_trade_setup_scanner_covers_matrix_and_uses_cache(monkeypatch):
     assert response["total_scanned"] == 70
     assert response["confirmed_count"] == len(response["confirmed"])
     assert response["forming_count"] == len(response["forming"])
-    assert all(item["status"] == "confirmed" for item in response["confirmed"])
-    assert all(item["status"] == "forming" for item in response["forming"])
-    assert all(item["setup_type"] not in ("", "-") for item in response["confirmed"] + response["forming"])
+    assert response["armed_count"] == len(response["armed"])
+    assert response["triggered_count"] == len(response["triggered"])
+    assert response["active_count"] == len(response["active"])
+    assert all(item["lifecycle_state"] == "confirmed" for item in response["confirmed"])
+    assert all(item["lifecycle_state"] == "forming" for item in response["forming"])
+    assert all(item["lifecycle_state"] == "armed" for item in response["armed"])
+    all_items = response["forming"] + response["armed"] + response["active"]
+    assert all(item["setup_type"] not in ("", "-") for item in all_items)
 
     cached = asyncio.run(main.scan_trade_setups(force=False))
     assert cached["cached"] is True

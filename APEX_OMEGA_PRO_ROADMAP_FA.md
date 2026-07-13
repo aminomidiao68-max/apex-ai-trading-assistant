@@ -26,7 +26,7 @@
 - Cache و source confidence
 - Forex honest proxy بدون ادعای CVD واقعی
 
-## Alpha 3 — Signal & Setup State Machine
+## ✅ Alpha 3 — Signal & Setup State Machine (Completed)
 
 - forming → armed → confirmed → triggered → invalidated → expired
 - deduplication و cooldown

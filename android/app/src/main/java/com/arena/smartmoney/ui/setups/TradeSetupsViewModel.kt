@@ -10,10 +10,14 @@ import kotlinx.coroutines.launch
 
 data class TradeSetupsUiState(
     val loading: Boolean = true,
-    val confirmed: List<TradeSetupDto> = emptyList(),
+    val active: List<TradeSetupDto> = emptyList(),
     val forming: List<TradeSetupDto> = emptyList(),
+    val armed: List<TradeSetupDto> = emptyList(),
+    val confirmed: List<TradeSetupDto> = emptyList(),
+    val triggered: List<TradeSetupDto> = emptyList(),
     val invalidated: List<TradeSetupDto> = emptyList(),
-    val selectedStatus: String = "confirmed",
+    val expired: List<TradeSetupDto> = emptyList(),
+    val selectedStatus: String = "active",
     val selectedSymbol: String = "ALL",
     val selectedTimeframe: String = "ALL",
     val totalScanned: Int = 0,
@@ -39,9 +43,13 @@ class TradeSetupsViewModel(
                 .onSuccess { response ->
                     _uiState.value = _uiState.value.copy(
                         loading = false,
-                        confirmed = response.confirmed,
+                        active = response.active,
                         forming = response.forming,
+                        armed = response.armed,
+                        confirmed = response.confirmed,
+                        triggered = response.triggered,
                         invalidated = response.invalidated,
+                        expired = response.expired,
                         totalScanned = response.totalScanned,
                         generatedAt = response.generatedAt,
                         cached = response.cached,

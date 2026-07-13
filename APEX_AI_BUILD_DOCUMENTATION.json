@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.0.0-alpha2",
-    "status": "APEX Omega Pro staged upgrade - Alpha 2"
+    "current_version": "3.0.0-alpha3",
+    "status": "APEX Omega Pro staged upgrade - Alpha 3"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -389,6 +389,21 @@
             "Orderflow cache and provider fallback",
             "Public orderflow diagnostics endpoint",
             "Android REAL OF/PROXY OF, depth, spread, OI and funding chips"
+          ]
+        },
+        {
+          "version": "v3 Alpha 3 - Setup Lifecycle",
+          "date": "2026-07-13T12:45:00Z",
+          "features": [
+            "Deterministic setup state machine",
+            "FORMING, ARMED, CONFIRMED, TRIGGERED, INVALIDATED and EXPIRED states",
+            "Entry-zone trigger detection",
+            "Price invalidation and strict-gate-loss invalidation",
+            "Timeframe-aware expiration",
+            "Two-scan missing expiration",
+            "Terminal cooldown and deduplication",
+            "Lifecycle timestamps, transition reasons and scan counts",
+            "Android Active/Armed/Forming/Closed setup tabs"
           ]
         }
       ]
@@ -903,8 +918,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "2.0-alpha2",
-    "last_updated": "2026-07-13T11:15:00Z",
+    "documentation_version": "2.0-alpha3",
+    "last_updated": "2026-07-13T12:45:00Z",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

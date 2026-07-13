@@ -60,6 +60,7 @@ from app.services.mt5_connector import Mt5Connector
 from app.services.oanda_connector import OandaConnector
 from app.services.risk_engine import build_risk_plan
 from app.services.session_engine import evaluate_session
+from app.services.setup_state_engine import SetupStateEngine
 from app.services.signal_engine import SignalEngine
 from app.services.strict_decision_engine import apply_strict_decision
 from app.services.storage_service import StorageService
@@ -81,6 +82,7 @@ storage = StorageService()
 notification_service = NotificationService(storage)
 readiness_service = ReadinessService()
 orderflow_service = OrderFlowService(ttl_seconds=20)
+setup_state_engine = SetupStateEngine()
 
 # Native Android clients do not require CORS. Browser access is enabled only
 # for an explicit environment-specific allowlist (CORS_ALLOWED_ORIGINS).
@@ -848,6 +850,9 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
     watch = watching[0] if watching else None
     direction = report.get("direction", "neutral")
     entry = (report.get("levels") or {}).get("entry")
+    entry_zone = report.get("entry_zone") or {}
+    entry_low = entry_zone.get("low")
+    entry_high = entry_zone.get("high")
     stop_loss = (report.get("levels") or {}).get("sl")
     tp1 = report.get("tp1")
     tp2 = report.get("tp2")
@@ -884,7 +889,10 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
         "probability": report.get("probability", 0),
         "rr": round(float(report.get("rr") or 0), 2),
         "price": report.get("price", 0),
+        "atr": report.get("atr", 0),
         "entry": entry,
+        "entry_low": entry_low,
+        "entry_high": entry_high,
         "stop_loss": stop_loss,
         "tp1": tp1,
         "tp2": tp2,
@@ -997,11 +1005,16 @@ async def scan_trade_setups(force: bool = Query(default=False)):
                         )
                         and int(report.get("confluence") or 0) >= 15
                     )
+                    candidate = None
                     if confirmed:
-                        return _setup_payload(report, symbol, market, timeframe, "confirmed")
-                    if has_forming_setup:
-                        return _setup_payload(report, symbol, market, timeframe, "forming")
-                    return None
+                        candidate = _setup_payload(report, symbol, market, timeframe, "confirmed")
+                    elif has_forming_setup:
+                        candidate = _setup_payload(report, symbol, market, timeframe, "forming")
+                    return {
+                        "candidate": candidate,
+                        "market_key": f"{symbol}:{timeframe}",
+                        "price": float(report.get("price") or 0),
+                    }
                 except Exception:
                     return None
 
@@ -1011,29 +1024,43 @@ async def scan_trade_setups(force: bool = Query(default=False)):
             for timeframe in _SETUP_TIMEFRAMES
         ]
         results = await _asyncio.gather(*(job(*item) for item in matrix))
-        setups = [item for item in results if item]
-        confirmed = sorted(
-            (item for item in setups if item["status"] == "confirmed"),
-            key=lambda item: (item["grade"] == "A+", item["confluence"], item["probability"], item["rr"]),
-            reverse=True,
-        )[:20]
-        forming = sorted(
-            (item for item in setups if item["status"] == "forming"),
-            key=lambda item: (item["confluence"], item["probability"], item["rr"]),
-            reverse=True,
-        )[:20]
+        successful = [item for item in results if item]
+        candidates = [item["candidate"] for item in successful if item.get("candidate")]
+        market_prices = {
+            item["market_key"]: float(item.get("price") or 0) for item in successful
+        }
+        lifecycle = setup_state_engine.update(
+            candidates,
+            market_prices,
+            now=datetime.now(timezone.utc),
+        )
+        forming = lifecycle["forming"][:20]
+        armed = lifecycle["armed"][:20]
+        confirmed = lifecycle["confirmed"][:20]
+        triggered = lifecycle["triggered"][:20]
+        invalidated = lifecycle["invalidated"][:20]
+        expired = lifecycle["expired"][:20]
         generated_at = datetime.now(timezone.utc).isoformat()
         payload = {
-            "confirmed": confirmed,
+            "active": confirmed + triggered,
             "forming": forming,
-            "invalidated": [],
-            "confirmed_count": len(confirmed),
+            "armed": armed,
+            "confirmed": confirmed,
+            "triggered": triggered,
+            "invalidated": invalidated,
+            "expired": expired,
+            "active_count": len(confirmed) + len(triggered),
             "forming_count": len(forming),
-            "invalidated_count": 0,
+            "armed_count": len(armed),
+            "confirmed_count": len(confirmed),
+            "triggered_count": len(triggered),
+            "invalidated_count": len(invalidated),
+            "expired_count": len(expired),
             "total_scanned": len(matrix),
             "generated_at": generated_at,
             "cached": False,
             "cache_age_seconds": 0,
+            "state_machine": "v1",
         }
         _SETUP_SCAN_CACHE["timestamp"] = _time.time()
         _SETUP_SCAN_CACHE["payload"] = payload

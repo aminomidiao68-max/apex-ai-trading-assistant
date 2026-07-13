@@ -47,6 +47,7 @@ import com.arena.smartmoney.data.model.TradeSetupDto
 import com.arena.smartmoney.ui.components.PremiumGlassCard
 import com.arena.smartmoney.ui.components.PremiumScreenBackground
 import com.arena.smartmoney.ui.components.PremiumSectionHeader
+import com.arena.smartmoney.ui.i18n.formatDisplayTimestamp
 import com.arena.smartmoney.ui.i18n.rememberTranslator
 
 private val SetupGold = Color(0xFFD4AF37)
@@ -64,16 +65,18 @@ fun TradeSetupsScreen(
     val state by viewModel.uiState.collectAsState()
     val t = rememberTranslator()
     val source = when (state.selectedStatus) {
+        "armed" -> state.armed
         "forming" -> state.forming
-        "invalidated" -> state.invalidated
-        else -> state.confirmed
+        "closed" -> state.invalidated + state.expired
+        else -> state.active
     }
     val filtered = source.filter { setup ->
         (state.selectedSymbol == "ALL" || setup.symbol == state.selectedSymbol) &&
             (state.selectedTimeframe == "ALL" || setup.timeframe == state.selectedTimeframe)
     }
-    val symbols = listOf("ALL") + (state.confirmed + state.forming)
-        .map { it.symbol }.distinct().sorted()
+    val symbols = listOf("ALL") + (
+        state.active + state.armed + state.forming + state.invalidated + state.expired
+    ).map { it.symbol }.distinct().sorted()
     val timeframes = listOf("ALL", "1m", "5m", "15m", "30m", "1h", "4h", "1d")
 
     PremiumScreenBackground {
@@ -127,25 +130,37 @@ fun TradeSetupsScreen(
                 }
             }
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                ) {
-                    StatusButton(
-                        text = t("Confirmed", "تأییدشده") + " ${state.confirmed.size}",
-                        selected = state.selectedStatus == "confirmed",
-                        modifier = Modifier.weight(1f),
-                    ) { viewModel.selectStatus("confirmed") }
-                    StatusButton(
-                        text = t("Forming", "درحال تشکیل") + " ${state.forming.size}",
-                        selected = state.selectedStatus == "forming",
-                        modifier = Modifier.weight(1f),
-                    ) { viewModel.selectStatus("forming") }
-                    StatusButton(
-                        text = t("Invalid", "باطل") + " ${state.invalidated.size}",
-                        selected = state.selectedStatus == "invalidated",
-                        modifier = Modifier.weight(1f),
-                    ) { viewModel.selectStatus("invalidated") }
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        item {
+                            StatusButton(
+                                text = t("Active", "فعال") + " ${state.active.size}",
+                                selected = state.selectedStatus == "active",
+                                modifier = Modifier,
+                            ) { viewModel.selectStatus("active") }
+                        }
+                        item {
+                            StatusButton(
+                                text = t("Armed", "آماده") + " ${state.armed.size}",
+                                selected = state.selectedStatus == "armed",
+                                modifier = Modifier,
+                            ) { viewModel.selectStatus("armed") }
+                        }
+                        item {
+                            StatusButton(
+                                text = t("Forming", "درحال تشکیل") + " ${state.forming.size}",
+                                selected = state.selectedStatus == "forming",
+                                modifier = Modifier,
+                            ) { viewModel.selectStatus("forming") }
+                        }
+                        item {
+                            StatusButton(
+                                text = t("Closed", "پایان‌یافته") + " ${state.invalidated.size + state.expired.size}",
+                                selected = state.selectedStatus == "closed",
+                                modifier = Modifier,
+                            ) { viewModel.selectStatus("closed") }
+                        }
+                    }
                 }
             }
             item {
@@ -201,15 +216,19 @@ fun TradeSetupsScreen(
                     PremiumGlassCard {
                         Text(
                             when (state.selectedStatus) {
-                                "confirmed" -> t(
-                                    "No confirmed setup right now. Do not force a trade.",
-                                    "در حال حاضر ستاپ تأییدشده‌ای وجود ندارد؛ معامله را اجبار نکنید.",
+                                "active" -> t(
+                                    "No active confirmed/triggered setup. Do not force a trade.",
+                                    "ستاپ فعال تأییدشده یا Triggerشده‌ای وجود ندارد؛ معامله را اجبار نکنید.",
+                                )
+                                "armed" -> t(
+                                    "No setup is armed and waiting for final confirmation.",
+                                    "ستاپ آماده‌ای منتظر تأیید نهایی نیست.",
                                 )
                                 "forming" -> t(
                                     "No setup is currently forming.",
                                     "در حال حاضر ستاپی در حال تشکیل نیست.",
                                 )
-                                else -> t("No invalidated setup.", "ستاپ باطل‌شده‌ای وجود ندارد.")
+                                else -> t("No invalidated/expired setup.", "ستاپ باطل یا منقضی‌شده‌ای وجود ندارد.")
                             },
                             color = SetupMuted,
                             style = MaterialTheme.typography.titleMedium,
@@ -232,6 +251,22 @@ fun TradeSetupsScreen(
 private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
     val directionColor = if (setup.direction == "long") SetupGreen else SetupRed
     val directionLabel = if (setup.direction == "long") "LONG • خرید" else "SHORT • فروش"
+    val lifecycleColor = when (setup.lifecycleState) {
+        "triggered" -> SetupGreen
+        "confirmed" -> SetupGold
+        "armed" -> SetupBlue
+        "invalidated" -> SetupRed
+        "expired" -> SetupMuted
+        else -> Color(0xFFFFD27A)
+    }
+    val lifecycleLabel = when (setup.lifecycleState) {
+        "triggered" -> "TRIGGERED"
+        "confirmed" -> "CONFIRMED"
+        "armed" -> "ARMED"
+        "invalidated" -> "INVALIDATED"
+        "expired" -> "EXPIRED"
+        else -> "FORMING"
+    }
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenChart),
         colors = CardDefaults.cardColors(containerColor = SetupSurface),
@@ -263,7 +298,14 @@ private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
                     )
                 }
             }
-            Text(setup.setupType, color = SetupGold, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(setup.setupType, color = SetupGold, fontWeight = FontWeight.Bold)
+                SetupChip(lifecycleLabel, lifecycleColor)
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 SetupChip("Grade ${setup.grade}", SetupGold)
                 SetupChip("Conf ${setup.confluence}", SetupBlue)
@@ -308,6 +350,20 @@ private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
                 Text(
                     setup.factors.take(3).joinToString(" • "),
                     color = Color(0xFFBCEEFF),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (setup.transitionReason.isNotBlank()) {
+                Text(
+                    "State: ${setup.transitionReason.replace('_', ' ')} • Scan ${setup.scanCount}",
+                    color = SetupMuted,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            setup.expiresAt?.let {
+                Text(
+                    "Expiry: ${formatDisplayTimestamp(it)}",
+                    color = Color(0xFFFFD27A),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
