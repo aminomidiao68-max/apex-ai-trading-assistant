@@ -3,6 +3,7 @@ package com.arena.smartmoney.ui.analytics
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arena.smartmoney.data.model.AnalyticsReportDto
+import com.arena.smartmoney.data.network.AuthTokenProvider
 import com.arena.smartmoney.data.repository.TradingRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +26,13 @@ class AnalyticsViewModel(
     }
 
     fun load() {
+        if (!AuthTokenProvider.hasServerToken()) {
+            _uiState.value = AnalyticsUiState(
+                loading = false,
+                error = "حالت دمو: آنالیتیکس شخصی نیاز به ورود حساب دارد.",
+            )
+            return
+        }
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loading = true, error = null)
             runCatching { repository.getAnalyticsReport() }

@@ -12,6 +12,7 @@ android/app/build/
 android/build/
 *.jks
 *.keystore
+!android/app/apex-debug.keystore
 *.aab
 *.apk
 

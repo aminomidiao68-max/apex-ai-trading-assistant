@@ -4,7 +4,7 @@ import time
 import asyncio
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -89,6 +89,20 @@ if settings.cors_allowed_origins:
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
     )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if settings.app_env.lower() == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    if request.url.path.startswith("/api/v1/auth"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -871,15 +885,25 @@ async def scan_trade_setups(force: bool = Query(default=False)):
     now = _time.time()
     cached = _SETUP_SCAN_CACHE.get("payload")
     age = now - float(_SETUP_SCAN_CACHE.get("timestamp") or 0)
-    if cached and not force and age < _SETUP_CACHE_TTL:
-        return {**cached, "cached": True, "cache_age_seconds": round(age, 1)}
+    if cached and age < _SETUP_CACHE_TTL and (not force or age < 60):
+        return {
+            **cached,
+            "cached": True,
+            "cache_age_seconds": round(age, 1),
+            "refresh_cooldown": bool(force and age < 60),
+        }
 
     async with _SETUP_SCAN_LOCK:
         now = _time.time()
         cached = _SETUP_SCAN_CACHE.get("payload")
         age = now - float(_SETUP_SCAN_CACHE.get("timestamp") or 0)
-        if cached and not force and age < _SETUP_CACHE_TTL:
-            return {**cached, "cached": True, "cache_age_seconds": round(age, 1)}
+        if cached and age < _SETUP_CACHE_TTL and (not force or age < 60):
+            return {
+                **cached,
+                "cached": True,
+                "cache_age_seconds": round(age, 1),
+                "refresh_cooldown": bool(force and age < 60),
+            }
 
         from app.services.smc_engine import analyze
 

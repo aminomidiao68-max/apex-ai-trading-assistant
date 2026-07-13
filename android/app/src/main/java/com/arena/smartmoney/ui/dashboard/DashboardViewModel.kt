@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.arena.smartmoney.data.model.MarketOverviewItem
 import com.arena.smartmoney.data.model.MarketStreamSnapshotDto
 import com.arena.smartmoney.data.model.TradeJournalStatsDto
+import com.arena.smartmoney.data.network.AuthTokenProvider
 import com.arena.smartmoney.data.network.MarketWebSocketClient
 import com.arena.smartmoney.data.repository.TradingRepository
 import kotlinx.coroutines.async
@@ -42,29 +43,29 @@ class DashboardViewModel(
     fun refreshAll() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loading = true, error = null)
-            runCatching {
-                val sessionDeferred = async { repository.getCurrentSession() }
-                val overviewDeferred = async {
+            val sessionDeferred = async { runCatching { repository.getCurrentSession() } }
+            val overviewDeferred = async {
+                runCatching {
                     repository.getMarketOverview(_uiState.value.watchlistSymbols.joinToString(","))
                 }
-                val statsDeferred = async { repository.getTradeStats() }
-                Triple(sessionDeferred.await(), overviewDeferred.await(), statsDeferred.await())
-            }.onSuccess { (session, overview, stats) ->
-                _uiState.value = _uiState.value.copy(
-                    loading = false,
-                    sessionName = session.session_name,
-                    marketQuality = session.market_quality,
-                    sessionScore = session.session_score,
-                    watchlist = overview.items,
-                    tradeStats = stats
-                )
-            }.onFailure { error ->
-                _uiState.value = _uiState.value.copy(
-                    loading = false,
-                    error = error.message ?: "Unknown error",
-                    sessionName = "Offline / Demo Mode"
-                )
             }
+            val statsDeferred = if (AuthTokenProvider.hasServerToken()) {
+                async { runCatching { repository.getTradeStats() } }
+            } else null
+
+            val session = sessionDeferred.await().getOrNull()
+            val overview = overviewDeferred.await().getOrNull()
+            val stats = statsDeferred?.await()?.getOrNull()
+            val publicDataAvailable = session != null || overview != null
+            _uiState.value = _uiState.value.copy(
+                loading = false,
+                sessionName = session?.session_name ?: if (publicDataAvailable) "Public / Demo" else "Offline",
+                marketQuality = session?.market_quality ?: "-",
+                sessionScore = session?.session_score ?: 0.0,
+                watchlist = overview?.items ?: _uiState.value.watchlist,
+                tradeStats = stats,
+                error = if (publicDataAvailable) null else "اتصال بازار موقتاً برقرار نیست؛ دوباره تلاش کنید.",
+            )
         }
     }
 

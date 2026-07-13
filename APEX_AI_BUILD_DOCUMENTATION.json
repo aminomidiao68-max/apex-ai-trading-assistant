@@ -4,7 +4,7 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "2.2.1",
+    "current_version": "2.2.2",
     "status": "Stabilized MVP - Live Execution Disabled"
   },
   "architecture": {
@@ -332,6 +332,19 @@
             "Local Demo uses public SMC analysis instead of protected signal endpoints",
             "Local Demo no longer shows 401 for signal history",
             "Expired server tokens trigger automatic logout"
+          ]
+        },
+        {
+          "version": "v2.2.2 Deep Stability Audit",
+          "date": "2026-07-13T05:15:00Z",
+          "features": [
+            "Dashboard public data no longer depends on authenticated trade stats",
+            "Demo-safe Journal, Analytics and Backtest states",
+            "Stable committed debug signing key for future in-place APK updates",
+            "Setup force-refresh cooldown",
+            "HTTP security headers",
+            "Database persistence readiness warning",
+            "GitHub Actions upgraded to current Node 24 releases"
           ]
         }
       ]
@@ -846,8 +859,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "1.6",
-    "last_updated": "2026-07-13T00:30:00Z",
+    "documentation_version": "1.7",
+    "last_updated": "2026-07-13T05:15:00Z",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

@@ -15,6 +15,7 @@ class ReadinessService:
         items.append(self._firebase_service_account_check())
         items.append(self._twelvedata_check())
         items.append(self._finnhub_check())
+        items.append(self._database_persistence_check())
         items.append(self._live_execution_check())
         items.extend(self._connector_checks())
 
@@ -76,6 +77,21 @@ class ReadinessService:
             key="FINNHUB_API_KEY",
             status="warning",
             message="Finnhub is not configured; the offline news fallback will be used",
+        )
+
+    def _database_persistence_check(self) -> ReadinessItem:
+        if settings.database_path.strip():
+            return ReadinessItem(
+                category="database",
+                key="DATABASE_PATH",
+                status="ready",
+                message="Explicit database path is configured",
+            )
+        return ReadinessItem(
+            category="database",
+            key="DATABASE_PATH",
+            status="warning",
+            message="Local SQLite is ephemeral on Render; configure persistent storage before production accounts",
         )
 
     def _live_execution_check(self) -> ReadinessItem:

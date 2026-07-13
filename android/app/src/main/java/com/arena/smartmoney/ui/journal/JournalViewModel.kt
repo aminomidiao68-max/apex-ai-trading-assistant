@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.arena.smartmoney.data.model.TradeJournalCloseRequestDto
 import com.arena.smartmoney.data.model.TradeJournalItemDto
 import com.arena.smartmoney.data.model.TradeJournalStatsDto
+import com.arena.smartmoney.data.network.AuthTokenProvider
 import com.arena.smartmoney.data.repository.TradingRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,13 @@ class JournalViewModel(
     }
 
     fun refresh() {
+        if (!AuthTokenProvider.hasServerToken()) {
+            _uiState.value = JournalUiState(
+                loading = false,
+                message = "حالت دمو: برای مشاهده و ذخیره ژورنال وارد حساب شوید.",
+            )
+            return
+        }
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loading = true, error = null, message = "")
             runCatching {
@@ -64,6 +72,10 @@ class JournalViewModel(
     }
 
     private fun closeTrade(trade: TradeJournalItemDto, exitPrice: Double, note: String) {
+        if (!AuthTokenProvider.hasServerToken()) {
+            _uiState.value = _uiState.value.copy(message = "برای تغییر ژورنال وارد حساب شوید.")
+            return
+        }
         val pnl = calculatePnl(trade, exitPrice)
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loading = true, error = null, message = "")

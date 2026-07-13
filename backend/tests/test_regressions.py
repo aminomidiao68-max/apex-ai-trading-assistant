@@ -152,6 +152,9 @@ def test_trade_setup_scanner_covers_matrix_and_uses_cache(monkeypatch):
     cached = asyncio.run(main.scan_trade_setups(force=False))
     assert cached["cached"] is True
     assert cached["total_scanned"] == 70
+    cooldown = asyncio.run(main.scan_trade_setups(force=True))
+    assert cooldown["cached"] is True
+    assert cooldown["refresh_cooldown"] is True
 
 
 def test_risk_direction_validation():
@@ -388,3 +391,12 @@ def test_user_data_isolation_delete_and_openapi_security():
         },
     )
     assert preflight.headers.get("access-control-allow-origin") is None
+
+    health = client.get("/health")
+    assert health.headers["x-content-type-options"] == "nosniff"
+    assert health.headers["x-frame-options"] == "DENY"
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "nobody@example.com", "password": "invalid-password"},
+    )
+    assert login.headers["cache-control"] == "no-store"

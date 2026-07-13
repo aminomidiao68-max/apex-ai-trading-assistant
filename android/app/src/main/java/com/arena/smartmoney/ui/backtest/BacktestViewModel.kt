@@ -11,6 +11,7 @@ import com.arena.smartmoney.data.model.RiskSettingsDto
 import com.arena.smartmoney.data.model.TradeStatsDto
 import com.arena.smartmoney.data.model.WalkForwardRequestDto
 import com.arena.smartmoney.data.model.WalkForwardSummaryDto
+import com.arena.smartmoney.data.network.AuthTokenProvider
 import com.arena.smartmoney.data.repository.TradingRepository
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,7 +47,13 @@ class BacktestViewModel(
     val uiState: StateFlow<BacktestUiState> = _uiState
 
     init {
-        loadAnalytics()
+        if (AuthTokenProvider.hasServerToken()) {
+            loadAnalytics()
+        } else {
+            _uiState.value = _uiState.value.copy(
+                error = "حالت دمو: اجرای بک‌تست و آنالیتیکس نیاز به ورود حساب دارد.",
+            )
+        }
     }
 
     fun selectAsset(symbol: String, market: String) {
@@ -98,6 +105,7 @@ class BacktestViewModel(
     }
 
     fun runBacktest() {
+        if (!ensureAuthenticated()) return
         val current = _uiState.value
         viewModelScope.launch {
             _uiState.value = current.copy(loading = true, error = null)
@@ -122,6 +130,7 @@ class BacktestViewModel(
     }
 
     fun runSweep() {
+        if (!ensureAuthenticated()) return
         val current = _uiState.value
         viewModelScope.launch {
             _uiState.value = current.copy(loading = true, error = null)
@@ -172,6 +181,7 @@ class BacktestViewModel(
     }
 
     fun runWalkForward() {
+        if (!ensureAuthenticated()) return
         val current = _uiState.value
         viewModelScope.launch {
             _uiState.value = current.copy(loading = true, error = null)
@@ -225,12 +235,22 @@ class BacktestViewModel(
     }
 
     fun loadAnalytics() {
+        if (!ensureAuthenticated()) return
         viewModelScope.launch {
             runCatching { repository.getAnalyticsSummary() }
                 .onSuccess { analytics ->
                     _uiState.value = _uiState.value.copy(analytics = analytics)
                 }
         }
+    }
+
+    private fun ensureAuthenticated(): Boolean {
+        if (AuthTokenProvider.hasServerToken()) return true
+        _uiState.value = _uiState.value.copy(
+            loading = false,
+            error = "حالت دمو: برای اجرای بک‌تست وارد حساب شوید.",
+        )
+        return false
     }
 
     private fun buildRunRequest(state: BacktestUiState) = BacktestRunRequestDto(
