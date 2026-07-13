@@ -9,7 +9,7 @@
 - Live Execution تا پایان تمام Gateها خاموش می‌ماند.
 - هر فاز باید Backend Test، Android Test، Lint، Build و Live Matrix را پاس کند.
 
-## Alpha 1 — Strict Core
+## ✅ Alpha 1 — Strict Core (Completed)
 
 - Data Quality Engine
 - Market Regime Engine
@@ -18,7 +18,7 @@
 - No-Trade default
 - Grounded AI decision contract
 
-## Alpha 2 — Real Order Flow
+## ✅ Alpha 2 — Real Order Flow (Completed)
 
 - Binance AggTrades delta
 - Order Book imbalance و spread

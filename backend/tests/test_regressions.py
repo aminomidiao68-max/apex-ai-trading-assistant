@@ -138,7 +138,20 @@ def test_trade_setup_scanner_covers_matrix_and_uses_cache(monkeypatch):
     async def fake_fetch(symbol: str, market: str, timeframe: str):
         return candles
 
+    async def fake_orderflow(symbol: str, market: str, items: list[dict]):
+        if market == "crypto":
+            return {
+                "source": "okx_swap_public", "is_real": True, "confidence": 0.92,
+                "pressure": "buy", "spread_bps": 1.0, "depth_imbalance": 0.1,
+                "funding_rate": 0.0001,
+            }
+        return {
+            "source": "forex_ohlcv_proxy", "is_real": False, "confidence": 0.42,
+            "pressure": "buy", "spread_bps": None, "depth_imbalance": None,
+        }
+
     monkeypatch.setattr(main, "fetch_live_candles", fake_fetch)
+    monkeypatch.setattr(main.orderflow_service, "get_snapshot", fake_orderflow)
     main._SETUP_SCAN_CACHE["timestamp"] = 0.0
     main._SETUP_SCAN_CACHE["payload"] = None
     response = asyncio.run(main.scan_trade_setups(force=True))
@@ -274,6 +287,49 @@ def test_fresh_signal_notification_is_callable_and_user_scoped(tmp_path):
     assert rows == [(1,)]
 
 
+def test_real_crypto_orderflow_and_honest_forex_proxy():
+    from app.services.orderflow_service import analyze_okx_payloads, build_ohlcv_proxy
+
+    trades = []
+    for index in range(100):
+        side = "buy" if index < 65 else "sell"
+        trades.append({
+            "side": side,
+            "sz": "2" if side == "buy" else "1",
+            "px": str(100 + index * 0.01),
+            "ts": str(1_700_000_000_000 + index * 100),
+        })
+    depth = {
+        "bids": [["100.00", "10", "0", "2"], ["99.99", "8", "0", "2"]],
+        "asks": [["100.01", "5", "0", "2"], ["100.02", "4", "0", "2"]],
+    }
+    snapshot = analyze_okx_payloads(
+        trades,
+        depth,
+        {"oi": "1000", "oiUsd": "1000000"},
+        {"fundingRate": "0.0001"},
+        previous_oi=(0.0, 990000.0),
+    )
+    assert snapshot["is_real"] is True
+    assert snapshot["source"] == "okx_swap_public"
+    assert snapshot["pressure"] == "buy"
+    assert snapshot["delta"] > 0
+    assert snapshot["depth_imbalance"] > 0
+    assert snapshot["spread_bps"] < 2
+    assert snapshot["open_interest_change_pct"] > 0
+
+    candles = [
+        {"t": item.timestamp.timestamp(), "o": item.open, "h": item.high,
+         "l": item.low, "c": item.close, "v": item.volume}
+        for item in _candles(80)
+    ]
+    proxy = build_ohlcv_proxy(candles, "forex_ohlcv_proxy", "forex")
+    assert proxy["is_real"] is False
+    assert proxy["source"] == "forex_ohlcv_proxy"
+    assert "not centralized" in proxy["disclaimer"].lower()
+    assert proxy["depth_imbalance"] is None
+
+
 def test_market_quality_and_strict_decision_gates():
     from app.services.market_quality_engine import assess_data_quality, classify_market_regime
     from app.services.strict_decision_engine import apply_strict_decision
@@ -313,7 +369,24 @@ def test_market_quality_and_strict_decision_gates():
         "ai": {},
         "omega_compliant": True,
     }
-    strict = apply_strict_decision(report, candles, "crypto", "15m")
+    real_flow = {
+        "source": "okx_swap_public",
+        "is_real": True,
+        "confidence": 0.92,
+        "pressure": "buy",
+        "spread_bps": 1.2,
+        "depth_imbalance": 0.12,
+        "funding_rate": 0.0001,
+    }
+    strict = apply_strict_decision(
+        report,
+        candles,
+        "crypto",
+        "15m",
+        orderflow_source="okx_swap_public",
+        orderflow_confidence=0.92,
+        orderflow_snapshot=real_flow,
+    )
     assert strict["decision"]["status"] == "actionable"
     assert strict["omega_compliant"] is True
     assert strict["action_label"] == "STRONG_LONG"
@@ -324,10 +397,38 @@ def test_market_quality_and_strict_decision_gates():
     weak["probability"] = 55
     weak["plan_lines"] = [{"kind": "entry", "price": 100.0}]
     weak["overlay"] = {"lines": [{"kind": "entry", "price": 100.0}]}
-    downgraded = apply_strict_decision(weak, candles, "crypto", "15m")
+    downgraded = apply_strict_decision(
+        weak,
+        candles,
+        "crypto",
+        "15m",
+        orderflow_source="okx_swap_public",
+        orderflow_confidence=0.92,
+        orderflow_snapshot=real_flow,
+    )
     assert downgraded["decision"]["status"] == "watch"
     assert downgraded["omega_compliant"] is False
     assert downgraded["plan_lines"] == []
+
+    proxy_candidate = dict(report)
+    proxy_candidate["plan_lines"] = [{"kind": "entry", "price": 100.0}]
+    proxy_candidate["overlay"] = {"lines": [{"kind": "entry", "price": 100.0}]}
+    proxy_result = apply_strict_decision(
+        proxy_candidate,
+        candles,
+        "crypto",
+        "15m",
+        orderflow_source="crypto_ohlcv_fallback",
+        orderflow_confidence=0.30,
+        orderflow_snapshot={
+            "source": "crypto_ohlcv_fallback",
+            "is_real": False,
+            "confidence": 0.30,
+            "pressure": "buy",
+        },
+    )
+    assert proxy_result["omega_compliant"] is False
+    assert "real_orderflow_available" in proxy_result["decision"]["failed_gates"]
 
 
 def test_chart_window_rebases_all_overlay_indices():

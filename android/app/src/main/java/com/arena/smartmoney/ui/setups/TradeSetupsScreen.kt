@@ -278,6 +278,20 @@ private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
                     if (setup.decision.strictOmegaCompliant) SetupGreen else SetupRed,
                 )
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                SetupChip(
+                    if (setup.decision.orderflow.isReal) "REAL OF" else "PROXY OF",
+                    if (setup.decision.orderflow.isReal) SetupGreen else SetupGold,
+                )
+                SetupChip(
+                    "OF ${setup.decision.orderflow.pressure.uppercase()}",
+                    if (setup.decision.orderflow.aligned) SetupGreen else SetupRed,
+                )
+                SetupChip(
+                    "OFQ ${"%.0f".format(setup.decision.orderflow.confidence * 100)}",
+                    SetupBlue,
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PriceBox("Entry", setup.entry, SetupGold, Modifier.weight(1f))
                 PriceBox("Safe SL", setup.stopLoss, SetupRed, Modifier.weight(1f))

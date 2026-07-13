@@ -22,6 +22,7 @@ def apply_strict_decision(
     timeframe: str,
     orderflow_source: str = "ohlcv_proxy",
     orderflow_confidence: float = 0.45,
+    orderflow_snapshot: dict | None = None,
 ) -> dict:
     """Apply capital-preservation gates without inventing confidence.
 
@@ -48,6 +49,30 @@ def apply_strict_decision(
     htf_exception = reversal_setup and has_choch and confluence >= 75
     high_timeframe = timeframe in ("4h", "1d")
 
+    flow = orderflow_snapshot or report.get("orderflow") or {}
+    orderflow_source = str(flow.get("source") or orderflow_source)
+    orderflow_confidence = float(flow.get("confidence") or orderflow_confidence)
+    orderflow_is_real = bool(flow.get("is_real"))
+    flow_pressure = str(flow.get("pressure") or "neutral")
+    flow_expected = "buy" if direction == "long" else "sell" if direction == "short" else None
+    flow_aligned = flow_expected is not None and flow_pressure in (flow_expected, "neutral")
+    spread_bps = flow.get("spread_bps")
+    depth_imbalance = flow.get("depth_imbalance")
+    funding_rate = flow.get("funding_rate")
+    requires_real_flow = market == "crypto" and timeframe not in ("4h", "1d")
+    depth_conflict = False
+    if depth_imbalance is not None and flow_expected:
+        depth_value = float(depth_imbalance)
+        depth_conflict = (flow_expected == "buy" and depth_value < -0.18) or (
+            flow_expected == "sell" and depth_value > 0.18
+        )
+    funding_crowded = False
+    if funding_rate is not None and flow_expected:
+        funding_value = float(funding_rate)
+        funding_crowded = (flow_expected == "buy" and funding_value > 0.0015) or (
+            flow_expected == "sell" and funding_value < -0.0015
+        )
+
     negative_factors = [
         item for item in (report.get("confluence_factors") or [])
         if float(item.get("points") or 0) < 0
@@ -73,6 +98,40 @@ def apply_strict_decision(
         _gate("market_not_choppy", regime["name"] != "choppy" or confluence >= 78, regime["name"], "not choppy"),
         _gate("conflict_budget", negative_points <= conflict_limit, round(negative_points, 1), f"<={conflict_limit}"),
         _gate("trade_plan", bool(report.get("plan_lines")), len(report.get("plan_lines") or []), ">0"),
+        _gate(
+            "real_orderflow_available",
+            not requires_real_flow or orderflow_is_real,
+            {"required": requires_real_flow, "source": orderflow_source, "is_real": orderflow_is_real},
+            "real exchange flow for crypto <=1h",
+        ),
+        _gate(
+            "orderflow_alignment",
+            not orderflow_is_real or flow_aligned,
+            {"pressure": flow_pressure, "expected": flow_expected},
+            "aligned or neutral",
+            hard=orderflow_is_real,
+        ),
+        _gate(
+            "execution_spread",
+            not orderflow_is_real or (spread_bps is not None and float(spread_bps) <= 8.0),
+            spread_bps,
+            "<=8 bps",
+            hard=orderflow_is_real,
+        ),
+        _gate(
+            "depth_conflict",
+            not orderflow_is_real or not depth_conflict,
+            depth_imbalance,
+            "no strong opposing imbalance",
+            hard=orderflow_is_real,
+        ),
+        _gate(
+            "funding_crowding",
+            not funding_crowded,
+            funding_rate,
+            "not extremely crowded",
+            hard=False,
+        ),
         _gate(
             "orderflow_evidence",
             orderflow_confidence >= 0.35,
@@ -125,8 +184,14 @@ def apply_strict_decision(
         "market_regime": regime,
         "orderflow": {
             "source": orderflow_source,
-            "is_real": orderflow_source not in ("ohlcv_proxy", "forex_proxy"),
+            "is_real": orderflow_is_real,
             "confidence": round(orderflow_confidence, 2),
+            "pressure": flow_pressure,
+            "aligned": flow_aligned,
+            "spread_bps": spread_bps,
+            "depth_imbalance": depth_imbalance,
+            "funding_rate": funding_rate,
+            "open_interest_change_pct": flow.get("open_interest_change_pct"),
         },
         "hard_gates_total": len([item for item in gates if item["hard"]]),
         "hard_gates_passed": len(passed_hard),
@@ -168,6 +233,15 @@ def apply_strict_decision(
     ][:6]
     ai["risks"] = failed_names[:6] + [str(item.get("name")) for item in negative_factors[:3]]
     ai["what_would_confirm"] = failed_names[:5]
+    ai["orderflow_evidence"] = {
+        "source": orderflow_source,
+        "is_real": orderflow_is_real,
+        "confidence": round(orderflow_confidence, 2),
+        "pressure": flow_pressure,
+        "depth_imbalance": depth_imbalance,
+        "spread_bps": spread_bps,
+        "funding_rate": funding_rate,
+    }
     ai["grounded"] = True
     ai["probability_is_calibrated"] = False
     report["ai"] = ai

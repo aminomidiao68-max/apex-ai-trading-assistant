@@ -54,6 +54,7 @@ from app.services.execution_engine import ExecutionEngine
 from app.services.market_data_service import MarketDataService
 from app.services.news_engine import mock_news
 from app.services.notification_service import NotificationService
+from app.services.orderflow_service import OrderFlowService
 from app.services.readiness_service import ReadinessService
 from app.services.mt5_connector import Mt5Connector
 from app.services.oanda_connector import OandaConnector
@@ -79,6 +80,7 @@ auth_service = AuthService()
 storage = StorageService()
 notification_service = NotificationService(storage)
 readiness_service = ReadinessService()
+orderflow_service = OrderFlowService(ttl_seconds=20)
 
 # Native Android clients do not require CORS. Browser access is enabled only
 # for an explicit environment-specific allowlist (CORS_ALLOWED_ORIGINS).
@@ -254,7 +256,12 @@ async def build_multi_timeframe_context(symbol: str, market: str, timeframe: str
     }
 
 
-
+async def enrich_orderflow(report: dict, symbol: str, market: str, items: list[dict]) -> dict:
+    snapshot = await orderflow_service.get_snapshot(symbol, market, items)
+    candle_proxy = dict(report.get("orderflow") or {})
+    merged = {"candle_proxy": candle_proxy, **snapshot}
+    report["orderflow"] = merged
+    return snapshot
 
 
 @app.get("/health")
@@ -473,13 +480,15 @@ async def get_smc_analysis(
         )
         report["market"] = market_eff
         report["htf"] = {"timeframe": htf_used, "bias": htf_bias}
+        flow = await enrich_orderflow(report, symbol, market_eff, items)
         report = apply_strict_decision(
             report,
             items,
             market=market_eff,
             timeframe=_canonical_timeframe(interval),
-            orderflow_source="forex_proxy" if market_eff == "forex" else "ohlcv_proxy",
-            orderflow_confidence=0.40 if market_eff == "forex" else 0.48,
+            orderflow_source=str(flow.get("source") or "unknown"),
+            orderflow_confidence=float(flow.get("confidence") or 0),
+            orderflow_snapshot=flow,
         )
         report["status"] = "ok"
         return _prepare_chart_report(report, items, max_candles=160)
@@ -773,13 +782,15 @@ async def scan_signals(min_confluence: int = Query(default=40, ge=0, le=100)):
                         htf_bias = hrep.get("bias")
             except Exception: pass
             r = analyze(items, symbol=sym, timeframe=tf, htf_bias=htf_bias, news_blocked=_news_blocked)
+            flow = await enrich_orderflow(r, sym, mkt_eff, items)
             r = apply_strict_decision(
                 r,
                 items,
                 market=mkt_eff,
                 timeframe=_canonical_timeframe(tf),
-                orderflow_source="forex_proxy" if mkt_eff == "forex" else "ohlcv_proxy",
-                orderflow_confidence=0.40 if mkt_eff == "forex" else 0.48,
+                orderflow_source=str(flow.get("source") or "unknown"),
+                orderflow_confidence=float(flow.get("confidence") or 0),
+                orderflow_snapshot=flow,
             )
             return {"symbol":sym,"market":mkt_eff,"timeframe":tf,
                     "bias":r["bias"],"direction":r["direction"],"confluence":r["confluence"],
@@ -962,13 +973,15 @@ async def scan_trade_setups(force: bool = Query(default=False)):
                         news_blocked=news_blocked,
                     )
                     report["htf_bias"] = htf_bias
+                    flow = await enrich_orderflow(report, symbol, market, items)
                     report = apply_strict_decision(
                         report,
                         items,
                         market=market,
                         timeframe=timeframe,
-                        orderflow_source="forex_proxy" if market == "forex" else "ohlcv_proxy",
-                        orderflow_confidence=0.40 if market == "forex" else 0.48,
+                        orderflow_source=str(flow.get("source") or "unknown"),
+                        orderflow_confidence=float(flow.get("confidence") or 0),
+                        orderflow_snapshot=flow,
                     )
                     confirmed = (
                         report.get("omega_compliant")
@@ -1025,6 +1038,23 @@ async def scan_trade_setups(force: bool = Query(default=False)):
         _SETUP_SCAN_CACHE["timestamp"] = _time.time()
         _SETUP_SCAN_CACHE["payload"] = payload
         return payload
+
+
+@app.get("/api/v1/orderflow/{symbol}")
+async def get_orderflow_snapshot(
+    symbol: str,
+    market: str = Query(default="crypto", pattern="^(crypto|forex)$"),
+    timeframe: str = Query(default="5m", pattern="^(1m|5m|15m|30m|1h|4h|1d)$"),
+):
+    candles = await fetch_live_candles(symbol, market, timeframe)
+    items = _norm_candles(candles)
+    snapshot = await orderflow_service.get_snapshot(symbol.upper(), market, items)
+    return {
+        "symbol": symbol.upper(),
+        "market": market,
+        "timeframe": timeframe,
+        "snapshot": snapshot,
+    }
 
 
 @app.websocket("/ws/market")

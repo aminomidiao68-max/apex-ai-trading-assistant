@@ -331,8 +331,25 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
             Spacer(Modifier.height(4.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 item {
+                    ChipS(
+                        if (r.orderflow.isReal) "REAL OF" else "PROXY OF",
+                        if (r.orderflow.isReal) UpC else GoldDim,
+                    )
+                }
+                item {
                     val pr = r.orderflow.pressure
                     ChipS(when(pr){"buy"->"OF+";"sell"->"OF−";else->"OF"}, when(pr){"buy"->UpC;"sell"->DnC;else->TL})
+                }
+                r.orderflow.depthImbalance?.let { depth ->
+                    item {
+                        ChipS(
+                            "DEPTH ${if (depth >= 0) "+" else ""}${"%.2f".format(depth)}",
+                            if (depth >= 0.12f) UpC else if (depth <= -0.12f) DnC else TL,
+                        )
+                    }
+                }
+                r.orderflow.spreadBps?.let { spread ->
+                    item { ChipS("SPR ${"%.1f".format(spread)}bp", if (spread <= 5f) UpC else DnC) }
                 }
                 if (r.orderflow.volumeSpike) item { ChipS("VOL↑", Gold) }
                 if (r.orderflow.absorption) item { ChipS("ABSRB", BrkC) }
@@ -341,6 +358,22 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
                         val divArrow = if (it == "bullish") "▲" else "▼"
                         val divCol = if (it == "bullish") UpC else DnC
                         ChipS("DIV$divArrow", divCol)
+                    }
+                }
+                r.orderflow.openInterestChangePct?.let { change ->
+                    item {
+                        ChipS(
+                            "OI ${if (change >= 0) "+" else ""}${"%.2f".format(change)}%",
+                            if (change >= 0) UpC else DnC,
+                        )
+                    }
+                }
+                r.orderflow.fundingRate?.let { funding ->
+                    item {
+                        ChipS(
+                            "FUND ${"%.4f".format(funding * 100)}%",
+                            if (kotlin.math.abs(funding) < 0.001f) TL else Gold,
+                        )
                     }
                 }
                 item { ChipS(when(r.premiumZone){"premium"->"پرِمیوم";"discount"->"دیسکانت";else->"تعادل"}, GoldDim) }

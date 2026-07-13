@@ -615,6 +615,9 @@ data class SmcOverlay(
     val labels: List<SmcLabel> = emptyList()
 )
 data class SmcOrderFlow(
+    val source: String = "unknown",
+    @SerializedName("is_real") val isReal: Boolean = false,
+    val confidence: Float = 0f,
     val delta: Float = 0f,
     val pressure: String = "neutral",
     val cvd: Float = 0f,
@@ -623,7 +626,16 @@ data class SmcOrderFlow(
     @SerializedName("cvd_divergence") val cvdDivergence: String? = null,
     val absorption: Boolean = false,
     val climax: Boolean = false,
-    @SerializedName("avg_volume") val avgVolume: Float = 0f
+    @SerializedName("avg_volume") val avgVolume: Float = 0f,
+    @SerializedName("aggressive_buy_ratio") val aggressiveBuyRatio: Float? = null,
+    @SerializedName("aggressive_sell_ratio") val aggressiveSellRatio: Float? = null,
+    @SerializedName("large_trade_imbalance") val largeTradeImbalance: Float? = null,
+    @SerializedName("depth_imbalance") val depthImbalance: Float? = null,
+    @SerializedName("spread_bps") val spreadBps: Float? = null,
+    @SerializedName("open_interest_usd") val openInterestUsd: Double? = null,
+    @SerializedName("open_interest_change_pct") val openInterestChangePct: Float? = null,
+    @SerializedName("funding_rate") val fundingRate: Float? = null,
+    val disclaimer: String = ""
 )
 data class SmcVisibleRange(
     val low: Float = 0f,
@@ -759,6 +771,18 @@ data class SmcMarketRegime(
     @SerializedName("risk_multiplier") val riskMultiplier: Float = 0f
 )
 
+data class SmcDecisionOrderFlow(
+    val source: String = "unknown",
+    @SerializedName("is_real") val isReal: Boolean = false,
+    val confidence: Float = 0f,
+    val pressure: String = "neutral",
+    val aligned: Boolean = false,
+    @SerializedName("spread_bps") val spreadBps: Float? = null,
+    @SerializedName("depth_imbalance") val depthImbalance: Float? = null,
+    @SerializedName("funding_rate") val fundingRate: Float? = null,
+    @SerializedName("open_interest_change_pct") val openInterestChangePct: Float? = null
+)
+
 data class SmcStrictDecision(
     val status: String = "reject",
     val side: String = "flat",
@@ -770,7 +794,8 @@ data class SmcStrictDecision(
     @SerializedName("hard_gates_passed") val hardGatesPassed: Int = 0,
     @SerializedName("failed_gates") val failedGates: List<String> = emptyList(),
     @SerializedName("no_trade_reason") val noTradeReason: String? = null,
-    @SerializedName("expires_after_bars") val expiresAfterBars: Int = 0
+    @SerializedName("expires_after_bars") val expiresAfterBars: Int = 0,
+    val orderflow: SmcDecisionOrderFlow = SmcDecisionOrderFlow()
 )
 
 data class SmcReport(
