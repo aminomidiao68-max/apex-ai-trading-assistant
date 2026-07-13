@@ -44,7 +44,9 @@ jobs:
 
       - name: Build, lint and test debug APK
         working-directory: android
-        run: ./gradlew --no-daemon --max-workers=2 testDebugUnitTest lintDebug assembleDebug --stacktrace
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=2 testDebugUnitTest lintDebug assembleDebug --stacktrace
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v7
