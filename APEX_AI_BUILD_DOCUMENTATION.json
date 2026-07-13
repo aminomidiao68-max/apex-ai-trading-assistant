@@ -4,7 +4,7 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "2.2.2",
+    "current_version": "2.2.3",
     "status": "Stabilized MVP - Live Execution Disabled"
   },
   "architecture": {
@@ -345,6 +345,19 @@
             "HTTP security headers",
             "Database persistence readiness warning",
             "GitHub Actions upgraded to current Node 24 releases"
+          ]
+        },
+        {
+          "version": "v2.2.3 Chart Visual Polish",
+          "date": "2026-07-13T09:30:00Z",
+          "features": [
+            "Deduplicated BSL/SSL/EQH/EQL levels",
+            "LTR scrollable chart legend with safe padding",
+            "Compact Bull OB/Bear OB zone labels",
+            "Chart scroll resets on symbol/timeframe change",
+            "Spatial collision filtering for BOS/CHoCH labels",
+            "Spatial collision filtering for IDM labels",
+            "Pure ChartRenderPolicy with Android unit tests"
           ]
         }
       ]
@@ -859,8 +872,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "1.7",
-    "last_updated": "2026-07-13T05:15:00Z",
+    "documentation_version": "1.8",
+    "last_updated": "2026-07-13T09:30:00Z",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

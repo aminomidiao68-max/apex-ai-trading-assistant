@@ -95,6 +95,7 @@ fun ChartScreen(
     var signals by remember { mutableStateOf<List<SmcSignal>>(emptyList()) }
     var scanLoading by remember { mutableStateOf(false) }
     var refreshNonce by remember { mutableIntStateOf(0) }
+    val screenListState = rememberLazyListState()
 
     fun scan() {
         scope.launch {
@@ -108,6 +109,7 @@ fun ChartScreen(
     // changes. Clearing the old report prevents a stale 5m chart from being
     // shown under a newly selected 15m chip.
     LaunchedEffect(sym, tf, refreshNonce) {
+        screenListState.scrollToItem(0)
         val requestedSymbol = sym
         val requestedTimeframe = tf
         val requestedMarket = mkt
@@ -147,6 +149,7 @@ fun ChartScreen(
         }
     ) { pad ->
         LazyColumn(
+            state = screenListState,
             modifier = Modifier.fillMaxSize().padding(pad).padding(horizontal = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -183,18 +186,20 @@ fun ChartScreen(
                             }
                         }
                         // پایین چارت
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            item { LegendDot(BullOB, "Bullish OB") }
-                            item { LegendDot(BearOB, "Bearish OB") }
-                            item { LegendDot(FvgC, "FVG") }
-                            item { LegendDot(BrkC.copy(alpha = 0.55f), "Breaker") }
-                            item { LegendDot(LiqC, "BSL / SSL") }
-                            item { LegendDot(UpC, "BOS / CHoCH") }
-                            item { LegendDot(KzLon.copy(alpha=0.7f), "Sessions") }
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                item { LegendDot(BullOB, "Bull OB") }
+                                item { LegendDot(BearOB, "Bear OB") }
+                                item { LegendDot(FvgC, "FVG") }
+                                item { LegendDot(BrkC.copy(alpha = 0.55f), "Breaker") }
+                                item { LegendDot(LiqC, "BSL / SSL") }
+                                item { LegendDot(UpC, "BOS / CHoCH") }
+                                item { LegendDot(KzLon.copy(alpha=0.7f), "Sessions") }
+                            }
                         }
                     }
                 }
@@ -599,6 +604,7 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         for (z in report.overlay.zones) {
             if (z.kind == "KZ") continue
             if (z.kind !in listOf("OB", "FVG", "iFVG", "BRK")) continue
+            if (!ChartRenderPolicy.isZoneLifecycleValid(z, totalCandles)) continue
             val zoneStart = z.index
             val zoneEnd = if (z.endIdx >= zoneStart) z.endIdx else totalCandles - 1
             if (zoneEnd < startIdx || zoneStart >= totalCandles) continue
@@ -649,12 +655,7 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
                 )
             )
             // عنوان درون زون (مثل TV: Bearish Order Block داخل مستطیل نارنجی)
-            val label = when(z.kind) {
-                "OB" -> if(z.side=="bullish") "Bullish Order Block" else "Bearish Order Block"
-                "BRK" -> "Breaker Block"
-                "FVG" -> if (z.inverse) "iFVG" else "FVG"
-                else -> z.kind
-            }
+            val label = ChartRenderPolicy.compactZoneLabel(z)
             if (zoneH >= 11f && xend - xstart >= 64f) {
                 val zoneLabelPaint = NativePaint().apply {
                     this.color = color.toArgb()
@@ -720,9 +721,7 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         // ======== Only the latest EQH/EQL reference levels ========
         var lastArrowRight = false
         val plottedLiquidityY = mutableListOf<Float>()
-        val simpleLiquidity = report.inducements
-            .filter { it.kind in listOf("buyside_liq", "sellside_liq", "eqh", "eql") }
-            .takeLast(4)
+        val simpleLiquidity = ChartRenderPolicy.latestLiquidityLevels(report.inducements)
         for (lab in simpleLiquidity.asReversed()) {
             val col = when (lab.kind) {
                 "buyside_liq", "eqh" -> DnC
@@ -761,36 +760,47 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             }
         }
 
-        // ======== BOS/CHoCH — فلش‌دار روی کندل، خط کوتاه به لیبل (مثل TV) ========
-        for (ev in report.events.takeLast(4)) {
+        // ======== BOS/CHoCH — latest non-overlapping structure events ========
+        val eventAnchors = mutableListOf<Offset>()
+        for (ev in report.events.takeLast(6).asReversed()) {
             if (ev.index < startIdx || ev.index >= totalCandles) continue
             val col = if (ev.dir == "bullish") UpC else DnC
             val y = priceY(ev.price)
             if (y < chartT || y > chartB) continue
-            val idx = ev.index
-            val x = idxX(idx)
+            val x = idxX(ev.index)
+            if (eventAnchors.any { abs(it.x - x) < 48f && abs(it.y - y) < 16f }) continue
+            eventAnchors += Offset(x, y)
+            if (eventAnchors.size > 4) break
+
             val isBull = ev.dir == "bullish"
-            // خط افقی کوتاه
-            val lineEndX = min(x + 48f, chartR - 48f)
-            drawLine(col.copy(alpha=0.65f), Offset(x, y), Offset(lineEndX, y), strokeWidth=1.2f)
-            // دایره کوچک روی کندل
-            drawCircle(col, radius=3.5f, center=Offset(x, y))
-            // لیبل جهت‌دار
-            val lp = NativePaint().apply { color=col.toArgb(); textSize=11f; isAntiAlias=true; isFakeBoldText=true }
-            val arr = if (isBull) "▲ ${ev.kind}" else "▼ ${ev.kind}"
-            drawContext.canvas.nativeCanvas.drawText(arr, lineEndX+4f, y-4f, lp)
+            val placeRight = x < chartR - 88f
+            val lineEndX = if (placeRight) x + 40f else x - 40f
+            drawLine(col.copy(alpha=0.65f), Offset(x, y), Offset(lineEndX, y), strokeWidth=1.0f)
+            drawCircle(col, radius=3.2f, center=Offset(x, y))
+            val paint = NativePaint().apply {
+                color=col.toArgb(); textSize=10f; isAntiAlias=true; isFakeBoldText=true
+            }
+            val label = if (isBull) "▲ ${ev.kind}" else "▼ ${ev.kind}"
+            val textX = if (placeRight) lineEndX + 3f else lineEndX - 34f
+            drawContext.canvas.nativeCanvas.drawText(label, textX, y-4f, paint)
         }
 
         // ======== IDM نقاط زرد (Inducement) ========
-        for (lab in report.inducements.takeLast(3)) {
+        val idmAnchors = mutableListOf<Offset>()
+        for (lab in report.inducements.asReversed()) {
             if (!lab.kind.contains("liq")) continue
             if (lab.index < startIdx || lab.index >= totalCandles) continue
-            val idx = lab.index
-            val x = idxX(idx); val y = priceY(lab.price)
+            val x = idxX(lab.index)
+            val y = priceY(lab.price)
             if (y < chartT || y > chartB) continue
-            drawCircle(IdmColor, radius=3.5f, center=Offset(x, y))
-            val lp = NativePaint().apply { color=IdmColor.toArgb(); textSize=12f; isAntiAlias=true; isFakeBoldText=true }
-            drawContext.canvas.nativeCanvas.drawText("IDM", x+6f, y-5f, lp)
+            if (idmAnchors.any { abs(it.x - x) < 30f && abs(it.y - y) < 13f }) continue
+            idmAnchors += Offset(x, y)
+            if (idmAnchors.size > 3) break
+            drawCircle(IdmColor, radius=3.2f, center=Offset(x, y))
+            val paint = NativePaint().apply {
+                color=IdmColor.toArgb(); textSize=10f; isAntiAlias=true; isFakeBoldText=true
+            }
+            drawContext.canvas.nativeCanvas.drawText("IDM", x+5f, y-4f, paint)
         }
 
         // ======== خطوط طرح معامله (فقط ستاپ معتبر) ========
