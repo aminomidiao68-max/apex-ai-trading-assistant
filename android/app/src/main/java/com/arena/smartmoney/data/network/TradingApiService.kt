@@ -180,13 +180,21 @@ interface TradingApiService {
                     AuthTokenProvider.authorizationHeader()?.let { value ->
                         builder.header("Authorization", value)
                     }
-                    chain.proceed(builder.build())
+                    val request = builder.build()
+                    val response = chain.proceed(request)
+                    val authPath = request.url.encodedPath
+                    val isAuthAttempt = authPath.endsWith("/auth/login") || authPath.endsWith("/auth/register")
+                    if (response.code == 401 && AuthTokenProvider.hasServerToken() && !isAuthAttempt) {
+                        AuthTokenProvider.notifyUnauthorized()
+                    }
+                    response
                 }
+                .addInterceptor(NetworkRetryInterceptor(maxRetries = 3))
                 .addInterceptor(logger)
-                .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-                .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                .callTimeout(90, java.util.concurrent.TimeUnit.SECONDS)
+                .connectTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+                .writeTimeout(45, java.util.concurrent.TimeUnit.SECONDS)
+                .callTimeout(150, java.util.concurrent.TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
                 .build()
 

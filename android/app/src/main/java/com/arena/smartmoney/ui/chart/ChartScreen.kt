@@ -974,10 +974,12 @@ private fun ChipS(t:String, c:Color) {
 private fun safeChartMessage(message: String): String {
     val value = message.trim()
     if (value.isBlank()) return "-"
-    val unsafe = listOf("apikey=", "api_key=", "token=", "https://", "http://")
-        .any { value.contains(it, ignoreCase = true) }
+    val unsafe = listOf(
+        "apikey=", "api_key=", "token=", "https://", "http://",
+        "failed to connect", "connect to", "timeout", "onrender.com", ":443",
+    ).any { value.contains(it, ignoreCase = true) }
     return if (unsafe) {
-        "داده بازار موقتاً در دسترس نیست؛ چند لحظه دیگر دوباره تلاش کنید."
+        "اتصال موقتاً برقرار نشد؛ دکمه بروزرسانی را بزنید."
     } else value
 }
 

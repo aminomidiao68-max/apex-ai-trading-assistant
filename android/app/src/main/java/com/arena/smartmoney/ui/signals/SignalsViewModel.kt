@@ -7,6 +7,7 @@ import com.arena.smartmoney.data.model.RiskSettingsDto
 import com.arena.smartmoney.data.model.SignalHistoryItemDto
 import com.arena.smartmoney.data.model.TradeJournalCreateRequestDto
 import com.arena.smartmoney.data.model.TradeStatsDto
+import com.arena.smartmoney.data.network.AuthTokenProvider
 import com.arena.smartmoney.data.repository.TradingRepository
 import com.arena.smartmoney.ui.i18n.AppLanguageState
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +32,14 @@ class SignalsViewModel(
     val uiState: StateFlow<SignalsUiState> = _uiState
 
     init {
-        loadHistory()
+        if (AuthTokenProvider.hasServerToken()) {
+            loadHistory()
+        } else {
+            _uiState.value = _uiState.value.copy(
+                loading = false,
+                scanMessage = "حالت دمو: اسکن عمومی فعال است؛ تاریخچه و ژورنال نیاز به ورود حساب دارند.",
+            )
+        }
     }
 
     private fun tr(en: String, fa: String): String = if (AppLanguageState.current == "fa") fa else en
@@ -54,6 +62,14 @@ class SignalsViewModel(
     }
 
     fun loadHistory() {
+        if (!AuthTokenProvider.hasServerToken()) {
+            _uiState.value = _uiState.value.copy(
+                loading = false,
+                error = null,
+                scanMessage = "حالت دمو: برای تاریخچه سیگنال وارد حساب شوید.",
+            )
+            return
+        }
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loading = true, error = null)
             runCatching { repository.getSignalHistory(limit = 30) }
@@ -74,6 +90,22 @@ class SignalsViewModel(
     }
 
     fun scanMarket(symbol: String, market: String, timeframe: String = _uiState.value.selectedTimeframe) {
+        if (!AuthTokenProvider.hasServerToken()) {
+            viewModelScope.launch {
+                _uiState.value = _uiState.value.copy(
+                    loading = true,
+                    error = null,
+                    scanMessage = tr("Scanning public market data...", "در حال اسکن عمومی بازار..."),
+                )
+                val report = repository.getSmcAnalysis(symbol, market, timeframe, 220)
+                _uiState.value = _uiState.value.copy(
+                    loading = false,
+                    error = null,
+                    scanMessage = "${report.symbol} • ${report.timeframe} • ${report.grade} • ${report.note}",
+                )
+            }
+            return
+        }
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(
                 loading = true,
@@ -139,6 +171,15 @@ class SignalsViewModel(
     }
 
     fun createTradeFromSignal(signal: SignalHistoryItemDto) {
+        if (!AuthTokenProvider.hasServerToken()) {
+            _uiState.value = _uiState.value.copy(
+                journalMessage = tr(
+                    "Sign in to save a trade to your journal",
+                    "برای ذخیره معامله در ژورنال وارد حساب شوید",
+                )
+            )
+            return
+        }
         if (signal.score < 60.0) {
             _uiState.value = _uiState.value.copy(
                 journalMessage = tr(

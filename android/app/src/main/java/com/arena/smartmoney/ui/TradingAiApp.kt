@@ -39,6 +39,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.arena.smartmoney.data.network.AuthTokenProvider
 import com.arena.smartmoney.data.preferences.AppPreferencesManager
 import com.arena.smartmoney.data.session.SessionManager
 import com.arena.smartmoney.push.PushRegistrationHelper
@@ -59,6 +60,7 @@ import com.arena.smartmoney.ui.risk.RiskCalculatorScreen
 import com.arena.smartmoney.ui.settings.SettingsScreen
 import com.arena.smartmoney.ui.signals.SignalsScreen
 import com.arena.smartmoney.ui.setups.TradeSetupsScreen
+import kotlinx.coroutines.flow.collect
 
 sealed class AppRoute(val route: String, val label: String) {
     data object Dashboard : AppRoute("dashboard", "Dashboard")
@@ -86,6 +88,13 @@ fun TradingAiApp() {
 
     LaunchedEffect(Unit) {
         AppLanguageState.current = prefs.getLanguage()
+    }
+
+    LaunchedEffect(Unit) {
+        AuthTokenProvider.unauthorizedEvents.collect {
+            sessionManager.clearSession()
+            isLoggedIn = false
+        }
     }
 
     LaunchedEffect(isLoggedIn) {

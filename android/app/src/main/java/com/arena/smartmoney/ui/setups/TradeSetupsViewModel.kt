@@ -51,7 +51,7 @@ class TradeSetupsViewModel(
                 .onFailure { throwable ->
                     _uiState.value = _uiState.value.copy(
                         loading = false,
-                        error = throwable.message ?: "بارگذاری ستاپ‌ها ناموفق بود",
+                        error = friendlyNetworkError(throwable.message),
                     )
                 }
         }
@@ -67,5 +67,15 @@ class TradeSetupsViewModel(
 
     fun selectTimeframe(timeframe: String) {
         _uiState.value = _uiState.value.copy(selectedTimeframe = timeframe)
+    }
+}
+
+private fun friendlyNetworkError(raw: String?): String {
+    val value = raw.orEmpty().lowercase()
+    return when {
+        "401" in value -> "نشست ورود معتبر نیست؛ دوباره وارد حساب شوید."
+        "connect" in value || "timeout" in value || "onrender" in value ->
+            "اتصال به سرور برقرار نشد؛ اینترنت را بررسی و دوباره تلاش کنید."
+        else -> "بارگذاری ستاپ‌ها ناموفق بود؛ دوباره تلاش کنید."
     }
 }

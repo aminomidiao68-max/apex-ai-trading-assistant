@@ -28,7 +28,15 @@ import com.arena.smartmoney.data.model.NotificationTestRequestDto
 import com.arena.smartmoney.data.model.RiskPlanRequestDto
 import com.arena.smartmoney.data.model.TradeJournalCloseRequestDto
 import com.arena.smartmoney.data.model.TradeJournalCreateRequestDto
+import com.arena.smartmoney.data.model.TradeSetupsResponseDto
 import com.arena.smartmoney.data.network.TradingApiService
+import java.util.concurrent.ConcurrentHashMap
+
+private object PublicResponseCache {
+    val charts = ConcurrentHashMap<String, SmcReport>()
+    @Volatile var setups: TradeSetupsResponseDto? = null
+    @Volatile var signals: SmcScanResponse? = null
+}
 
 class TradingRepository(
     private val api: TradingApiService = TradingApiService.create()
@@ -130,18 +138,45 @@ class TradingRepository(
     }
 
     suspend fun getSmcAnalysis(symbol: String = "XAUUSD", market: String = "", interval: String = "15min", limit: Int = 220): SmcReport {
-        return try { api.getSmcAnalysis(symbol, market, interval, limit) }
-        catch (e: Exception) {
-            SmcReport(
-                symbol = symbol, timeframe = interval, note = "خطا در بارگذاری تحلیل: ${e.message}", status = "error"
+        val cacheKey = "${symbol.uppercase()}:${market.lowercase()}:${interval.lowercase()}"
+        return try {
+            val response = api.getSmcAnalysis(symbol, market, interval, limit)
+            if (response.status == "ok" && response.candles.isNotEmpty()) {
+                PublicResponseCache.charts[cacheKey] = response
+            }
+            response
+        } catch (_: Exception) {
+            PublicResponseCache.charts[cacheKey]?.copy(
+                note = "اتصال موقتاً قطع است؛ آخرین تحلیل ذخیره‌شده نمایش داده می‌شود.",
+                status = "cached",
+            ) ?: SmcReport(
+                symbol = symbol,
+                timeframe = interval,
+                market = if (market.isBlank()) "auto" else market,
+                note = "اتصال به سرور برقرار نشد؛ اینترنت را بررسی و دوباره تلاش کنید.",
+                status = "network_unavailable",
             )
         }
     }
 
     suspend fun scanSignals(minConfluence: Int = 2): SmcScanResponse {
-        return try { api.scanSignals(minConfluence) }
-        catch (e: Exception) { SmcScanResponse() }
+        return try {
+            api.scanSignals(minConfluence).also { PublicResponseCache.signals = it }
+        } catch (_: Exception) {
+            PublicResponseCache.signals ?: SmcScanResponse()
+        }
     }
 
-    suspend fun scanTradeSetups(force: Boolean = false) = api.scanTradeSetups(force)
+    suspend fun scanTradeSetups(force: Boolean = false): TradeSetupsResponseDto {
+        return try {
+            val response = api.scanTradeSetups(force)
+            PublicResponseCache.setups = response
+            response
+        } catch (_: Exception) {
+            PublicResponseCache.setups?.copy(cached = true)
+                ?: throw IllegalStateException(
+                    "اتصال به سرور برقرار نشد؛ اینترنت را بررسی و دوباره تلاش کنید."
+                )
+        }
+    }
 }
