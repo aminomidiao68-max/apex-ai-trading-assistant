@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.0.0-rc1",
-    "status": "APEX Omega Pro - Release Candidate 1"
+    "current_version": "3.1.0-quant-alpha1",
+    "status": "APEX GA Program - Quant Evidence Alpha 1"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -462,6 +462,24 @@
             "RC production runbook and rollback policy",
             "38 local tests plus PostgreSQL CI integration test"
           ]
+        },
+        {
+          "version": "v3.1 Quant Alpha 1 - Evidence & Calibration Lab",
+          "date": "2026-07-14T18:00:00+03:30",
+          "features": [
+            "Versioned point-in-time dataset manifest with SHA-256",
+            "Strict OHLCV CSV validation and duplicate timestamp rejection",
+            "Circular block-bootstrap expectancy confidence interval",
+            "Sign-flip null test with Bonferroni multiple-testing control",
+            "Paired benchmark outperformance interval",
+            "Purged walk-forward and embargo evidence contract",
+            "Monte Carlo drawdown percentiles and simulated risk-of-ruin",
+            "Brier score, Brier skill, ECE, MCE, log loss and reliability bins",
+            "Calibration ID only for independent holdout evidence",
+            "Deterministic analysis fingerprint and random seed",
+            "RESEARCH_CANDIDATE never authorizes live execution",
+            "47 local backend tests"
+          ]
         }
       ]
     }
@@ -665,6 +683,31 @@
         "/ready",
         "/api/v1/system/health/deep",
         "/api/v1/system/metrics"
+      ]
+    },
+    "quant_evidence_lab": {
+      "version": "quant_evidence_v1",
+      "status_labels": [
+        "REJECT",
+        "INSUFFICIENT_EVIDENCE",
+        "WATCH",
+        "RESEARCH_CANDIDATE"
+      ],
+      "live_authorization": false,
+      "features": [
+        "dataset fingerprint",
+        "block bootstrap",
+        "sign-flip test",
+        "multiple-testing control",
+        "benchmark comparison",
+        "purged walk-forward",
+        "Monte Carlo drawdown",
+        "risk-of-ruin simulation",
+        "probability calibration diagnostics"
+      ],
+      "endpoints": [
+        "/api/v1/research/quant-validate",
+        "/api/v1/research/purged-split-plan"
       ]
     }
   },
@@ -1020,8 +1063,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "2.0-rc1",
-    "last_updated": "2026-07-14T15:30:00+03:30",
+    "documentation_version": "2.1-quant-alpha1",
+    "last_updated": "2026-07-14T18:00:00+03:30",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

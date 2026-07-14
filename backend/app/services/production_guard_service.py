@@ -18,6 +18,7 @@ from app.config import settings
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 _HEAVY_PREFIXES = (
     "/api/v1/backtest/",
+    "/api/v1/research/",
     "/api/v1/setups/scan",
     "/api/v1/signals/scan",
     "/api/v1/analysis/smc",

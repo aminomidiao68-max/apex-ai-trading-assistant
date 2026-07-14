@@ -69,3 +69,17 @@
 - Android APK provenance manifest
 - SQLite Regression و PostgreSQL integration tests
 - پذیرش نهایی فقط پس از Backend/Android CI و `/ready` زنده
+
+## ⏳ GA Quant Alpha 1 — Evidence & Calibration Lab
+
+- Versioned Dataset Manifest و SHA-256
+- Point-in-time / survivorship / independent-holdout attestations
+- Circular block-bootstrap expectancy interval
+- Sign-flip test و multiple-testing Bonferroni control
+- Benchmark outperformance interval
+- Purged walk-forward + embargo contract
+- Monte Carlo drawdown distribution
+- Simulated risk-of-ruin با برچسب غیرکالیبره
+- Brier Score، Brier Skill، ECE، MCE، Log Loss و Reliability bins
+- Calibration ID فقط پس از Gate مستقل holdout
+- خروجی فقط `RESEARCH_CANDIDATE`؛ هرگز Live authorization نیست

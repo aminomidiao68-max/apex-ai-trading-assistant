@@ -602,6 +602,196 @@ class AIExplainResponse(BaseModel):
     disclaimer: str = "AI explains deterministic evidence and cannot authorize execution."
 
 
+class QuantDatasetManifest(BaseModel):
+    dataset_id: str = Field(min_length=3, max_length=120)
+    version: str = Field(min_length=1, max_length=80)
+    source: str = Field(min_length=2, max_length=120)
+    symbol: str = Field(min_length=2, max_length=24)
+    market: MarketType
+    timeframe: str = Field(min_length=1, max_length=12)
+    start_time: datetime
+    end_time: datetime
+    sample_count: int = Field(ge=30, le=20_000)
+    source_sha256: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    is_point_in_time: bool = False
+    is_survivorship_bias_controlled: bool = False
+    is_independent_holdout: bool = False
+    data_quality_score: float = Field(default=0.0, ge=0.0, le=100.0)
+    notes: List[str] = Field(default_factory=list, max_length=30)
+
+    @model_validator(mode="after")
+    def validate_dataset_window(self):
+        if self.end_time <= self.start_time:
+            raise ValueError("dataset end_time must be after start_time")
+        return self
+
+
+class QuantWalkForwardFold(BaseModel):
+    fold_id: str = Field(min_length=1, max_length=80)
+    train_start_index: int = Field(ge=0)
+    train_end_index: int = Field(ge=0)
+    test_start_index: int = Field(ge=0)
+    test_end_index: int = Field(ge=0)
+    embargo_bars: int = Field(default=1, ge=1, le=10_000)
+    selected_config_id: str = Field(min_length=1, max_length=120)
+    test_returns_rr: List[float] = Field(min_length=1, max_length=5_000)
+
+    @model_validator(mode="after")
+    def validate_purged_fold(self):
+        if self.train_end_index < self.train_start_index:
+            raise ValueError("train_end_index must be >= train_start_index")
+        if self.test_end_index < self.test_start_index:
+            raise ValueError("test_end_index must be >= test_start_index")
+        if self.train_end_index + self.embargo_bars >= self.test_start_index:
+            raise ValueError("walk-forward fold violates purge/embargo boundary")
+        expected = self.test_end_index - self.test_start_index + 1
+        if expected != len(self.test_returns_rr):
+            raise ValueError("test_returns_rr length must match test index range")
+        return self
+
+
+class QuantValidationRequest(BaseModel):
+    strategy_id: str = Field(min_length=3, max_length=120)
+    strategy_version: str = Field(min_length=1, max_length=80)
+    dataset: QuantDatasetManifest
+    returns_rr: List[float] = Field(min_length=30, max_length=20_000)
+    timestamps: List[datetime] = Field(default_factory=list, max_length=20_000)
+    benchmark_returns_rr: List[float] = Field(default_factory=list, max_length=20_000)
+    predicted_probabilities: List[float] = Field(default_factory=list, max_length=20_000)
+    binary_outcomes: List[int] = Field(default_factory=list, max_length=20_000)
+    walk_forward_folds: List[QuantWalkForwardFold] = Field(default_factory=list, max_length=30)
+    strategies_tried: int = Field(default=1, ge=1, le=100_000)
+    bootstrap_samples: int = Field(default=2_000, ge=500, le=10_000)
+    monte_carlo_paths: int = Field(default=2_000, ge=500, le=10_000)
+    confidence_level: float = Field(default=0.95, ge=0.80, le=0.999)
+    risk_fraction_per_trade: float = Field(default=0.005, gt=0.0, le=0.05)
+    ruin_drawdown_threshold: float = Field(default=0.30, gt=0.05, le=0.95)
+    max_allowed_drawdown_rr: float = Field(default=12.0, gt=0.0, le=1_000.0)
+    max_allowed_ruin_probability: float = Field(default=0.01, ge=0.0, le=0.50)
+    random_seed: int = Field(default=73_021, ge=0, le=2_147_483_647)
+
+    @model_validator(mode="after")
+    def validate_quant_contract(self):
+        import math
+
+        n = len(self.returns_rr)
+        if self.dataset.sample_count != n:
+            raise ValueError("dataset sample_count must equal returns_rr length")
+        for name, values in (
+            ("returns_rr", self.returns_rr),
+            ("benchmark_returns_rr", self.benchmark_returns_rr),
+            ("predicted_probabilities", self.predicted_probabilities),
+        ):
+            if any(not math.isfinite(float(value)) for value in values):
+                raise ValueError(f"{name} must contain only finite values")
+        if self.timestamps:
+            if len(self.timestamps) != n:
+                raise ValueError("timestamps length must equal returns_rr length")
+            if any(current <= previous for previous, current in zip(self.timestamps, self.timestamps[1:])):
+                raise ValueError("timestamps must be strictly increasing")
+        if self.benchmark_returns_rr and len(self.benchmark_returns_rr) != n:
+            raise ValueError("benchmark_returns_rr length must equal returns_rr length")
+        has_probabilities = bool(self.predicted_probabilities or self.binary_outcomes)
+        if has_probabilities:
+            if len(self.predicted_probabilities) != n or len(self.binary_outcomes) != n:
+                raise ValueError("probabilities and outcomes must both match returns_rr length")
+            if any(value < 0.0 or value > 1.0 for value in self.predicted_probabilities):
+                raise ValueError("predicted_probabilities must be in [0,1]")
+            if any(value not in (0, 1) for value in self.binary_outcomes):
+                raise ValueError("binary_outcomes must contain only 0 or 1")
+        return self
+
+
+class QuantInterval(BaseModel):
+    estimate: float
+    lower: float
+    upper: float
+    confidence_level: float
+    method: str
+
+
+class QuantCalibrationDiagnostics(BaseModel):
+    available: bool
+    sample_count: int = 0
+    brier_score: Optional[float] = None
+    base_rate_brier_score: Optional[float] = None
+    brier_skill_score: Optional[float] = None
+    expected_calibration_error: Optional[float] = None
+    maximum_calibration_error: Optional[float] = None
+    log_loss: Optional[float] = None
+    reliability_bins: List[dict] = Field(default_factory=list)
+    eligible_for_calibration: bool = False
+    probability_is_calibrated: bool = False
+    calibration_id: Optional[str] = None
+    scope: str = "diagnostic_only"
+    failed_requirements: List[str] = Field(default_factory=list)
+
+
+class QuantWalkForwardDiagnostics(BaseModel):
+    available: bool
+    fold_count: int = 0
+    all_boundaries_purged: bool = False
+    positive_fold_ratio: float = 0.0
+    aggregate_test_net_rr: float = 0.0
+    mean_fold_expectancy_rr: float = 0.0
+    worst_fold_net_rr: float = 0.0
+    selected_config_count: int = 0
+    stable: bool = False
+
+
+class QuantValidationResponse(BaseModel):
+    strategy_id: str
+    strategy_version: str
+    dataset_id: str
+    dataset_version: str
+    analysis_fingerprint: str
+    status: Literal["REJECT", "INSUFFICIENT_EVIDENCE", "WATCH", "RESEARCH_CANDIDATE"]
+    sample_count: int
+    empirical_win_rate: float
+    net_rr: float
+    expectancy_rr: float
+    median_rr: float
+    standard_deviation_rr: float
+    profit_factor: float
+    max_drawdown_rr: float
+    expectancy_interval: QuantInterval
+    benchmark_difference_interval: Optional[QuantInterval] = None
+    sign_flip_p_value: float
+    multiple_testing_alpha: float
+    multiple_testing_adjusted_significant: bool
+    monte_carlo_drawdown_p50_rr: float
+    monte_carlo_drawdown_p95_rr: float
+    monte_carlo_drawdown_p99_rr: float
+    simulated_risk_of_ruin: float
+    walk_forward: QuantWalkForwardDiagnostics
+    calibration: QuantCalibrationDiagnostics
+    hard_gates: dict[str, bool] = Field(default_factory=dict)
+    failed_gates: List[str] = Field(default_factory=list)
+    limitations: List[str] = Field(default_factory=list)
+    actionable_for_live: bool = False
+    deterministic_reproducible: bool = True
+    random_seed: int
+    disclaimer: str = "Research diagnostics do not prove future profitability or authorize live execution."
+
+
+class PurgedSplitPlanRequest(BaseModel):
+    sample_count: int = Field(ge=100, le=1_000_000)
+    train_size: int = Field(ge=50, le=900_000)
+    test_size: int = Field(ge=10, le=100_000)
+    step_size: int = Field(ge=1, le=100_000)
+    embargo_bars: int = Field(ge=1, le=100_000)
+    max_folds: int = Field(default=20, ge=1, le=100)
+
+
+class PurgedSplitPlanResponse(BaseModel):
+    sample_count: int
+    fold_count: int
+    folds: List[dict] = Field(default_factory=list)
+    overlap_detected: bool = False
+    all_boundaries_purged: bool = True
+    plan_fingerprint: str
+
+
 class ConnectorCapability(BaseModel):
     connector: str
     market_type: str

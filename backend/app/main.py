@@ -37,6 +37,10 @@ from app.models import (
     Mt5OrderRequest,
     NotificationTestRequest,
     OandaOrderRequest,
+    PurgedSplitPlanRequest,
+    PurgedSplitPlanResponse,
+    QuantValidationRequest,
+    QuantValidationResponse,
     RiskPlan,
     RiskPlanRequest,
     SignalHistoryItem,
@@ -67,6 +71,7 @@ from app.services.production_guard_service import (
     request_id,
     structured_http_log,
 )
+from app.services.quant_validation_service import quant_validation_service
 from app.services.readiness_service import ReadinessService
 from app.services.mt5_connector import Mt5Connector
 from app.services.oanda_connector import OandaConnector
@@ -1303,6 +1308,18 @@ def execution_status() -> dict:
 @app.post("/api/v1/risk/plan", response_model=RiskPlan)
 def risk_plan(request: RiskPlanRequest):
     return build_risk_plan(request)
+
+
+@app.post("/api/v1/research/quant-validate", response_model=QuantValidationResponse)
+def quant_validate(request: QuantValidationRequest, user=Depends(current_user)):
+    """Run reproducible research diagnostics without authorizing live execution."""
+    return quant_validation_service.validate(request)
+
+
+@app.post("/api/v1/research/purged-split-plan", response_model=PurgedSplitPlanResponse)
+def purged_split_plan(request: PurgedSplitPlanRequest, user=Depends(current_user)):
+    """Build a deterministic purged walk-forward index plan."""
+    return quant_validation_service.build_split_plan(request)
 
 
 @app.post("/api/v1/signals/analyze", response_model=SignalResponse)

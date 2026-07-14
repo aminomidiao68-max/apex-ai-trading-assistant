@@ -753,3 +753,59 @@ def test_rc_unhandled_errors_are_sanitized_and_traceable():
     assert response.json()["request_id"] == response.headers["x-request-id"]
     assert "TOP_SECRET_VALUE" not in response.text
     assert "apikey=" not in response.text.lower()
+
+
+def test_quant_research_endpoints_are_authenticated_and_never_authorize_live():
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    returns = [0.5 if index % 2 == 0 else -0.4 for index in range(30)]
+    payload = {
+        "strategy_id": "api-research-test",
+        "strategy_version": "v1",
+        "dataset": {
+            "dataset_id": "api-fixture",
+            "version": "v1",
+            "source": "test_fixture",
+            "symbol": "BTCUSDT",
+            "market": "crypto",
+            "timeframe": "15m",
+            "start_time": start.isoformat(),
+            "end_time": (start + timedelta(minutes=15 * 30)).isoformat(),
+            "sample_count": 30,
+            "source_sha256": "b" * 64,
+            "is_point_in_time": True,
+            "is_survivorship_bias_controlled": True,
+            "is_independent_holdout": True,
+            "data_quality_score": 100,
+        },
+        "returns_rr": returns,
+        "timestamps": [
+            (start + timedelta(minutes=15 * index)).isoformat() for index in range(30)
+        ],
+        "bootstrap_samples": 500,
+        "monte_carlo_paths": 500,
+        "random_seed": 9,
+    }
+    assert client.post("/api/v1/research/quant-validate", json=payload).status_code == 401
+    auth = _register()
+    response = client.post("/api/v1/research/quant-validate", json=payload, headers=auth)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["status"] == "INSUFFICIENT_EVIDENCE"
+    assert result["actionable_for_live"] is False
+    assert result["deterministic_reproducible"] is True
+
+    split = client.post(
+        "/api/v1/research/purged-split-plan",
+        json={
+            "sample_count": 1000,
+            "train_size": 300,
+            "test_size": 100,
+            "step_size": 100,
+            "embargo_bars": 5,
+            "max_folds": 3,
+        },
+        headers=auth,
+    )
+    assert split.status_code == 200
+    assert split.json()["fold_count"] == 3
+    assert split.json()["all_boundaries_purged"] is True
