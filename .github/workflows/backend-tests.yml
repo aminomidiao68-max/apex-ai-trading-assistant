@@ -52,7 +52,7 @@ jobs:
           APP_ENV: test
           SEED_DEMO_USER: "false"
           ENABLE_LIVE_EXECUTION: "false"
-        run: pytest -q
+        run: python -m pytest -q
 
       - name: Run PostgreSQL integration gate
         env:
@@ -60,4 +60,4 @@ jobs:
           DATABASE_URL: postgresql://apex:apex_test_password@127.0.0.1:5432/apex_test
           SEED_DEMO_USER: "false"
           ENABLE_LIVE_EXECUTION: "false"
-        run: pytest -q tests/test_postgres_integration.py
+        run: python -m pytest -q tests/test_postgres_integration.py
