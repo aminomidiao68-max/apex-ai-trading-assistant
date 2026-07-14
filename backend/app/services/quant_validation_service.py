@@ -66,6 +66,7 @@ def _analysis_fingerprint(request: QuantValidationRequest) -> str:
         "dataset": request.dataset.model_dump(mode="json"),
         "returns_rr": request.returns_rr,
         "timestamps": [item.isoformat() for item in request.timestamps],
+        "return_source_indices": request.return_source_indices,
         "benchmark_returns_rr": request.benchmark_returns_rr,
         "predicted_probabilities": request.predicted_probabilities,
         "binary_outcomes": request.binary_outcomes,
@@ -268,8 +269,24 @@ def _walk_forward(request: QuantValidationRequest) -> tuple[QuantWalkForwardDiag
     returns_match = True
     fold_nets = []
     fold_expectancies = []
+    source_return_map = (
+        dict(zip(request.return_source_indices, request.returns_rr))
+        if request.return_source_indices
+        else {}
+    )
     for fold in folds:
-        expected = request.returns_rr[fold.test_start_index : fold.test_end_index + 1]
+        if fold.test_return_indices:
+            if not source_return_map:
+                returns_match = False
+                expected = []
+            else:
+                expected = [
+                    source_return_map[index]
+                    for index in fold.test_return_indices
+                    if index in source_return_map
+                ]
+        else:
+            expected = request.returns_rr[fold.test_start_index : fold.test_end_index + 1]
         if len(expected) != len(fold.test_returns_rr) or any(
             abs(left - right) > 1e-12 for left, right in zip(expected, fold.test_returns_rr)
         ):

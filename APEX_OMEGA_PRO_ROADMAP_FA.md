@@ -97,3 +97,17 @@
 - User-scoped dataset isolation
 - authenticated collect/list/manifest API
 - Real OKX smoke بدون ادعای Holdout یا Edge
+
+## ⏳ GA Research Alpha 1 — Stored Backtest & Purged Walk-forward
+
+- user-scoped stored dataset execution
+- fixed configuration fingerprint و freeze-time gate
+- retrospective result هرگز Holdout نیست
+- train-only parameter selection
+- embargo >= lookahead
+- non-overlapping OOS windows
+- sparse OOS return/source-index mapping
+- fold fingerprint و deterministic rerun
+- Quant Evidence فقط روی Activated OOS trades
+- zero-edge null benchmark با limitation صریح
+- Live authorization همیشه false

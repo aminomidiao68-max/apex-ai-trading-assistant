@@ -635,6 +635,7 @@ class QuantWalkForwardFold(BaseModel):
     embargo_bars: int = Field(default=1, ge=1, le=10_000)
     selected_config_id: str = Field(min_length=1, max_length=120)
     test_returns_rr: List[float] = Field(min_length=1, max_length=5_000)
+    test_return_indices: List[int] = Field(default_factory=list, max_length=5_000)
 
     @model_validator(mode="after")
     def validate_purged_fold(self):
@@ -644,9 +645,25 @@ class QuantWalkForwardFold(BaseModel):
             raise ValueError("test_end_index must be >= test_start_index")
         if self.train_end_index + self.embargo_bars >= self.test_start_index:
             raise ValueError("walk-forward fold violates purge/embargo boundary")
-        expected = self.test_end_index - self.test_start_index + 1
-        if expected != len(self.test_returns_rr):
-            raise ValueError("test_returns_rr length must match test index range")
+        if self.test_return_indices:
+            if len(self.test_return_indices) != len(self.test_returns_rr):
+                raise ValueError("test_return_indices length must match sparse test returns")
+            if any(
+                index < self.test_start_index or index > self.test_end_index
+                for index in self.test_return_indices
+            ):
+                raise ValueError("test_return_indices must stay inside the test range")
+            if any(
+                current <= previous
+                for previous, current in zip(
+                    self.test_return_indices, self.test_return_indices[1:]
+                )
+            ):
+                raise ValueError("test_return_indices must be strictly increasing")
+        else:
+            expected = self.test_end_index - self.test_start_index + 1
+            if expected != len(self.test_returns_rr):
+                raise ValueError("dense test_returns_rr length must match test index range")
         return self
 
 
@@ -656,6 +673,7 @@ class QuantValidationRequest(BaseModel):
     dataset: QuantDatasetManifest
     returns_rr: List[float] = Field(min_length=30, max_length=20_000)
     timestamps: List[datetime] = Field(default_factory=list, max_length=20_000)
+    return_source_indices: List[int] = Field(default_factory=list, max_length=20_000)
     benchmark_returns_rr: List[float] = Field(default_factory=list, max_length=20_000)
     predicted_probabilities: List[float] = Field(default_factory=list, max_length=20_000)
     binary_outcomes: List[int] = Field(default_factory=list, max_length=20_000)
@@ -689,6 +707,18 @@ class QuantValidationRequest(BaseModel):
                 raise ValueError("timestamps length must equal returns_rr length")
             if any(current <= previous for previous, current in zip(self.timestamps, self.timestamps[1:])):
                 raise ValueError("timestamps must be strictly increasing")
+        if self.return_source_indices:
+            if len(self.return_source_indices) != n:
+                raise ValueError("return_source_indices length must equal returns_rr length")
+            if any(index < 0 for index in self.return_source_indices):
+                raise ValueError("return_source_indices must be non-negative")
+            if any(
+                current <= previous
+                for previous, current in zip(
+                    self.return_source_indices, self.return_source_indices[1:]
+                )
+            ):
+                raise ValueError("return_source_indices must be strictly increasing")
         if self.benchmark_returns_rr and len(self.benchmark_returns_rr) != n:
             raise ValueError("benchmark_returns_rr length must equal returns_rr length")
         has_probabilities = bool(self.predicted_probabilities or self.binary_outcomes)
@@ -865,6 +895,110 @@ class PurgedSplitPlanResponse(BaseModel):
     overlap_detected: bool = False
     all_boundaries_purged: bool = True
     plan_fingerprint: str
+
+
+class StoredBacktestResearchRequest(BaseModel):
+    dataset_id: str = Field(min_length=3, max_length=120)
+    dataset_version: str = Field(min_length=1, max_length=80)
+    configuration_id: str = Field(min_length=3, max_length=120)
+    configuration_frozen_at: Optional[datetime] = None
+    window_size: int = Field(default=30, ge=20, le=120)
+    lookahead_candles: int = Field(default=8, ge=2, le=50)
+    score_threshold: float = Field(default=65.0, ge=0.0, le=100.0)
+    max_signals: int = Field(default=200, ge=5, le=200)
+    take_profit_index: int = Field(default=0, ge=0, le=2)
+    risk_settings: RiskSettings = Field(
+        default_factory=lambda: RiskSettings(account_balance=5_000, risk_per_trade_pct=1.0)
+    )
+    trade_stats: TradeStats = Field(default_factory=TradeStats)
+    execution: BacktestExecutionSettings = Field(default_factory=BacktestExecutionSettings)
+
+
+class StoredBacktestResearchResponse(BaseModel):
+    dataset_ref: str
+    canonical_sha256: str
+    configuration_id: str
+    configuration_fingerprint: str
+    configuration_frozen_before_dataset: bool
+    evaluation_scope: Literal["fixed_config_holdout", "retrospective_not_holdout"]
+    backtest: BacktestSummary
+    limitations: List[str] = Field(default_factory=list)
+    actionable_for_live: bool = False
+
+
+class StoredWalkForwardResearchRequest(BaseModel):
+    dataset_id: str = Field(min_length=3, max_length=120)
+    dataset_version: str = Field(min_length=1, max_length=80)
+    train_size: int = Field(default=500, ge=100, le=15_000)
+    test_size: int = Field(default=200, ge=30, le=5_000)
+    step_size: int = Field(default=200, ge=30, le=5_000)
+    embargo_bars: int = Field(default=10, ge=2, le=1_000)
+    max_folds: int = Field(default=10, ge=3, le=30)
+    window_sizes: List[int] = Field(default_factory=lambda: [20, 30, 40], min_length=1, max_length=10)
+    lookahead_options: List[int] = Field(default_factory=lambda: [6, 8, 10], min_length=1, max_length=10)
+    score_thresholds: List[float] = Field(default_factory=lambda: [60.0, 65.0, 70.0], min_length=1, max_length=10)
+    take_profit_indices: List[int] = Field(default_factory=lambda: [0, 1, 2], min_length=1, max_length=3)
+    max_signals_per_fold: int = Field(default=200, ge=5, le=200)
+    minimum_activated_trades: int = Field(default=3, ge=1, le=500)
+    bootstrap_samples: int = Field(default=2_000, ge=500, le=10_000)
+    monte_carlo_paths: int = Field(default=2_000, ge=500, le=10_000)
+    risk_fraction_per_trade: float = Field(default=0.005, gt=0.0, le=0.05)
+    ruin_drawdown_threshold: float = Field(default=0.30, gt=0.05, le=0.95)
+    max_allowed_drawdown_rr: float = Field(default=12.0, gt=0.0, le=1_000.0)
+    max_allowed_ruin_probability: float = Field(default=0.01, ge=0.0, le=0.50)
+    random_seed: int = Field(default=73_021, ge=0, le=2_147_483_647)
+    risk_settings: RiskSettings = Field(
+        default_factory=lambda: RiskSettings(account_balance=5_000, risk_per_trade_pct=1.0)
+    )
+    trade_stats: TradeStats = Field(default_factory=TradeStats)
+    execution: BacktestExecutionSettings = Field(default_factory=BacktestExecutionSettings)
+
+    @model_validator(mode="after")
+    def validate_stored_walk_forward(self):
+        if self.step_size < self.test_size:
+            raise ValueError("step_size must be >= test_size to prevent overlapping OOS windows")
+        if self.embargo_bars < max(self.lookahead_options):
+            raise ValueError("embargo_bars must be >= maximum lookahead to purge label overlap")
+        if min(self.window_sizes) < 20 or max(self.window_sizes) > 120:
+            raise ValueError("window_sizes must remain in [20,120]")
+        if self.train_size < max(self.window_sizes) + max(self.lookahead_options) + 5:
+            raise ValueError("train_size is too small for the largest parameter combination")
+        if self.test_size <= max(self.lookahead_options):
+            raise ValueError("test_size must exceed maximum lookahead")
+        return self
+
+
+class StoredWalkForwardFoldResult(BaseModel):
+    fold_id: str
+    train_start_index: int
+    train_end_index: int
+    test_start_index: int
+    test_end_index: int
+    embargo_bars: int
+    selected_config_id: str
+    selected_window_size: int
+    selected_lookahead_candles: int
+    selected_score_threshold: float
+    selected_take_profit_index: int
+    training_net_rr: float
+    training_win_rate: float
+    test_summary: BacktestSummary
+    oos_return_count: int
+    fold_fingerprint: str
+
+
+class StoredWalkForwardResearchResponse(BaseModel):
+    dataset_ref: str
+    canonical_sha256: str
+    status: Literal["REJECT", "INSUFFICIENT_EVIDENCE", "WATCH", "RESEARCH_CANDIDATE"]
+    fold_count: int
+    combinations_per_fold: int
+    total_oos_activated_trades: int
+    aggregate_oos_net_rr: float
+    folds: List[StoredWalkForwardFoldResult] = Field(default_factory=list)
+    quant_validation: Optional[QuantValidationResponse] = None
+    limitations: List[str] = Field(default_factory=list)
+    actionable_for_live: bool = False
 
 
 class ConnectorCapability(BaseModel):

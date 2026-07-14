@@ -862,3 +862,29 @@ def test_historical_pipeline_endpoints_are_authenticated_and_persist_manifest(mo
     )
     assert manifest.status_code == 200
     assert manifest.json()["stored_candle_count"] == 40
+
+
+def test_stored_research_endpoints_are_authenticated_and_sanitize_missing_dataset():
+    fixed_payload = {
+        "dataset_id": "missing-research-dataset",
+        "dataset_version": "v1",
+        "configuration_id": "fixed-config",
+    }
+    assert client.post("/api/v1/research/stored-backtest", json=fixed_payload).status_code == 401
+    auth = _register()
+    fixed = client.post(
+        "/api/v1/research/stored-backtest", json=fixed_payload, headers=auth
+    )
+    assert fixed.status_code == 404
+    assert fixed.json()["detail"]["code"] == "historical_dataset_not_found"
+
+    walk = client.post(
+        "/api/v1/research/stored-walk-forward",
+        json={
+            "dataset_id": "missing-research-dataset",
+            "dataset_version": "v1",
+        },
+        headers=auth,
+    )
+    assert walk.status_code == 404
+    assert walk.json()["detail"]["code"] == "historical_dataset_not_found"

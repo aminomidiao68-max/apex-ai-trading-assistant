@@ -2,7 +2,7 @@
 
 > **سند مرجع جامع برای بازیابی کامل Context پروژه و ادامه کار بدون نیاز به این گفتگو**  
 > نسخه سند: `1.0`  
-> وضعیت Baseline زنده در زمان ثبت اولیه: `3.0.0-rc1`؛ Candidate فعلی: `3.1.0-data-alpha1`  
+> وضعیت Baseline زنده در زمان ثبت اولیه: `3.0.0-rc1`؛ Candidate فعلی: `3.1.0-research-alpha1`  
 > تاریخ Snapshot: `2026-07-14`  
 > زبان مرجع: فارسی؛ نام فیلدها، مسیرها و قراردادهای کد انگلیسی باقی مانده‌اند.
 
@@ -1273,6 +1273,21 @@ Candidate `3.1.0-data-alpha1` لایه جمع‌آوری و Registry داده ت
 - `53 passed, 1 skipped` در Gate محلی
 
 Dataset به‌صورت خودکار Holdout/Survivorship-controlled معرفی نمی‌شود و Collection هیچ ادعای Edge ندارد.
+
+## 10.7) Post-RC Research Alpha 1 — Stored OOS Pipeline
+
+Candidate `3.1.0-research-alpha1` Dataset Registry را به Backtest/Quant وصل می‌کند:
+
+- Fixed config فقط با freeze time قبل Dataset، Holdout محسوب می‌شود.
+- Retrospective run صریحاً `retrospective_not_holdout` است.
+- Parameter selection فقط روی Train انجام می‌شود.
+- Embargo حداقل برابر Lookahead و Test windows غیرهم‌پوشان‌اند.
+- Sparse OOS trade return با Candle source index ثبت می‌شود.
+- Fold/config/return fingerprint deterministic است.
+- Quant Evidence فقط روی Activated OOS trades اجرا می‌شود.
+- Zero-edge benchmark صرفاً Null baseline است.
+- Local Gate: `57 passed, 1 skipped`.
+- Live authorization در همه Responseها false است.
 
 ## 11) موتور Strict فعلی
 

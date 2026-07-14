@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.1.0-data-alpha1",
-    "status": "APEX GA Program - Historical Data Alpha 1"
+    "current_version": "3.1.0-research-alpha1",
+    "status": "APEX GA Program - Stored Research Alpha 1"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -499,6 +499,23 @@
             "53 local backend tests",
             "User-scoped dataset isolation"
           ]
+        },
+        {
+          "version": "v3.1 Research Alpha 1 - Stored Backtest & Purged Walk-forward",
+          "date": "2026-07-14T20:00:00+03:30",
+          "features": [
+            "Stored user-scoped fixed backtest",
+            "Configuration freeze-time holdout gate",
+            "Retrospective scope labeling",
+            "Train-only parameter sweep",
+            "Embargo at least maximum lookahead",
+            "Non-overlapping OOS test windows",
+            "Sparse trade return source-index mapping",
+            "Fold and configuration fingerprints",
+            "Quant validation on activated OOS trades only",
+            "Zero-edge null benchmark disclaimer",
+            "57 local backend tests"
+          ]
         }
       ]
     }
@@ -744,6 +761,21 @@
         "/api/v1/research/datasets/{dataset_id}/{version}"
       ],
       "user_scoped": true
+    },
+    "stored_research_pipeline": {
+      "version": "stored-research-v1",
+      "live_authorization": false,
+      "features": [
+        "fixed-config holdout gate",
+        "purged walk-forward",
+        "sparse OOS returns",
+        "multiple-testing trial propagation",
+        "deterministic fold fingerprints"
+      ],
+      "endpoints": [
+        "/api/v1/research/stored-backtest",
+        "/api/v1/research/stored-walk-forward"
+      ]
     }
   },
   "smc_ict_engine": {
@@ -1098,8 +1130,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "2.2-data-alpha1",
-    "last_updated": "2026-07-14T19:00:00+03:30",
+    "documentation_version": "2.3-research-alpha1",
+    "last_updated": "2026-07-14T20:00:00+03:30",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

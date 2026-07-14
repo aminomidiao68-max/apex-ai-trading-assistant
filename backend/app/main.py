@@ -50,6 +50,10 @@ from app.models import (
     SignalHistoryItem,
     SignalRequest,
     SignalResponse,
+    StoredBacktestResearchRequest,
+    StoredBacktestResearchResponse,
+    StoredWalkForwardResearchRequest,
+    StoredWalkForwardResearchResponse,
     SystemReadinessResponse,
     TradeJournalCloseRequest,
     TradeJournalCreateRequest,
@@ -86,6 +90,7 @@ from app.services.setup_state_engine import SetupStateEngine
 from app.services.signal_engine import SignalEngine
 from app.services.strict_decision_engine import apply_strict_decision
 from app.services.storage_service import StorageService
+from app.services.stored_research_service import StoredResearchError, StoredResearchService
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 
@@ -102,6 +107,11 @@ ctrader_connector = CTraderConnector()
 auth_service = AuthService()
 storage = StorageService()
 historical_data_service = HistoricalDataService(storage.database)
+stored_research_service = StoredResearchService(
+    historical_data_service.store,
+    backtest_service,
+    quant_validation_service,
+)
 notification_service = NotificationService(storage)
 readiness_service = ReadinessService(storage.database)
 orderflow_service = OrderFlowService(ttl_seconds=20)
@@ -1372,6 +1382,39 @@ def get_historical_dataset_manifest(
         return historical_data_service.store.get_manifest(user.id, dataset_id, version)
     except HistoricalDataError as exc:
         _raise_historical_http_error(exc)
+
+
+def _raise_stored_research_http_error(exc: StoredResearchError):
+    status = 404 if exc.code == "historical_dataset_not_found" else 400
+    raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
+
+
+@app.post(
+    "/api/v1/research/stored-backtest",
+    response_model=StoredBacktestResearchResponse,
+)
+def run_stored_backtest(
+    request: StoredBacktestResearchRequest,
+    user=Depends(current_user),
+):
+    try:
+        return stored_research_service.run_fixed_backtest(user.id, request)
+    except StoredResearchError as exc:
+        _raise_stored_research_http_error(exc)
+
+
+@app.post(
+    "/api/v1/research/stored-walk-forward",
+    response_model=StoredWalkForwardResearchResponse,
+)
+def run_stored_walk_forward(
+    request: StoredWalkForwardResearchRequest,
+    user=Depends(current_user),
+):
+    try:
+        return stored_research_service.run_purged_walk_forward(user.id, request)
+    except StoredResearchError as exc:
+        _raise_stored_research_http_error(exc)
 
 
 @app.post("/api/v1/signals/analyze", response_model=SignalResponse)
