@@ -2,7 +2,7 @@
 
 > **سند مرجع جامع برای بازیابی کامل Context پروژه و ادامه کار بدون نیاز به این گفتگو**  
 > نسخه سند: `1.0`  
-> وضعیت Baseline زنده در زمان ثبت اولیه: `3.0.0-rc1`؛ Candidate بعدی: `3.1.0-quant-alpha1`  
+> وضعیت Baseline زنده در زمان ثبت اولیه: `3.0.0-rc1`؛ Candidate فعلی: `3.1.0-data-alpha1`  
 > تاریخ Snapshot: `2026-07-14`  
 > زبان مرجع: فارسی؛ نام فیلدها، مسیرها و قراردادهای کد انگلیسی باقی مانده‌اند.
 
@@ -1254,6 +1254,25 @@ Gate محلی Candidate:
 ```
 
 این مرحله هیچ Edge یا سودی را جعل نمی‌کند؛ بدون Dataset واقعی و Evidence کامل، فقط `REJECT` یا `INSUFFICIENT_EVIDENCE/WATCH` می‌دهد. بالاترین خروجی `RESEARCH_CANDIDATE` است و مجوز Live نیست.
+
+## 10.6) Post-RC Data Alpha 1 — Historical Pipeline
+
+Candidate `3.1.0-data-alpha1` لایه جمع‌آوری و Registry داده تاریخی را اضافه می‌کند:
+
+- OKX paginated finalized USDT-SWAP candles
+- TwelveData bounded time-series
+- Yahoo fallback با range-limit fail-fast
+- UTC canonicalization، duplicate/gap diagnostics
+- Canonical SHA-256
+- Immutable dataset ID/version
+- PostgreSQL migration/schema v2
+- User-scoped dataset isolation
+- `quant_datasets` با Manifest و Gzip candles
+- APIهای collect/list/manifest با Bearer
+- Real OKX smoke: 2 pages، 200 raw، 167 accepted، duplicate/missing صفر
+- `53 passed, 1 skipped` در Gate محلی
+
+Dataset به‌صورت خودکار Holdout/Survivorship-controlled معرفی نمی‌شود و Collection هیچ ادعای Edge ندارد.
 
 ## 11) موتور Strict فعلی
 

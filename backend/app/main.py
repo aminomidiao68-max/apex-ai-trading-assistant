@@ -31,6 +31,10 @@ from app.models import (
     ExecutionPreviewResponse,
     BybitOrderRequest,
     CTraderOrderRequest,
+    HistoricalDataCollectRequest,
+    HistoricalDataCollectResponse,
+    HistoricalDatasetListResponse,
+    HistoricalDatasetManifestResponse,
     DeviceTokenRegisterRequest,
     LiveSignalScanRequest,
     MessageResponse,
@@ -59,6 +63,7 @@ from app.services.binance_connector import BinanceFuturesConnector
 from app.services.bybit_connector import BybitConnector
 from app.services.ctrader_connector import CTraderConnector
 from app.services.execution_engine import ExecutionEngine
+from app.services.historical_data_service import HistoricalDataError, HistoricalDataService
 from app.services.market_data_service import MarketDataService
 from app.services.news_engine import mock_news
 from app.services.notification_service import NotificationService
@@ -96,6 +101,7 @@ mt5_connector = Mt5Connector()
 ctrader_connector = CTraderConnector()
 auth_service = AuthService()
 storage = StorageService()
+historical_data_service = HistoricalDataService(storage.database)
 notification_service = NotificationService(storage)
 readiness_service = ReadinessService(storage.database)
 orderflow_service = OrderFlowService(ttl_seconds=20)
@@ -1320,6 +1326,52 @@ def quant_validate(request: QuantValidationRequest, user=Depends(current_user)):
 def purged_split_plan(request: PurgedSplitPlanRequest, user=Depends(current_user)):
     """Build a deterministic purged walk-forward index plan."""
     return quant_validation_service.build_split_plan(request)
+
+
+def _raise_historical_http_error(exc: HistoricalDataError):
+    status = 400
+    if exc.code == "historical_dataset_not_found":
+        status = 404
+    elif exc.code == "immutable_dataset_version_conflict":
+        status = 409
+    elif "unavailable" in exc.code or "provider_error" in exc.code:
+        status = 502
+    raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
+
+
+@app.post("/api/v1/research/historical/collect", response_model=HistoricalDataCollectResponse)
+async def collect_historical_dataset(
+    request: HistoricalDataCollectRequest,
+    user=Depends(current_user),
+):
+    """Collect, validate, fingerprint and optionally persist finalized historical candles."""
+    try:
+        return await historical_data_service.collect(request, user_id=user.id)
+    except HistoricalDataError as exc:
+        _raise_historical_http_error(exc)
+
+
+@app.get("/api/v1/research/datasets", response_model=HistoricalDatasetListResponse)
+def list_historical_datasets(
+    limit: int = Query(default=100, ge=1, le=500),
+    user=Depends(current_user),
+):
+    return historical_data_service.store.list(user_id=user.id, limit=limit)
+
+
+@app.get(
+    "/api/v1/research/datasets/{dataset_id}/{version}",
+    response_model=HistoricalDatasetManifestResponse,
+)
+def get_historical_dataset_manifest(
+    dataset_id: str,
+    version: str,
+    user=Depends(current_user),
+):
+    try:
+        return historical_data_service.store.get_manifest(user.id, dataset_id, version)
+    except HistoricalDataError as exc:
+        _raise_historical_http_error(exc)
 
 
 @app.post("/api/v1/signals/analyze", response_model=SignalResponse)

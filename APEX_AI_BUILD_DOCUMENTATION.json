@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.1.0-quant-alpha1",
-    "status": "APEX GA Program - Quant Evidence Alpha 1"
+    "current_version": "3.1.0-data-alpha1",
+    "status": "APEX GA Program - Historical Data Alpha 1"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -480,6 +480,25 @@
             "RESEARCH_CANDIDATE never authorizes live execution",
             "47 local backend tests"
           ]
+        },
+        {
+          "version": "v3.1 Data Alpha 1 - Historical Data Pipeline",
+          "date": "2026-07-14T19:00:00+03:30",
+          "features": [
+            "Provider-agnostic historical data adapters",
+            "OKX paginated finalized swap candles",
+            "TwelveData bounded historical adapter",
+            "Yahoo explicit range-limit rejection",
+            "UTC canonicalization, dedup and gap diagnostics",
+            "Canonical SHA-256 dataset fingerprint",
+            "Immutable dataset ID/version",
+            "PostgreSQL schema v2 quant dataset registry",
+            "Gzip-compressed canonical candle storage",
+            "Authenticated collect/list/manifest endpoints",
+            "Real seven-day OKX pagination smoke",
+            "53 local backend tests",
+            "User-scoped dataset isolation"
+          ]
         }
       ]
     }
@@ -709,6 +728,22 @@
         "/api/v1/research/quant-validate",
         "/api/v1/research/purged-split-plan"
       ]
+    },
+    "historical_data_pipeline": {
+      "schema_version": 2,
+      "providers": [
+        "okx",
+        "twelvedata",
+        "yahoo"
+      ],
+      "storage": "PostgreSQL compressed canonical candle registry",
+      "immutability": true,
+      "endpoints": [
+        "/api/v1/research/historical/collect",
+        "/api/v1/research/datasets",
+        "/api/v1/research/datasets/{dataset_id}/{version}"
+      ],
+      "user_scoped": true
     }
   },
   "smc_ict_engine": {
@@ -1063,8 +1098,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "2.1-quant-alpha1",
-    "last_updated": "2026-07-14T18:00:00+03:30",
+    "documentation_version": "2.2-data-alpha1",
+    "last_updated": "2026-07-14T19:00:00+03:30",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

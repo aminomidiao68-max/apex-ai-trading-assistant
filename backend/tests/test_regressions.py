@@ -809,3 +809,56 @@ def test_quant_research_endpoints_are_authenticated_and_never_authorize_live():
     assert split.status_code == 200
     assert split.json()["fold_count"] == 3
     assert split.json()["all_boundaries_purged"] is True
+
+
+def test_historical_pipeline_endpoints_are_authenticated_and_persist_manifest(monkeypatch):
+    from app.services.historical_data_service import HistoricalFetchResult
+
+    candles = _candles(40)
+    start = candles[0].timestamp
+
+    class FakeProvider:
+        name = "fake"
+
+        async def fetch(self, request):
+            return HistoricalFetchResult(
+                source="fake_http_provider",
+                candles=candles,
+                pages=2,
+                raw_rows=len(candles),
+            )
+
+    monkeypatch.setitem(main.historical_data_service.providers, "okx", FakeProvider())
+    dataset_id = f"http-history-{uuid4().hex}"
+    payload = {
+        "dataset_id": dataset_id,
+        "version": "v1",
+        "provider": "okx",
+        "symbol": "BTCUSDT",
+        "market": "crypto",
+        "timeframe": "15m",
+        "start_time": start.isoformat(),
+        "end_time": (start + timedelta(days=2)).isoformat(),
+        "max_candles": 100,
+        "persist": True,
+        "attest_point_in_time": True,
+    }
+    assert client.post("/api/v1/research/historical/collect", json=payload).status_code == 401
+    auth = _register()
+    collected = client.post(
+        "/api/v1/research/historical/collect", json=payload, headers=auth
+    )
+    assert collected.status_code == 200, collected.text
+    body = collected.json()
+    assert body["stored"] is True
+    assert body["accepted_rows"] == 40
+    assert len(body["canonical_sha256"]) == 64
+
+    listed = client.get("/api/v1/research/datasets", headers=auth)
+    assert listed.status_code == 200
+    assert any(item["dataset_ref"] == f"{dataset_id}:v1" for item in listed.json()["items"])
+    manifest = client.get(
+        f"/api/v1/research/datasets/{dataset_id}/v1", headers=auth
+    )
+    assert manifest.status_code == 200
+    assert manifest.json()["stored_candle_count"] == 40

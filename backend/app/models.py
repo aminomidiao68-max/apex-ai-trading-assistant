@@ -702,6 +702,81 @@ class QuantValidationRequest(BaseModel):
         return self
 
 
+class HistoricalDataCollectRequest(BaseModel):
+    dataset_id: str = Field(min_length=3, max_length=120)
+    version: str = Field(min_length=1, max_length=80)
+    provider: Literal["auto", "okx", "yahoo", "twelvedata"] = "auto"
+    symbol: str = Field(min_length=2, max_length=24)
+    market: MarketType
+    timeframe: str = Field(min_length=1, max_length=12)
+    start_time: datetime
+    end_time: datetime
+    max_candles: int = Field(default=5_000, ge=30, le=20_000)
+    persist: bool = True
+    attest_point_in_time: bool = False
+    attest_survivorship_controlled: bool = False
+    attest_independent_holdout: bool = False
+    notes: List[str] = Field(default_factory=list, max_length=30)
+
+    @model_validator(mode="after")
+    def validate_historical_request(self):
+        if self.end_time <= self.start_time:
+            raise ValueError("historical end_time must be after start_time")
+        if self.start_time.tzinfo is None or self.end_time.tzinfo is None:
+            raise ValueError("historical timestamps must be timezone-aware")
+        return self
+
+
+class HistoricalDataCollectResponse(BaseModel):
+    dataset_ref: str
+    manifest: QuantDatasetManifest
+    canonical_sha256: str
+    provider: str
+    provider_pages: int
+    raw_rows: int
+    accepted_rows: int
+    duplicate_rows: int
+    rejected_rows: int
+    estimated_missing_bars: int
+    gap_ratio: float
+    finalized_only: bool
+    stored: bool
+    storage_backend: str
+    issues: List[str] = Field(default_factory=list)
+    first_candle: Optional[Candle] = None
+    last_candle: Optional[Candle] = None
+
+
+class HistoricalDatasetRecord(BaseModel):
+    dataset_ref: str
+    dataset_id: str
+    version: str
+    source: str
+    symbol: str
+    market: MarketType
+    timeframe: str
+    start_time: datetime
+    end_time: datetime
+    sample_count: int
+    source_sha256: str
+    canonical_sha256: str
+    data_quality_score: float
+    created_at: str
+
+
+class HistoricalDatasetListResponse(BaseModel):
+    items: List[HistoricalDatasetRecord] = Field(default_factory=list)
+    count: int
+
+
+class HistoricalDatasetManifestResponse(BaseModel):
+    dataset_ref: str
+    manifest: QuantDatasetManifest
+    canonical_sha256: str
+    stored_candle_count: int
+    storage_backend: str
+
+
 class QuantInterval(BaseModel):
     estimate: float
     lower: float

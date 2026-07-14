@@ -83,3 +83,17 @@
 - Brier Score، Brier Skill، ECE، MCE، Log Loss و Reliability bins
 - Calibration ID فقط پس از Gate مستقل holdout
 - خروجی فقط `RESEARCH_CANDIDATE`؛ هرگز Live authorization نیست
+
+## ⏳ GA Data Alpha 1 — Historical Data Pipeline
+
+- Provider-agnostic historical adapters
+- OKX paginated USDT-SWAP history
+- TwelveData bounded time-series
+- Yahoo range-limit fail-fast
+- finalized-candle-only
+- UTC normalization، dedup و gap diagnostics
+- Canonical SHA-256 و immutable Dataset Version
+- PostgreSQL schema v2 و Gzip candle registry
+- User-scoped dataset isolation
+- authenticated collect/list/manifest API
+- Real OKX smoke بدون ادعای Holdout یا Edge

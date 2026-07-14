@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 1
+LATEST_SCHEMA_VERSION = 2
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -192,6 +192,16 @@ class DatabaseManager:
                     """,
                     (1, "production_core_schema", datetime.now(timezone.utc).isoformat()),
                 )
+            if 2 not in applied:
+                self._apply_schema_v2(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (2, "historical_quant_dataset_registry", datetime.now(timezone.utc).isoformat()),
+                )
             conn.commit()
 
     def _id_column(self) -> str:
@@ -320,6 +330,43 @@ class DatabaseManager:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_signals_user_id_id ON signals(user_id, id DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_user_id_id ON trades(user_id, id DESC)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notification_events(user_id, created_at DESC)")
+
+    def _apply_schema_v2(self, conn: ConnectionAdapter) -> None:
+        id_column = self._id_column()
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        binary_type = "BYTEA" if self.backend == "postgresql" else "BLOB"
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS quant_datasets (
+                id {id_column},
+                user_id {user_id_type} NOT NULL,
+                dataset_id TEXT NOT NULL,
+                version TEXT NOT NULL,
+                source TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                market TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                sample_count INTEGER NOT NULL,
+                source_sha256 TEXT NOT NULL,
+                canonical_sha256 TEXT NOT NULL,
+                data_quality_score REAL NOT NULL,
+                manifest_json TEXT NOT NULL,
+                candles_gzip {binary_type} NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(user_id, dataset_id, version)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_quant_datasets_user_symbol_timeframe "
+            "ON quant_datasets(user_id, symbol, timeframe, created_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_quant_datasets_created "
+            "ON quant_datasets(created_at DESC)"
+        )
 
     def _ensure_columns(
         self,

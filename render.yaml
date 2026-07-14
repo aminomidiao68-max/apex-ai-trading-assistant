@@ -14,7 +14,7 @@ services:
       - key: APP_ENV
         value: production
       - key: APP_VERSION
-        value: 3.1.0-quant-alpha1
+        value: 3.1.0-data-alpha1
       - key: DEFAULT_TIMEZONE
         value: UTC
       - key: CORS_ALLOWED_ORIGINS
