@@ -4,9 +4,13 @@ from pathlib import Path
 
 from app.config import settings
 from app.models import ReadinessItem, SystemReadinessResponse
+from app.services.database_service import DatabaseManager
 
 
 class ReadinessService:
+    def __init__(self, database: DatabaseManager) -> None:
+        self.database = database
+
     def build(self) -> SystemReadinessResponse:
         items: list[ReadinessItem] = []
 
@@ -17,6 +21,8 @@ class ReadinessService:
         items.append(self._finnhub_check())
         items.append(self._ai_provider_check())
         items.append(self._database_persistence_check())
+        items.append(self._backup_policy_check())
+        items.append(self._rate_limit_check())
         items.append(self._live_execution_check())
         items.extend(self._connector_checks())
 
@@ -111,18 +117,57 @@ class ReadinessService:
         )
 
     def _database_persistence_check(self) -> ReadinessItem:
-        if settings.database_path.strip():
+        health = self.database.health()
+        if not health["connected"] or not health["migration_current"]:
             return ReadinessItem(
                 category="database",
-                key="DATABASE_PATH",
+                key="DATABASE_URL",
+                status="missing",
+                message="Database is unavailable or schema migration is not current",
+            )
+        if health["backend"] == "postgresql" and health["persistent"]:
+            return ReadinessItem(
+                category="database",
+                key="DATABASE_URL",
                 status="ready",
-                message="Explicit database path is configured",
+                message="PostgreSQL persistence is connected and schema migration is current",
+            )
+        status = "missing" if settings.app_env.lower() == "production" else "warning"
+        return ReadinessItem(
+            category="database",
+            key="DATABASE_URL",
+            status=status,
+            message="SQLite is available for local/test use; PostgreSQL is required for production RC",
+        )
+
+    def _backup_policy_check(self) -> ReadinessItem:
+        if self.database.backend == "postgresql":
+            return ReadinessItem(
+                category="database",
+                key="BACKUP_POLICY",
+                status="ready",
+                message=f"PostgreSQL pg_dump/restore runbook configured with {settings.backup_retention_days}-day retention",
             )
         return ReadinessItem(
             category="database",
-            key="DATABASE_PATH",
+            key="BACKUP_POLICY",
             status="warning",
-            message="Local SQLite is ephemeral on Render; configure persistent storage before production accounts",
+            message="SQLite online backup is available; production requires PostgreSQL backup automation",
+        )
+
+    def _rate_limit_check(self) -> ReadinessItem:
+        if settings.rate_limit_enabled:
+            return ReadinessItem(
+                category="security",
+                key="RATE_LIMIT_ENABLED",
+                status="ready",
+                message="Auth, AI, heavy and default sliding-window rate-limit policies are enabled",
+            )
+        return ReadinessItem(
+            category="security",
+            key="RATE_LIMIT_ENABLED",
+            status="warning",
+            message="Rate limiting is disabled",
         )
 
     def _live_execution_check(self) -> ReadinessItem:

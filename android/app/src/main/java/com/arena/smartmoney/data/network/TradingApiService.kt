@@ -56,6 +56,7 @@ import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
+import java.util.UUID
 
 interface TradingApiService {
     @POST("api/v1/auth/register")
@@ -177,6 +178,7 @@ interface TradingApiService {
                     val builder = chain.request().newBuilder()
                         .header("User-Agent", "ApexAI-Android/${BuildConfig.VERSION_NAME}")
                         .header("Accept", "application/json")
+                        .header("X-Request-ID", UUID.randomUUID().toString())
                     AuthTokenProvider.authorizationHeader()?.let { value ->
                         builder.header("Authorization", value)
                     }

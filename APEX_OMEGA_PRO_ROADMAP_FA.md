@@ -56,9 +56,16 @@
 - Probability بدون Calibration با برچسب `model_estimate_not_calibrated`
 - AI فقط توضیح می‌دهد و قادر به تغییر تصمیم یا مجوز اجرا نیست
 
-## RC — Chart, Mobile & Production Gate
+## ⏳ RC1 — Mobile & Production Gate (Implementation Complete; Release Gate Pending)
 
-- decision/evidence panels
-- strict plan visualization
-- PostgreSQL persistence
-- monitoring، rate limit، backup و release candidate tests
+- decision/evidence panels و strict plan visualization
+- PostgreSQL 16 persistence با Connection Pool و Migration
+- SQLite local/test fallback و Legacy Upgrade
+- Request ID، Structured Monitoring و Metrics
+- Auth/AI/Heavy/Default Rate Limiting
+- Backup/Restore با Manifest و SHA-256
+- Password Hash upgrade و Session Token hashing
+- Render Blueprint database binding
+- Android APK provenance manifest
+- SQLite Regression و PostgreSQL integration tests
+- پذیرش نهایی فقط پس از Backend/Android CI و `/ready` زنده

@@ -3,9 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-
-from app.config import settings
+from app.services.database_service import DatabaseManager
 from app.models import (
     AnalyticsReport,
     AnalyticsSummary,
@@ -28,111 +26,15 @@ from app.models import (
 
 class StorageService:
     def __init__(self, db_path: str | None = None) -> None:
-        root = Path(__file__).resolve().parents[2]
-        data_dir = root / "app_data"
-        data_dir.mkdir(parents=True, exist_ok=True)
-        configured_path = settings.database_path.strip()
-        self.db_path = db_path or configured_path or str(data_dir / "smartmoney.db")
-        self._init_db()
+        self.database = DatabaseManager(db_path=db_path)
+        self.db_path = self.database.sqlite_path or ""
+        self.db_backend = self.database.backend
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def _connect(self):
+        return self.database.connection()
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
-
-    def _column_exists(self, conn: sqlite3.Connection, table: str, column: str) -> bool:
-        rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
-        return any(row["name"] == column for row in rows)
-
-    def _ensure_column(self, conn: sqlite3.Connection, table: str, definition: str) -> None:
-        column_name = definition.split()[0]
-        if not self._column_exists(conn, table, column_name):
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
-
-    def _init_db(self) -> None:
-        with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS signals (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    symbol TEXT NOT NULL,
-                    market TEXT NOT NULL,
-                    timeframe TEXT NOT NULL,
-                    direction TEXT NOT NULL,
-                    score REAL NOT NULL,
-                    confidence TEXT NOT NULL,
-                    session_name TEXT NOT NULL,
-                    news_blocked INTEGER NOT NULL,
-                    entry_low REAL,
-                    entry_high REAL,
-                    stop_loss REAL,
-                    take_profits_json TEXT NOT NULL,
-                    risk_to_reward REAL,
-                    reasons_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            self._ensure_column(conn, "signals", "user_id INTEGER")
-            self._ensure_column(conn, "signals", "score_breakdown_json TEXT NOT NULL DEFAULT '{}'")
-            self._ensure_column(conn, "signals", "setup_grade TEXT NOT NULL DEFAULT 'C'")
-            self._ensure_column(conn, "signals", "execution_label TEXT NOT NULL DEFAULT 'observe'")
-            self._ensure_column(conn, "signals", "entry_model TEXT NOT NULL DEFAULT 'No Trade'")
-            self._ensure_column(conn, "signals", "ai_summary TEXT NOT NULL DEFAULT ''")
-            self._ensure_column(conn, "signals", "confluence_tags_json TEXT NOT NULL DEFAULT '[]'")
-            self._ensure_column(conn, "signals", "risk_flags_json TEXT NOT NULL DEFAULT '[]'")
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS trades (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    symbol TEXT NOT NULL,
-                    market TEXT NOT NULL,
-                    direction TEXT NOT NULL,
-                    entry_price REAL NOT NULL,
-                    stop_loss REAL NOT NULL,
-                    take_profit REAL,
-                    exit_price REAL,
-                    size REAL NOT NULL,
-                    pnl_amount REAL,
-                    status TEXT NOT NULL,
-                    notes TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    closed_at TEXT
-                )
-                """
-            )
-            self._ensure_column(conn, "trades", "user_id INTEGER")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_signals_user_id_id ON signals(user_id, id DESC)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_trades_user_id_id ON trades(user_id, id DESC)")
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS device_tokens (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    token TEXT NOT NULL UNIQUE,
-                    platform TEXT NOT NULL,
-                    device_name TEXT,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS notification_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    title TEXT NOT NULL,
-                    body TEXT NOT NULL,
-                    mode TEXT NOT NULL,
-                    sent_count INTEGER NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
-            )
-            conn.commit()
 
     def save_signal(self, signal: SignalResponse, user_id: int | None = None) -> SignalHistoryItem:
         created_at = self._now()

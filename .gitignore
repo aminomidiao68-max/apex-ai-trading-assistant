@@ -2,6 +2,12 @@
 backend/.venv/
 backend/__pycache__/
 backend/app_data/
+backend/backups/
+backups/
+*.dump
+*.manifest.json
+*.pre-restore-*
+*.restore-tmp
 *.pyc
 
 # Android / Gradle

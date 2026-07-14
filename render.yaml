@@ -2,27 +2,62 @@ services:
   - type: web
     name: apex-ai-backend
     runtime: python
+    plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers
+    healthCheckPath: /ready
+    autoDeploy: true
     envVars:
       - key: APP_NAME
         value: Apex AI Trading API
       - key: APP_ENV
         value: production
       - key: APP_VERSION
-        value: 3.0.0-alpha5
+        value: 3.0.0-rc1
       - key: DEFAULT_TIMEZONE
         value: UTC
       - key: CORS_ALLOWED_ORIGINS
         value: ""
+      - key: DATABASE_URL
+        fromDatabase:
+          name: apex-ai-postgres
+          property: connectionString
+      - key: DATABASE_POOL_MAX_SIZE
+        value: 8
+      - key: DATABASE_CONNECT_TIMEOUT_SECONDS
+        value: 8
+      - key: BACKUP_RETENTION_DAYS
+        value: 14
       - key: SEED_DEMO_USER
         value: false
       - key: SESSION_TTL_HOURS
         value: 168
+      - key: RATE_LIMIT_ENABLED
+        value: true
+      - key: RATE_LIMIT_DEFAULT_PER_MINUTE
+        value: 120
+      - key: RATE_LIMIT_AUTH_PER_MINUTE
+        value: 10
+      - key: RATE_LIMIT_AI_PER_MINUTE
+        value: 20
+      - key: RATE_LIMIT_HEAVY_PER_MINUTE
+        value: 15
+      - key: TRUST_PROXY_HEADERS
+        value: true
+      - key: MAX_REQUEST_BODY_BYTES
+        value: 2097152
       - key: AI_PROVIDER
         value: deterministic
       - key: AI_EXTERNAL_ENABLED
         value: false
       - key: ENABLE_LIVE_EXECUTION
         value: false
+
+databases:
+  - name: apex-ai-postgres
+    databaseName: apex_ai
+    user: apex_ai
+    plan: free
+    postgresMajorVersion: "16"
+    ipAllowList: []

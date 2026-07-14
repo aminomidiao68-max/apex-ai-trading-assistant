@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.0.0-alpha5",
-    "status": "APEX Omega Pro staged upgrade - Alpha 5"
+    "current_version": "3.0.0-rc1",
+    "status": "APEX Omega Pro - Release Candidate 1"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -25,7 +25,7 @@
         "name": "FastAPI Backend",
         "language": "Python",
         "framework": "FastAPI",
-        "database": "SQLite",
+        "database": "PostgreSQL production / SQLite local-test fallback",
         "path": "backend/",
         "apis": [
           "REST API (Swagger on /docs)",
@@ -442,6 +442,26 @@
             "Android evidence, negative evidence, verifier and calibration panel",
             "28 backend regression and Alpha 5 tests"
           ]
+        },
+        {
+          "version": "v3 RC1 - Production & Release Gate",
+          "date": "2026-07-14T15:30:00+03:30",
+          "features": [
+            "PostgreSQL 16 production backend with psycopg connection pool",
+            "Idempotent cross-dialect schema migration manager",
+            "SQLite local/test fallback and legacy schema upgrade",
+            "Real PostgreSQL GitHub Actions integration gate",
+            "Hashed session tokens and upgraded PBKDF2 password hashes",
+            "Request ID, structured JSON HTTP logs and secret-safe errors",
+            "Auth, AI, heavy and default sliding-window rate limits",
+            "Request body size enforcement and production security headers",
+            "Liveness, readiness, authenticated deep health and metrics",
+            "SQLite/PostgreSQL backup and verified restore tooling",
+            "Render Blueprint PostgreSQL binding through fromDatabase",
+            "APK release provenance manifest with Git SHA and SHA-256",
+            "RC production runbook and rollback policy",
+            "38 local tests plus PostgreSQL CI integration test"
+          ]
         }
       ]
     }
@@ -626,6 +646,25 @@
       "endpoints": [
         "/api/v1/ai/status",
         "/api/v1/ai/explain"
+      ]
+    },
+    "production_rc": {
+      "database": "PostgreSQL 16 via DATABASE_URL; SQLite only for local/test",
+      "schema_version": 1,
+      "features": [
+        "Connection pooling and startup migrations",
+        "Hashed session tokens",
+        "PBKDF2-SHA256 password upgrade",
+        "Rate limiting and body-size guard",
+        "Request IDs and structured metrics",
+        "Backup/restore manifests with SHA-256",
+        "Release artifact provenance"
+      ],
+      "health_endpoints": [
+        "/health",
+        "/ready",
+        "/api/v1/system/health/deep",
+        "/api/v1/system/metrics"
       ]
     }
   },
@@ -914,7 +953,7 @@
   "deployment": {
     "backend_hosting": "Render (configured)",
     "mobile_distribution": "Google Play Store (when production-ready)",
-    "database": "SQLite for local MVP only; PostgreSQL required before scaled production",
+    "database": "PostgreSQL 16 for production through Render Blueprint; SQLite fallback restricted to local/test",
     "environment_variables": [
       "FINNHUB_API_KEY - for news data",
       "BINANCE_API_KEY/SECRET - for exchange connector",
@@ -981,8 +1020,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "2.0-alpha5",
-    "last_updated": "2026-07-14T14:30:00+03:30",
+    "documentation_version": "2.0-rc1",
+    "last_updated": "2026-07-14T15:30:00+03:30",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

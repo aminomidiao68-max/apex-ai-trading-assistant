@@ -690,3 +690,66 @@ def test_ai_explainability_endpoint_is_grounded_and_secret_safe():
     assert explanation["deterministic_core_preserved"] is True
     assert explanation["probability_is_calibrated"] is False
     assert explanation["probability_label"] == "model_estimate_not_calibrated"
+
+
+def test_rc_health_readiness_metrics_and_request_id_contract(monkeypatch):
+    supplied_request_id = "RC_Request_123456"
+    health = client.get("/health", headers={"X-Request-ID": supplied_request_id})
+    assert health.status_code == 200
+    assert health.headers["x-request-id"] == supplied_request_id
+    assert health.headers["x-content-type-options"] == "nosniff"
+    assert health.headers["x-frame-options"] == "DENY"
+    assert health.headers["content-security-policy"].startswith("default-src 'none'")
+    assert int(health.headers["x-response-time-ms"]) >= 0
+    assert health.json()["version"] == main.settings.app_version
+
+    invalid = client.get("/health", headers={"X-Request-ID": "bad id"})
+    assert invalid.headers["x-request-id"] != "bad id"
+    assert " " not in invalid.headers["x-request-id"]
+
+    ready = client.get("/ready")
+    assert ready.status_code == 200
+    ready_body = ready.json()
+    assert ready_body["status"] == "ready"
+    assert ready_body["database"]["connected"] is True
+    assert ready_body["database"]["migration_current"] is True
+    assert ready_body["live_execution_enabled"] is False
+
+    assert client.get("/api/v1/system/health/deep").status_code == 401
+    auth = _register()
+    deep = client.get("/api/v1/system/health/deep", headers=auth)
+    assert deep.status_code == 200
+    assert deep.json()["database"]["connected"] is True
+    assert deep.json()["live_execution_enabled"] is False
+    metrics = client.get("/api/v1/system/metrics", headers=auth)
+    assert metrics.status_code == 200
+    assert metrics.json()["requests_total"] >= 1
+
+    monkeypatch.setattr(main.settings, "max_request_body_bytes", 16)
+    too_large = client.post(
+        "/api/v1/auth/login",
+        content=b"x" * 32,
+        headers={"Content-Type": "application/json"},
+    )
+    assert too_large.status_code == 413
+    assert "request_id" in too_large.json()
+
+    monkeypatch.setattr(main.settings, "app_env", "production")
+    production_ready = client.get("/ready")
+    assert production_ready.status_code == 503
+    assert production_ready.json()["database"]["production_database_ready"] is False
+
+
+def test_rc_unhandled_errors_are_sanitized_and_traceable():
+    path = "/_test/rc-sanitized-error"
+    if not any(getattr(route, "path", None) == path for route in main.app.routes):
+        def fail_with_secret():
+            raise RuntimeError("https://provider.invalid?apikey=TOP_SECRET_VALUE")
+        main.app.add_api_route(path, fail_with_secret, methods=["GET"])
+
+    response = client.get(path)
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Internal server error"
+    assert response.json()["request_id"] == response.headers["x-request-id"]
+    assert "TOP_SECRET_VALUE" not in response.text
+    assert "apikey=" not in response.text.lower()

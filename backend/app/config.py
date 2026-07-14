@@ -20,7 +20,7 @@ def _csv(value: str | None) -> list[str]:
 class Settings(BaseModel):
     app_name: str = os.getenv("APP_NAME", "Arena Smart Money AI Trader API")
     app_env: str = os.getenv("APP_ENV", "development")
-    app_version: str = os.getenv("APP_VERSION", "3.0.0-alpha5")
+    app_version: str = os.getenv("APP_VERSION", "3.0.0-rc1")
     default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "UTC")
 
     # Browser CORS is disabled by default in production. Native Android clients
@@ -53,8 +53,22 @@ class Settings(BaseModel):
         default=os.getenv("APP_ENV", "development").lower() != "production",
     )
 
+    database_url: str = os.getenv("DATABASE_URL", "").strip()
     database_path: str = os.getenv("DATABASE_PATH", "")
+    database_pool_max_size: int = int(os.getenv("DATABASE_POOL_MAX_SIZE", "8"))
+    database_connect_timeout_seconds: float = float(
+        os.getenv("DATABASE_CONNECT_TIMEOUT_SECONDS", "8")
+    )
+    backup_retention_days: int = int(os.getenv("BACKUP_RETENTION_DAYS", "14"))
     session_ttl_hours: int = int(os.getenv("SESSION_TTL_HOURS", "168"))
+
+    rate_limit_enabled: bool = _to_bool(os.getenv("RATE_LIMIT_ENABLED"), True)
+    rate_limit_default_per_minute: int = int(os.getenv("RATE_LIMIT_DEFAULT_PER_MINUTE", "120"))
+    rate_limit_auth_per_minute: int = int(os.getenv("RATE_LIMIT_AUTH_PER_MINUTE", "10"))
+    rate_limit_ai_per_minute: int = int(os.getenv("RATE_LIMIT_AI_PER_MINUTE", "20"))
+    rate_limit_heavy_per_minute: int = int(os.getenv("RATE_LIMIT_HEAVY_PER_MINUTE", "15"))
+    trust_proxy_headers: bool = _to_bool(os.getenv("TRUST_PROXY_HEADERS"), False)
+    max_request_body_bytes: int = int(os.getenv("MAX_REQUEST_BODY_BYTES", "2097152"))
 
     binance_api_key: str = os.getenv("BINANCE_API_KEY", "")
     binance_api_secret: str = os.getenv("BINANCE_API_SECRET", "")

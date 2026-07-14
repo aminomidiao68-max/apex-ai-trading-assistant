@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import settings
@@ -58,6 +59,14 @@ from app.services.market_data_service import MarketDataService
 from app.services.news_engine import mock_news
 from app.services.notification_service import NotificationService
 from app.services.orderflow_service import OrderFlowService
+from app.services.production_guard_service import (
+    client_identity,
+    http_logger,
+    monitoring_service,
+    rate_limiter,
+    request_id,
+    structured_http_log,
+)
 from app.services.readiness_service import ReadinessService
 from app.services.mt5_connector import Mt5Connector
 from app.services.oanda_connector import OandaConnector
@@ -83,7 +92,7 @@ ctrader_connector = CTraderConnector()
 auth_service = AuthService()
 storage = StorageService()
 notification_service = NotificationService(storage)
-readiness_service = ReadinessService()
+readiness_service = ReadinessService(storage.database)
 orderflow_service = OrderFlowService(ttl_seconds=20)
 setup_state_engine = SetupStateEngine()
 
@@ -100,16 +109,102 @@ if settings.cors_allowed_origins:
 
 
 @app.middleware("http")
-async def security_headers(request: Request, call_next):
-    response = await call_next(request)
+async def production_guard(request: Request, call_next):
+    started = time.monotonic()
+    req_id = request_id(request.headers.get("X-Request-ID"))
+    identity = client_identity(
+        request.client.host if request.client else None,
+        request.headers.get("X-Forwarded-For"),
+    )
+    path = request.url.path
+    error_type = None
+
+    try:
+        content_length = int(request.headers.get("Content-Length") or 0)
+    except ValueError:
+        content_length = 0
+    body_too_large = content_length > settings.max_request_body_bytes
+    if not content_length and request.method in {"POST", "PUT", "PATCH"}:
+        body_too_large = len(await request.body()) > settings.max_request_body_bytes
+
+    rate_decision = None
+    if body_too_large:
+        response = JSONResponse(
+            status_code=413,
+            content={"detail": "Request body is too large", "request_id": req_id},
+        )
+    elif (
+        settings.rate_limit_enabled
+        and settings.app_env.lower() != "test"
+        and path not in {"/health", "/ready"}
+    ):
+        rate_decision = rate_limiter.check(identity, path)
+        if not rate_decision.allowed:
+            monitoring_service.record_rate_limited()
+            response = JSONResponse(
+                status_code=429,
+                content={
+                    "detail": "Rate limit exceeded",
+                    "retry_after_seconds": rate_decision.retry_after_seconds,
+                    "request_id": req_id,
+                },
+                headers={"Retry-After": str(rate_decision.retry_after_seconds)},
+            )
+        else:
+            try:
+                response = await call_next(request)
+            except Exception as exc:
+                response = JSONResponse(
+                    status_code=500,
+                    content={"detail": "Internal server error", "request_id": req_id},
+                )
+                error_type = type(exc).__name__[:60]
+    else:
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            response = JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error", "request_id": req_id},
+            )
+            error_type = type(exc).__name__[:60]
+
+    route_object = request.scope.get("route")
+    route = getattr(route_object, "path", None) or "__unmatched__"
+    latency_ms = max(0, int((time.monotonic() - started) * 1000))
+    monitoring_service.record(route, response.status_code, latency_ms)
+    structured_http_log(
+        http_logger,
+        req_id=req_id,
+        method=request.method,
+        route=route,
+        status_code=response.status_code,
+        latency_ms=latency_ms,
+        identity=identity,
+        error_type=error_type,
+    )
+
+    response.headers["X-Request-ID"] = req_id
+    response.headers["X-Response-Time-Ms"] = str(latency_ms)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if path.startswith(("/docs", "/redoc")):
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data: https://fastapi.tiangolo.com; frame-ancestors 'none'"
+        )
+    else:
+        response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
     if settings.app_env.lower() == "production":
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    if request.url.path.startswith("/api/v1/auth"):
+    if path.startswith(("/api/v1/auth", "/api/v1/ai")):
         response.headers["Cache-Control"] = "no-store"
+    if rate_decision is not None:
+        response.headers["X-RateLimit-Limit"] = str(rate_decision.limit)
+        response.headers["X-RateLimit-Remaining"] = str(rate_decision.remaining)
     return response
 
 
@@ -271,7 +366,61 @@ async def enrich_orderflow(report: dict, symbol: str, market: str, items: list[d
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "app": settings.app_name, "env": settings.app_env}
+    return {
+        "status": "ok",
+        "app": settings.app_name,
+        "version": settings.app_version,
+        "env": settings.app_env,
+    }
+
+
+@app.get("/ready")
+def ready():
+    database = storage.database.health()
+    production_database_ready = (
+        settings.app_env.lower() != "production"
+        or (database["backend"] == "postgresql" and database["persistent"])
+    )
+    ready_now = bool(
+        database["connected"]
+        and database["migration_current"]
+        and production_database_ready
+    )
+    return JSONResponse(
+        status_code=200 if ready_now else 503,
+        content={
+            "status": "ready" if ready_now else "not_ready",
+            "database": {
+                "connected": database["connected"],
+                "backend": database["backend"],
+                "persistent": database["persistent"],
+                "migration_current": database["migration_current"],
+                "production_database_ready": production_database_ready,
+            },
+            "live_execution_enabled": settings.enable_live_execution,
+        },
+    )
+
+
+@app.get("/api/v1/system/health/deep")
+def deep_health(user=Depends(current_user)) -> dict:
+    return {
+        "status": "ok",
+        "version": settings.app_version,
+        "database": storage.database.health(),
+        "ai": ai_explainability_service.status(),
+        "monitoring": monitoring_service.snapshot(),
+        "rate_limiting": {
+            "enabled": settings.rate_limit_enabled,
+            "mode": "in_process_sliding_window",
+        },
+        "live_execution_enabled": settings.enable_live_execution,
+    }
+
+
+@app.get("/api/v1/system/metrics")
+def production_metrics(user=Depends(current_user)) -> dict:
+    return monitoring_service.snapshot()
 
 
 @app.get("/api/v1/ai/status")
@@ -361,14 +510,14 @@ async def apex_news_brief():
         data.setdefault("events", {"upcoming": [], "live": [], "past": []})
         data.setdefault("headlines", [])
         return data
-    except Exception as e:
-        logger.exception("news brief failed, returning stub")
+    except Exception:
+        logger.error("news brief failed; returning sanitized fallback")
         return {
             "finnhub_configured": bool(k),
             "server_time_unix": int(time.time()),
             "server_time_iso": "",
             "block": {"blocked": False, "reasons": [], "block_until": 0, "active_events": []},
-            "adjustment": {"bias": "neutral", "score_penalty": 0, "note": f"خطا در دریافت اخبار: {e}"},
+            "adjustment": {"bias": "neutral", "score_penalty": 0, "note": "اخبار موقتاً در دسترس نیست؛ بعداً دوباره تلاش کنید."},
             "events": {"upcoming": [], "live": [], "past": []},
             "headlines": []
         }
@@ -437,7 +586,7 @@ async def get_smc_analysis(
     try:
         raw = await fetch_live_candles(symbol=symbol, market=market_eff, timeframe=int_fetch)
     except Exception:
-        logger.exception("SMC candles fetch failed")
+        logger.error("SMC candles fetch failed; details suppressed")
         return _smc_err(
             symbol,
             interval,
@@ -476,7 +625,7 @@ async def get_smc_analysis(
                 hrep = _an(hitems, symbol=symbol, timeframe=htf)
                 htf_bias = hrep.get("bias")
     except Exception:
-        logger.warning("HTF bias calculation failed", exc_info=True)
+        logger.warning("HTF bias calculation failed; details suppressed")
 
     try:
         from app.services.smc_engine import analyze
@@ -521,7 +670,7 @@ async def get_smc_analysis(
         report["status"] = "ok"
         return _prepare_chart_report(report, items, max_candles=160)
     except Exception:
-        logger.exception("SMC analysis failed")
+        logger.error("SMC analysis failed; details suppressed")
         return _smc_err(
             symbol,
             interval,
@@ -831,8 +980,8 @@ async def scan_signals(min_confluence: int = Query(default=40, ge=0, le=100)):
                     "action_label":r.get("action_label","WAIT"),
                     "levels":r["levels"],"tp1":r.get("tp1"),"tp2":r.get("tp2"),"tp3":r.get("tp3"),
                     "ai":r["ai"],"status":"ok","total_scanned":0}
-        except Exception as e:
-            log.warning("scan %s@%s failed: %s", sym, tf, e)
+        except Exception:
+            log.warning("scan failed for %s@%s; details suppressed", sym, tf)
             return None
     jobs = [_job(s,m,t) for s,m,t in _SCAN_WATCHLIST]
     out = await asyncio.gather(*jobs)
@@ -1120,8 +1269,10 @@ async def market_websocket(websocket: WebSocket, symbol: str = "BTCUSDT", market
             await asyncio.sleep(5)
     except WebSocketDisconnect:
         return
-    except Exception as exc:
-        await websocket.send_json({"error": str(exc)})
+    except Exception:
+        await websocket.send_json(
+            {"error": "market_stream_unavailable", "request_id": request_id(None)}
+        )
         await websocket.close()
 
 
@@ -1293,7 +1444,9 @@ def close_trade(
     try:
         return storage.close_trade(trade_id, request, user_id=user.id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=404, detail="Trade was not found or is not in a valid state"
+        ) from exc
 
 
 @app.delete("/api/v1/trades/{trade_id}", response_model=MessageResponse)
@@ -1302,7 +1455,9 @@ def delete_trade(trade_id: int, user=Depends(current_user)):
         storage.delete_trade(trade_id, user_id=user.id)
         return MessageResponse(message=f"Trade {trade_id} deleted")
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=404, detail="Trade was not found or is not in a valid state"
+        ) from exc
 
 
 @app.post("/api/v1/execution/binance/order")

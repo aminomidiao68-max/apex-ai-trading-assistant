@@ -37,12 +37,12 @@ class FinnhubClient:
                 return {"error": f"HTTP {r.status_code}"}
             data = r.json()
             if isinstance(data, dict) and data.get("error"):
-                logger.warning("Finnhub error: %s", data.get("error"))
-                return {"error": data.get("error")}
+                logger.warning("Finnhub returned a provider error; details suppressed")
+                return {"error": "provider_unavailable"}
             self._cache[key] = (now, data)
             return data
-        except Exception as e:
-            logger.warning("Finnhub fail: %s", e)
+        except Exception:
+            logger.warning("Finnhub request failed; details suppressed")
             return None
 
     async def get_economic_calendar(self) -> List[Dict[str, Any]]:

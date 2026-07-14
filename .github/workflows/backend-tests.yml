@@ -11,6 +11,20 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: apex_test
+          POSTGRES_USER: apex
+          POSTGRES_PASSWORD: apex_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U apex -d apex_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     defaults:
       run:
         working-directory: backend
@@ -31,11 +45,19 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Compile Python sources
-        run: python -m compileall -q app
+        run: python -m compileall -q app tests scripts
 
-      - name: Run regression tests
+      - name: Run SQLite regression tests
         env:
           APP_ENV: test
           SEED_DEMO_USER: "false"
           ENABLE_LIVE_EXECUTION: "false"
         run: pytest -q
+
+      - name: Run PostgreSQL integration gate
+        env:
+          APP_ENV: test
+          DATABASE_URL: postgresql://apex:apex_test_password@127.0.0.1:5432/apex_test
+          SEED_DEMO_USER: "false"
+          ENABLE_LIVE_EXECUTION: "false"
+        run: pytest -q tests/test_postgres_integration.py
