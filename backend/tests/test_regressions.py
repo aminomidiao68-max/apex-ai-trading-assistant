@@ -428,6 +428,7 @@ def test_market_quality_and_strict_decision_gates():
         "setup_type": "پولبک BOS به ناحیه OTE",
         "events": [{"kind": "BOS", "dir": "bullish"}],
         "news_blocked": False,
+        "invalidation": 98.0,
         "plan_lines": [{"kind": "entry", "price": 100.0}],
         "overlay": {"lines": [{"kind": "entry", "price": 100.0}]},
         "confluence_factors": [
@@ -460,6 +461,13 @@ def test_market_quality_and_strict_decision_gates():
     assert strict["omega_compliant"] is True
     assert strict["action_label"] == "STRONG_LONG"
     assert strict["decision"]["probability_is_calibrated"] is False
+    assert strict["ai"]["provider"] == "deterministic"
+    assert strict["ai"]["verified"] is True
+    assert strict["ai"]["grounded"] is True
+    assert strict["ai"]["deterministic_core_preserved"] is True
+    assert strict["ai"]["probability_label"] == "model_estimate_not_calibrated"
+    assert strict["ai"]["evidence_items"]
+    assert strict["ai"]["negative_evidence"]
 
     weak = dict(report)
     weak["confluence"] = 45
@@ -626,3 +634,59 @@ def test_user_data_isolation_delete_and_openapi_security():
         json={"email": "nobody@example.com", "password": "invalid-password"},
     )
     assert login.headers["cache-control"] == "no-store"
+
+
+def test_ai_explainability_endpoint_is_grounded_and_secret_safe():
+    status = client.get("/api/v1/ai/status")
+    assert status.status_code == 200
+    body = status.json()
+    assert body["deterministic_fallback_ready"] is True
+    assert body["deterministic_core_can_be_overridden"] is False
+    serialized_status = status.text.lower()
+    assert "api_key" not in serialized_status
+    assert "secret" not in serialized_status
+
+    payload = {
+        "symbol": "BTCUSDT",
+        "market": "crypto",
+        "timeframe": "15m",
+        "deterministic_status": "watch",
+        "deterministic_action_label": "WATCH",
+        "side": "long",
+        "risk_tier": "blocked",
+        "evidence": [
+            {
+                "evidence_id": "E_STRUCTURE",
+                "category": "structure",
+                "statement": "Deterministic structure evidence is present.",
+                "source": "strict_core",
+                "polarity": "positive",
+            }
+        ],
+        "negative_evidence": [
+            {
+                "evidence_id": "N_GATE",
+                "category": "hard_gate",
+                "statement": "A deterministic hard gate failed.",
+                "source": "strict_core",
+                "polarity": "negative",
+            }
+        ],
+        "failed_gates": ["execution_spread"],
+        "invalidation": "No active trade thesis; reassess after failed gates change.",
+        "probability_estimate": 70,
+        "probability_is_calibrated": False,
+        "provider": "deterministic",
+    }
+    assert client.post("/api/v1/ai/explain", json=payload).status_code == 401
+    response = client.post("/api/v1/ai/explain", json=payload, headers=_register())
+    assert response.status_code == 200, response.text
+    explanation = response.json()
+    assert explanation["provider"] == "deterministic"
+    assert explanation["mode"] == "deterministic"
+    assert explanation["grounded"] is True
+    assert explanation["verified"] is True
+    assert explanation["deterministic_action_label"] == "WATCH"
+    assert explanation["deterministic_core_preserved"] is True
+    assert explanation["probability_is_calibrated"] is False
+    assert explanation["probability_label"] == "model_estimate_not_calibrated"

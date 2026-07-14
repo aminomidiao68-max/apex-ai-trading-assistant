@@ -20,7 +20,7 @@ def _csv(value: str | None) -> list[str]:
 class Settings(BaseModel):
     app_name: str = os.getenv("APP_NAME", "Arena Smart Money AI Trader API")
     app_env: str = os.getenv("APP_ENV", "development")
-    app_version: str = os.getenv("APP_VERSION", "3.0.0-alpha4")
+    app_version: str = os.getenv("APP_VERSION", "3.0.0-alpha5")
     default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "UTC")
 
     # Browser CORS is disabled by default in production. Native Android clients
@@ -29,6 +29,23 @@ class Settings(BaseModel):
 
     twelve_data_api_key: str = os.getenv("TWELVEDATA_API_KEY", "")
     finnhub_api_key: str = os.getenv("FINNHUB_API_KEY", "")
+
+    # External AI is opt-in. The deterministic evidence explainer is always
+    # available and remains the default decision-safe provider.
+    ai_provider: str = os.getenv("AI_PROVIDER", "deterministic").strip().lower()
+    ai_external_enabled: bool = _to_bool(os.getenv("AI_EXTERNAL_ENABLED"), False)
+    ai_openai_base_url: str = os.getenv("AI_OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    ai_openai_api_key: str = os.getenv("AI_OPENAI_API_KEY", "")
+    ai_openai_model: str = os.getenv("AI_OPENAI_MODEL", "gpt-4.1-mini")
+    ai_gemini_base_url: str = os.getenv(
+        "AI_GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta"
+    ).rstrip("/")
+    ai_gemini_api_key: str = os.getenv("AI_GEMINI_API_KEY", "")
+    ai_gemini_model: str = os.getenv("AI_GEMINI_MODEL", "gemini-2.5-flash")
+    ai_timeout_seconds: float = float(os.getenv("AI_TIMEOUT_SECONDS", "8"))
+    ai_cache_ttl_seconds: int = int(os.getenv("AI_CACHE_TTL_SECONDS", "90"))
+    ai_circuit_failure_threshold: int = int(os.getenv("AI_CIRCUIT_FAILURE_THRESHOLD", "3"))
+    ai_circuit_cooldown_seconds: int = int(os.getenv("AI_CIRCUIT_COOLDOWN_SECONDS", "120"))
 
     enable_live_execution: bool = _to_bool(os.getenv("ENABLE_LIVE_EXECUTION"), False)
     seed_demo_user: bool = _to_bool(

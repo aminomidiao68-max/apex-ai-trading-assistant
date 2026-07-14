@@ -523,6 +523,85 @@ class WalkForwardSummary(BaseModel):
     items: List[WalkForwardStepResult] = Field(default_factory=list)
 
 
+class AIEvidenceItem(BaseModel):
+    evidence_id: str = Field(pattern=r"^[A-Z][A-Z0-9_:-]{1,63}$")
+    category: Literal[
+        "data_quality", "market_regime", "structure", "orderflow",
+        "risk", "news", "hard_gate", "invalidation", "other"
+    ] = "other"
+    statement: str = Field(min_length=3, max_length=500)
+    source: str = Field(min_length=2, max_length=100)
+    polarity: Literal["positive", "negative", "neutral"] = "neutral"
+    value: Optional[str] = Field(default=None, max_length=250)
+    is_real: Optional[bool] = None
+    confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
+
+class AIExplainRequest(BaseModel):
+    symbol: str = Field(min_length=2, max_length=24)
+    market: MarketType
+    timeframe: str = Field(min_length=1, max_length=12)
+    deterministic_status: Literal["actionable", "watch", "reject"]
+    deterministic_action_label: Literal[
+        "STRONG_LONG", "LONG", "STRONG_SHORT", "SHORT", "WATCH", "NO_TRADE"
+    ]
+    side: Literal["long", "short", "flat"]
+    risk_tier: Literal["normal", "reduced", "blocked"] = "blocked"
+    evidence: List[AIEvidenceItem] = Field(default_factory=list, max_length=40)
+    negative_evidence: List[AIEvidenceItem] = Field(default_factory=list, max_length=40)
+    failed_gates: List[str] = Field(default_factory=list, max_length=30)
+    invalidation: Optional[str] = Field(default=None, max_length=300)
+    missing_data: List[str] = Field(default_factory=list, max_length=30)
+    probability_estimate: Optional[float] = Field(default=None, ge=0.0, le=100.0)
+    probability_is_calibrated: bool = False
+    probability_label: str = Field(default="model_estimate_not_calibrated", max_length=80)
+    calibration_id: Optional[str] = Field(default=None, max_length=120)
+    language: Literal["fa", "en"] = "fa"
+    provider: Literal["auto", "deterministic", "openai_compatible", "gemini"] = "auto"
+
+    @model_validator(mode="after")
+    def validate_ai_contract(self):
+        ids = [item.evidence_id for item in self.evidence + self.negative_evidence]
+        if len(ids) != len(set(ids)):
+            raise ValueError("evidence_id values must be unique")
+        if self.probability_is_calibrated and not self.calibration_id:
+            raise ValueError("calibration_id is required for calibrated probability")
+        if not self.probability_is_calibrated:
+            self.probability_label = "model_estimate_not_calibrated"
+            self.calibration_id = None
+        return self
+
+
+class AIExplainResponse(BaseModel):
+    provider: str
+    provider_attempted: Optional[str] = None
+    model: Optional[str] = None
+    mode: Literal["generated", "deterministic", "fallback", "refusal"]
+    deterministic_status: str
+    deterministic_action_label: str
+    side: str
+    summary: str
+    evidence_ids: List[str] = Field(default_factory=list)
+    negative_evidence_ids: List[str] = Field(default_factory=list)
+    risks: List[str] = Field(default_factory=list)
+    what_would_confirm: List[str] = Field(default_factory=list)
+    invalidation: Optional[str] = None
+    grounded: bool
+    verified: bool
+    verifier_status: str
+    verifier_issues: List[str] = Field(default_factory=list)
+    probability_estimate: Optional[float] = None
+    probability_is_calibrated: bool = False
+    probability_label: str = "model_estimate_not_calibrated"
+    calibration_id: Optional[str] = None
+    refusal_reason: Optional[str] = None
+    cached: bool = False
+    latency_ms: int = 0
+    external_ai_used: bool = False
+    deterministic_core_preserved: bool = True
+    disclaimer: str = "AI explains deterministic evidence and cannot authorize execution."
+
+
 class ConnectorCapability(BaseModel):
     connector: str
     market_type: str

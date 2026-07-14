@@ -447,27 +447,78 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
 @Composable
 private fun AiCard(r: SmcReport, loading: Boolean) {
     val sideC = when (r.direction) { "long" -> UpC; "short" -> DnC; else -> GoldDim }
+    val verificationColor = if (r.ai.verified && r.ai.grounded) UpC else DnC
     Card(colors = CardDefaults.cardColors(containerColor = GoldSoft), shape = RoundedCornerShape(14.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, GoldDim.copy(alpha = 0.3f))) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, "ai", tint = Gold)
                 Spacer(Modifier.width(8.dp))
-                Text("تحلیل هوشمند Apex AI", color = Gold, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                Text("Apex AI Explainability", color = Gold, fontWeight = FontWeight.Black, fontSize = 14.sp)
                 Spacer(Modifier.weight(1f))
                 Surface(shape = RoundedCornerShape(5.dp), color = sideC.copy(alpha = 0.20f)) {
-                    Text("  ${r.ai.side}  ", color = sideC, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                    Text("  ${r.ai.deterministicActionLabel}  ", color = sideC, fontSize = 9.sp, fontWeight = FontWeight.Black)
                 }
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(7.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ChipS(r.ai.provider.uppercase(), Gold)
+                ChipS(r.ai.mode.uppercase(), TL)
+                ChipS(if (r.ai.verified && r.ai.grounded) "VERIFIED" else "REFUSED", verificationColor)
+            }
+            Spacer(Modifier.height(7.dp))
             Text(
                 if (loading) "در حال تحلیل..." else safeChartMessage(r.ai.summary.ifBlank { r.note }),
                 color = TH,
                 fontSize = 12.sp,
                 lineHeight = 20.sp
             )
-            Spacer(Modifier.height(4.dp))
-            Text(if (loading) "" else r.ai.recommendation, color = Gold, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            if (!loading) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    if (r.ai.probabilityIsCalibrated) "Probability: calibrated • ${r.ai.probabilityLabel}"
+                    else "Probability: model estimate • NOT CALIBRATED",
+                    color = GoldDim,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                r.ai.refusalReason?.takeIf { it.isNotBlank() }?.let {
+                    Spacer(Modifier.height(6.dp))
+                    Text("Refusal: $it", color = DnC, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                if (r.ai.evidenceItems.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("شواهد مثبت", color = UpC, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                    r.ai.evidenceItems.take(3).forEach { evidence ->
+                        Text("• [${evidence.evidenceId}] ${safeChartMessage(evidence.statement)}", color = TH, fontSize = 10.sp, lineHeight = 15.sp)
+                    }
+                }
+                if (r.ai.negativeEvidence.isNotEmpty()) {
+                    Spacer(Modifier.height(7.dp))
+                    Text("شواهد منفی / ریسک", color = DnC, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                    r.ai.negativeEvidence.take(3).forEach { evidence ->
+                        Text("• [${evidence.evidenceId}] ${safeChartMessage(evidence.statement)}", color = TH, fontSize = 10.sp, lineHeight = 15.sp)
+                    }
+                }
+                if (r.ai.whatWouldConfirm.isNotEmpty()) {
+                    Spacer(Modifier.height(7.dp))
+                    Text("چه چیزی تأیید می‌کند؟", color = Gold, fontSize = 11.sp, fontWeight = FontWeight.Black)
+                    r.ai.whatWouldConfirm.take(3).forEach { item ->
+                        Text("• ${safeChartMessage(item)}", color = TH, fontSize = 10.sp, lineHeight = 15.sp)
+                    }
+                }
+                r.ai.invalidation?.takeIf { it.isNotBlank() }?.let {
+                    Spacer(Modifier.height(7.dp))
+                    Text("Invalidation: ${safeChartMessage(it)}", color = DnC, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    if (r.ai.deterministicCorePreserved) "🔒 Deterministic core preserved • AI cannot authorize execution"
+                    else "⚠ Explainability contract unavailable",
+                    color = TL,
+                    fontSize = 9.sp
+                )
+            }
         }
     }
 }

@@ -742,6 +742,17 @@ data class SmcWatching(
     val reasons: List<String> = emptyList(),
     val status: String = ""
 )
+data class SmcAiEvidence(
+    @SerializedName("evidence_id") val evidenceId: String = "",
+    val category: String = "other",
+    val statement: String = "",
+    val source: String = "",
+    val polarity: String = "neutral",
+    val value: String? = null,
+    @SerializedName("is_real") val isReal: Boolean? = null,
+    val confidence: Float? = null
+)
+
 data class SmcAiNarrative(
     val side: String = "انتظار",
     val trend: String = "خنثی",
@@ -753,7 +764,28 @@ data class SmcAiNarrative(
     val verdict: String = "",
     @SerializedName("setup_type") val setupType: String = "-",
     val grade: String = "-",
-    val factors: List<SmcConfluenceFactor> = emptyList()
+    val factors: List<SmcConfluenceFactor> = emptyList(),
+    val provider: String = "deterministic",
+    @SerializedName("provider_attempted") val providerAttempted: String? = null,
+    val mode: String = "deterministic",
+    @SerializedName("deterministic_status") val deterministicStatus: String = "reject",
+    @SerializedName("deterministic_action_label") val deterministicActionLabel: String = "NO_TRADE",
+    val grounded: Boolean = false,
+    val verified: Boolean = false,
+    @SerializedName("verifier_status") val verifierStatus: String = "",
+    @SerializedName("verifier_issues") val verifierIssues: List<String> = emptyList(),
+    @SerializedName("evidence_ids") val evidenceIds: List<String> = emptyList(),
+    @SerializedName("negative_evidence_ids") val negativeEvidenceIds: List<String> = emptyList(),
+    @SerializedName("evidence_items") val evidenceItems: List<SmcAiEvidence> = emptyList(),
+    @SerializedName("negative_evidence") val negativeEvidence: List<SmcAiEvidence> = emptyList(),
+    val risks: List<String> = emptyList(),
+    @SerializedName("what_would_confirm") val whatWouldConfirm: List<String> = emptyList(),
+    val invalidation: String? = null,
+    @SerializedName("refusal_reason") val refusalReason: String? = null,
+    @SerializedName("external_ai_used") val externalAiUsed: Boolean = false,
+    @SerializedName("probability_is_calibrated") val probabilityIsCalibrated: Boolean = false,
+    @SerializedName("probability_label") val probabilityLabel: String = "model_estimate_not_calibrated",
+    @SerializedName("deterministic_core_preserved") val deterministicCorePreserved: Boolean = true
 )
 data class SmcSignal(
     val symbol: String = "",

@@ -10,6 +10,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import settings
 from app.models import (
+    AIExplainRequest,
+    AIExplainResponse,
     AnalyticsReport,
     AnalyticsSummary,
     AuthLoginRequest,
@@ -45,6 +47,7 @@ from app.models import (
     TradeJournalItem,
     TradeJournalStats,
 )
+from app.services.ai_explainability_service import ai_explainability_service
 from app.services.auth_service import AuthService
 from app.services.backtest_service import BacktestService
 from app.services.binance_connector import BinanceFuturesConnector
@@ -271,6 +274,18 @@ def health() -> dict:
     return {"status": "ok", "app": settings.app_name, "env": settings.app_env}
 
 
+@app.get("/api/v1/ai/status")
+def ai_status() -> dict:
+    """Return provider readiness without exposing keys, endpoints or secrets."""
+    return ai_explainability_service.status()
+
+
+@app.post("/api/v1/ai/explain", response_model=AIExplainResponse)
+async def explain_ai_decision(request: AIExplainRequest, user=Depends(current_user)):
+    """Explain an immutable deterministic decision using cited evidence only."""
+    return await ai_explainability_service.explain(request)
+
+
 @app.get("/api/v1/system/readiness", response_model=SystemReadinessResponse)
 def system_readiness():
     return readiness_service.build()
@@ -492,6 +507,17 @@ async def get_smc_analysis(
             orderflow_confidence=float(flow.get("confidence") or 0),
             orderflow_snapshot=flow,
         )
+        try:
+            report = await ai_explainability_service.enrich_report(
+                report,
+                market=market_eff,
+                timeframe=_canonical_timeframe(interval),
+                language="fa",
+            )
+        except Exception:
+            # The strict deterministic decision remains available even if the
+            # optional explanation layer is unavailable.
+            pass
         report["status"] = "ok"
         return _prepare_chart_report(report, items, max_candles=160)
     except Exception:

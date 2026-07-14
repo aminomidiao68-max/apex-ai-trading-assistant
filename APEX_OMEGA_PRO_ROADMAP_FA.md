@@ -44,13 +44,17 @@
 - anti-look-ahead tests و الزام timestamps صعودی
 - گزارش Gross/Cost/Net R و Max Drawdown
 
-## Alpha 5 — AI & Explainability
+## ✅ Alpha 5 — AI & Explainability (Completed)
 
-- Provider-agnostic adapter
-- Evidence-grounded prompt contract
-- critic/verifier layer
-- deterministic fallback
-- refusal to invent missing data
+- Provider-agnostic adapter برای OpenAI-compatible، Gemini و endpoint سفارشی
+- Evidence Packet با Evidence ID، منبع و برچسب `is_real`
+- Evidence و Negative Evidence اجباری
+- critic/verifier برای رد Citation، عدد، Probability و Invalidation ساختگی
+- deterministic fallback قطعی و دوزبانه
+- refusal در نبود داده حیاتی
+- External AI به‌صورت opt-in با Timeout، Cache و Circuit Breaker
+- Probability بدون Calibration با برچسب `model_estimate_not_calibrated`
+- AI فقط توضیح می‌دهد و قادر به تغییر تصمیم یا مجوز اجرا نیست
 
 ## RC — Chart, Mobile & Production Gate
 

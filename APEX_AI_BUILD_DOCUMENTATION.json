@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.0.0-alpha4",
-    "status": "APEX Omega Pro staged upgrade - Alpha 4"
+    "current_version": "3.0.0-alpha5",
+    "status": "APEX Omega Pro staged upgrade - Alpha 5"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -423,6 +423,25 @@
             "Android portfolio risk and conservative backtest diagnostics",
             "18 backend regression and Alpha 4 tests"
           ]
+        },
+        {
+          "version": "v3 Alpha 5 - Provider-Agnostic AI & Explainability",
+          "date": "2026-07-14T14:30:00+03:30",
+          "features": [
+            "Immutable deterministic decision core; AI cannot authorize or override execution",
+            "Provider-agnostic adapters for OpenAI-compatible and Gemini APIs",
+            "Custom OpenAI-compatible endpoint support through environment configuration",
+            "Evidence Packet contract with unique evidence IDs and source labels",
+            "Mandatory positive evidence, negative evidence and invalidation",
+            "Deterministic Persian/English explanation fallback",
+            "Critic/verifier rejects unsupported citations, numbers, probabilities and invalidations",
+            "Refusal when critical evidence is missing",
+            "External AI opt-in with timeout, cache and circuit breaker",
+            "Provider errors sanitized without keys, URLs or raw exceptions",
+            "Authenticated explanation endpoint and secret-safe provider status endpoint",
+            "Android evidence, negative evidence, verifier and calibration panel",
+            "28 backend regression and Alpha 5 tests"
+          ]
         }
       ]
     }
@@ -584,6 +603,29 @@
         "Language selection (Persian, English)",
         "Theme settings",
         "Account preferences"
+      ]
+    },
+    "ai_explainability": {
+      "decision_authority": "Deterministic core only",
+      "providers": [
+        "deterministic",
+        "OpenAI-compatible",
+        "Gemini"
+      ],
+      "external_default": "disabled",
+      "features": [
+        "Evidence-ID grounded explanations",
+        "Negative evidence and confirmation requirements",
+        "Exact invalidation echo",
+        "Uncalibrated probability label enforcement",
+        "Critic/verifier and fail-closed deterministic fallback",
+        "Missing-data refusal",
+        "Cache, timeout and circuit breaker",
+        "Secret-safe status reporting"
+      ],
+      "endpoints": [
+        "/api/v1/ai/status",
+        "/api/v1/ai/explain"
       ]
     }
   },
@@ -939,8 +981,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "2.0-alpha4",
-    "last_updated": "2026-07-14T13:30:00+03:30",
+    "documentation_version": "2.0-alpha5",
+    "last_updated": "2026-07-14T14:30:00+03:30",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

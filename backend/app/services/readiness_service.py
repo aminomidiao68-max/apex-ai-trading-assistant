@@ -15,6 +15,7 @@ class ReadinessService:
         items.append(self._firebase_service_account_check())
         items.append(self._twelvedata_check())
         items.append(self._finnhub_check())
+        items.append(self._ai_provider_check())
         items.append(self._database_persistence_check())
         items.append(self._live_execution_check())
         items.extend(self._connector_checks())
@@ -77,6 +78,36 @@ class ReadinessService:
             key="FINNHUB_API_KEY",
             status="warning",
             message="Finnhub is not configured; the offline news fallback will be used",
+        )
+
+    def _ai_provider_check(self) -> ReadinessItem:
+        provider = settings.ai_provider
+        if not settings.ai_external_enabled or provider == "deterministic":
+            return ReadinessItem(
+                category="ai",
+                key="AI_PROVIDER",
+                status="ready",
+                message="Deterministic evidence explainer is active; external AI is optional and cannot override decisions",
+            )
+        configured = (
+            provider == "openai_compatible"
+            and bool(settings.ai_openai_api_key and settings.ai_openai_model)
+        ) or (
+            provider == "gemini"
+            and bool(settings.ai_gemini_api_key and settings.ai_gemini_model)
+        )
+        if configured:
+            return ReadinessItem(
+                category="ai",
+                key="AI_PROVIDER",
+                status="ready",
+                message=f"External {provider} explainer is configured with deterministic fallback and verification",
+            )
+        return ReadinessItem(
+            category="ai",
+            key="AI_PROVIDER",
+            status="warning",
+            message="Selected external AI provider is not configured; deterministic verified fallback remains active",
         )
 
     def _database_persistence_check(self) -> ReadinessItem:

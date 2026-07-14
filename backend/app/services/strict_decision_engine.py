@@ -99,6 +99,12 @@ def apply_strict_decision(
         _gate("conflict_budget", negative_points <= conflict_limit, round(negative_points, 1), f"<={conflict_limit}"),
         _gate("trade_plan", bool(report.get("plan_lines")), len(report.get("plan_lines") or []), ">0"),
         _gate(
+            "invalidation",
+            report.get("invalidation") is not None or (report.get("levels") or {}).get("sl") is not None,
+            report.get("invalidation") if report.get("invalidation") is not None else (report.get("levels") or {}).get("sl"),
+            "explicit deterministic invalidation",
+        ),
+        _gate(
             "real_orderflow_available",
             not requires_real_flow or orderflow_is_real,
             {"required": requires_real_flow, "source": orderflow_source, "is_real": orderflow_is_real},
@@ -245,4 +251,38 @@ def apply_strict_decision(
     ai["grounded"] = True
     ai["probability_is_calibrated"] = False
     report["ai"] = ai
+
+    # The synchronous decision path always receives a verified deterministic
+    # explanation. Optional external providers are invoked only by the async
+    # explainability service and can never modify this decision.
+    try:
+        from app.services.ai_explainability_service import (
+            ai_explainability_service,
+            build_evidence_request_from_report,
+        )
+
+        evidence_request = build_evidence_request_from_report(
+            report,
+            market=market,
+            timeframe=timeframe,
+            provider="deterministic",
+            language="fa",
+        )
+        ai.update(ai_explainability_service.explain_embedded(evidence_request))
+        report["ai"] = ai
+    except Exception:
+        # Explainability must fail closed without taking down the deterministic
+        # market decision or exposing provider/internal errors.
+        ai.update(
+            {
+                "mode": "refusal",
+                "provider": "deterministic",
+                "verified": True,
+                "verifier_status": "refused_internal_contract",
+                "grounded": False,
+                "deterministic_core_preserved": True,
+                "refusal_reason": "explainability_contract_unavailable",
+            }
+        )
+        report["ai"] = ai
     return report
