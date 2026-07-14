@@ -63,6 +63,9 @@ class TradeStats(BaseModel):
     consecutive_losses: int = Field(default=0, ge=0)
     daily_loss_pct: float = Field(default=0.0, ge=0.0)
     open_positions: int = Field(default=0, ge=0)
+    current_drawdown_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    open_risk_amount: float = Field(default=0.0, ge=0.0)
+    portfolio_heat_pct: float = Field(default=0.0, ge=0.0, le=100.0)
 
 
 class RiskSettings(BaseModel):
@@ -75,6 +78,21 @@ class RiskSettings(BaseModel):
     value_per_point: float = Field(default=1.0, gt=0)
     breakeven_rr: float = Field(default=1.0, ge=0.5, le=5)
     partial_tp_rr: List[float] = Field(default_factory=lambda: [1.0, 2.0, 3.0])
+    max_portfolio_heat_pct: float = Field(default=4.0, gt=0.0, le=25.0)
+    max_open_risk_pct: float = Field(default=4.0, gt=0.0, le=25.0)
+    max_correlated_risk_pct: float = Field(default=2.0, gt=0.0, le=15.0)
+    drawdown_reduction_start_pct: float = Field(default=4.0, ge=0.0, le=50.0)
+    max_drawdown_pct: float = Field(default=10.0, gt=0.0, le=80.0)
+    min_drawdown_risk_multiplier: float = Field(default=0.25, ge=0.0, le=1.0)
+    max_spread_bps: float = Field(default=8.0, gt=0.0, le=200.0)
+    default_slippage_bps: float = Field(default=1.0, ge=0.0, le=100.0)
+    max_slippage_bps: float = Field(default=5.0, gt=0.0, le=100.0)
+
+    @model_validator(mode="after")
+    def validate_drawdown_policy(self):
+        if self.drawdown_reduction_start_pct >= self.max_drawdown_pct:
+            raise ValueError("drawdown_reduction_start_pct must be below max_drawdown_pct")
+        return self
 
 
 class SignalRequest(BaseModel):
@@ -105,12 +123,27 @@ class LiveSignalScanRequest(BaseModel):
     client_timezone: str = "UTC"
 
 
+class PortfolioPosition(BaseModel):
+    symbol: str = Field(min_length=2, max_length=24)
+    market: MarketType
+    direction: SignalDirection
+    risk_amount: float = Field(ge=0.0)
+    correlation_to_candidate: Optional[float] = Field(default=None, ge=-1.0, le=1.0)
+    correlation_source: Literal["explicit", "structural_proxy", "unknown"] = "unknown"
+
+
 class RiskPlanRequest(BaseModel):
     entry_price: float = Field(gt=0)
     stop_loss: float = Field(gt=0)
     direction: SignalDirection
     risk_settings: RiskSettings
     trade_stats: TradeStats = Field(default_factory=TradeStats)
+    symbol: str = Field(default="UNKNOWN", min_length=2, max_length=24)
+    market: Optional[MarketType] = None
+    spread_bps: Optional[float] = Field(default=None, ge=0.0, le=500.0)
+    estimated_slippage_bps: Optional[float] = Field(default=None, ge=0.0, le=500.0)
+    atr_pct: Optional[float] = Field(default=None, gt=0.0, le=100.0)
+    open_positions: List[PortfolioPosition] = Field(default_factory=list, max_length=100)
 
 
 class ScoreBreakdown(BaseModel):
@@ -131,6 +164,20 @@ class RiskPlan(BaseModel):
     max_loss_amount: float
     breakeven_rr: float
     partial_take_profit_rr: List[float]
+    base_risk_amount: float = 0.0
+    adjusted_risk_pct: float = 0.0
+    risk_multiplier: float = 0.0
+    effective_stop_distance: float = 0.0
+    execution_cost_per_unit: float = 0.0
+    portfolio_heat_pct: float = 0.0
+    open_risk_pct: float = 0.0
+    correlated_risk_pct: float = 0.0
+    risk_budget_remaining: float = 0.0
+    drawdown_risk_multiplier: float = 1.0
+    volatility_risk_multiplier: float = 1.0
+    correlation_source: str = "none"
+    hard_gates: dict[str, bool] = Field(default_factory=dict)
+    failed_gates: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
 
 
@@ -284,6 +331,17 @@ class AnalyticsReport(BaseModel):
     recent_notification_events_7d: int
 
 
+class BacktestExecutionSettings(BaseModel):
+    fee_bps_per_side: Optional[float] = Field(default=None, ge=0.0, le=100.0)
+    spread_bps: Optional[float] = Field(default=None, ge=0.0, le=200.0)
+    slippage_bps: Optional[float] = Field(default=None, ge=0.0, le=200.0)
+    funding_bps_per_8h: float = Field(default=0.0, ge=0.0, le=100.0)
+    entry_expiry_bars: int = Field(default=3, ge=1, le=50)
+    intrabar_policy: Literal["stop_first"] = "stop_first"
+    mark_unclosed_to_market: bool = True
+    prevent_overlapping_trades: bool = True
+
+
 class BacktestRunRequest(BaseModel):
     symbol: str
     market: MarketType
@@ -298,6 +356,7 @@ class BacktestRunRequest(BaseModel):
         default_factory=lambda: RiskSettings(account_balance=5000, risk_per_trade_pct=1.0)
     )
     trade_stats: TradeStats = Field(default_factory=TradeStats)
+    execution: BacktestExecutionSettings = Field(default_factory=BacktestExecutionSettings)
 
 
 class BacktestTradeResult(BaseModel):
@@ -310,6 +369,15 @@ class BacktestTradeResult(BaseModel):
     outcome: str
     rr_realized: float
     bars_held: int
+    activated: bool = False
+    activation_time: Optional[str] = None
+    bars_to_entry: int = 0
+    exit_price: Optional[float] = None
+    exit_reason: str = ""
+    gross_rr: float = 0.0
+    costs_rr: float = 0.0
+    fee_rr: float = 0.0
+    funding_rr: float = 0.0
 
 
 class BacktestSummary(BaseModel):
@@ -330,6 +398,18 @@ class BacktestSummary(BaseModel):
     profit_factor: float
     longest_win_streak: int
     longest_loss_streak: int
+    activated_signals: int = 0
+    no_entry: int = 0
+    closed_trades: int = 0
+    gross_rr: float = 0.0
+    total_costs_rr: float = 0.0
+    total_fee_rr: float = 0.0
+    total_funding_rr: float = 0.0
+    max_drawdown_rr: float = 0.0
+    execution_model: str = "conservative_ohlc_v2"
+    intrabar_policy: str = "stop_first"
+    anti_lookahead_enforced: bool = True
+    assumptions: List[str] = Field(default_factory=list)
     items: List[BacktestTradeResult] = Field(default_factory=list)
 
 
@@ -343,11 +423,13 @@ class BacktestSweepRequest(BaseModel):
     take_profit_indices: List[int] = Field(default_factory=lambda: [0, 1, 2], min_length=1, max_length=3)
     max_signals: int = Field(default=40, ge=5, le=200)
     max_results: int = Field(default=12, ge=3, le=50)
+    minimum_activated_trades: int = Field(default=3, ge=1, le=100)
     client_timezone: str = "UTC"
     risk_settings: RiskSettings = Field(
         default_factory=lambda: RiskSettings(account_balance=5000, risk_per_trade_pct=1.0)
     )
     trade_stats: TradeStats = Field(default_factory=TradeStats)
+    execution: BacktestExecutionSettings = Field(default_factory=BacktestExecutionSettings)
 
 
 class BacktestSweepCandidate(BaseModel):
@@ -365,6 +447,10 @@ class BacktestSweepCandidate(BaseModel):
     profit_factor: float
     longest_win_streak: int
     longest_loss_streak: int
+    activated_signals: int = 0
+    no_entry: int = 0
+    total_costs_rr: float = 0.0
+    max_drawdown_rr: float = 0.0
 
 
 class BacktestSweepSummary(BaseModel):
@@ -390,11 +476,13 @@ class WalkForwardRequest(BaseModel):
     take_profit_indices: List[int] = Field(default_factory=lambda: [0, 1, 2], min_length=1, max_length=3)
     max_signals: int = Field(default=30, ge=5, le=200)
     max_steps: int = Field(default=8, ge=1, le=30)
+    minimum_activated_trades: int = Field(default=3, ge=1, le=100)
     client_timezone: str = "UTC"
     risk_settings: RiskSettings = Field(
         default_factory=lambda: RiskSettings(account_balance=5000, risk_per_trade_pct=1.0)
     )
     trade_stats: TradeStats = Field(default_factory=TradeStats)
+    execution: BacktestExecutionSettings = Field(default_factory=BacktestExecutionSettings)
 
 
 class WalkForwardStepResult(BaseModel):

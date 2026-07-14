@@ -121,8 +121,12 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
                         Text(t("Signal Time", "زمان سیگنال") + ": ${item.signal_time}", color = Color(0xFFDDF8FF))
                         Text(t("Entry / SL / TP", "ورود / حد ضرر / حد سود") + ": ${item.entry_price} / ${item.stop_loss} / ${item.take_profit}", color = Color.White)
                         Text(t("Outcome", "نتیجه") + ": ${localizeOutcome(item.outcome, t)}", color = Color.White)
-                        Text(t("Realized RR", "RR محقق‌شده") + ": ${item.rr_realized}", color = Color(0xFF67ECFF))
-                        Text(t("Bars Held", "تعداد کندل نگهداری") + ": ${item.bars_held}", color = Color.White)
+                        Text(t("Entry Activated", "ورود فعال شد") + ": ${if (item.activated) t("Yes", "بله") else t("No", "خیر")}", color = Color.White)
+                        Text(t("Gross / Costs / Net RR", "RR ناخالص / هزینه / خالص") + ": ${item.gross_rr} / ${item.costs_rr} / ${item.rr_realized}", color = Color(0xFF67ECFF))
+                        Text(t("Entry Wait / Bars Held", "انتظار ورود / کندل نگهداری") + ": ${item.bars_to_entry} / ${item.bars_held}", color = Color.White)
+                        if (item.exit_reason.isNotBlank()) {
+                            Text(t("Exit Reason", "علت خروج") + ": ${item.exit_reason}", color = Color(0xFFFFD27A))
+                        }
                     }
                 }
             }
@@ -164,9 +168,9 @@ private fun StrategyCoachCard(
     t: (String, String) -> String,
 ) {
     val headline = when {
-        walkForward != null && walkForward.aggregate_net_rr > 0 && walkForward.aggregate_win_rate >= 55 -> t("Walk-forward is stable enough for live watchlist promotion.", "واک‌فوروارد به اندازه کافی پایدار است و می‌تواند وارد واچ‌لیست زنده شود.")
-        sweep?.best_by_net_rr != null && sweep.best_by_net_rr.net_rr > 0 -> t("Parameter sweep found a profitable pocket. Use the best net-RR setup as your primary template.", "سوییپ پارامترها یک ناحیه سودده پیدا کرده است. از بهترین تنظیم RR خالص به عنوان الگوی اصلی استفاده کن.")
-        summary != null && summary.net_rr > 0 -> t("Backtest is positive, but confirm with sweep and walk-forward before trusting it in live execution.", "بک‌تست مثبت است، اما قبل از اعتماد در اجرای زنده آن را با سوییپ و واک‌فوروارد تأیید کن.")
+        walkForward != null && walkForward.aggregate_net_rr > 0 && walkForward.aggregate_win_rate >= 55 -> t("Walk-forward passed this sample, but remains a research candidate—not live approval.", "واک‌فوروارد در این نمونه پذیرفته شد، اما فقط کاندید تحقیق است و مجوز اجرای زنده نیست.")
+        sweep?.best_by_net_rr != null && sweep.best_by_net_rr.net_rr > 0 -> t("Parameter sweep found a positive sample. Validate it out-of-sample before drawing conclusions.", "سوییپ پارامترها یک نمونه مثبت یافته است؛ پیش از نتیجه‌گیری باید خارج از نمونه اعتبارسنجی شود.")
+        summary != null && summary.net_rr > 0 -> t("Backtest is net-positive after modeled costs, but it does not guarantee future performance.", "بک‌تست پس از هزینه‌های مدل‌شده خالصاً مثبت است، اما عملکرد آینده را تضمین نمی‌کند.")
         else -> t("Current setup is still exploratory. Tighten thresholds or move to a stronger session.", "ستاپ فعلی هنوز اکتشافی است. آستانه‌ها را سخت‌تر کن یا به سشن قوی‌تر برو.")
     }
 
@@ -202,13 +206,17 @@ private fun BacktestSummaryCard(summary: BacktestSummaryDto, t: (String, String)
             InsightChip(t("Net RR", "RR خالص"), summary.net_rr.toString(), Modifier.weight(1f))
             InsightChip(t("Profit Factor", "فاکتور سود"), summary.profit_factor.toString(), Modifier.weight(1f))
         }
-        MetricLine(t("Signals / Tested Candles", "سیگنال‌ها / کندل‌های تست‌شده"), "${summary.evaluated_signals} / ${summary.tested_candles}")
+        MetricLine(t("Evaluated / Activated / No Entry", "بررسی‌شده / فعال / بدون ورود"), "${summary.evaluated_signals} / ${summary.activated_signals} / ${summary.no_entry}")
         MetricLine(t("Wins / Losses / Unclosed", "برد / باخت / بازمانده"), "${summary.wins} / ${summary.losses} / ${summary.unclosed}")
+        MetricLine(t("Gross / Cost / Net RR", "RR ناخالص / هزینه / خالص"), "${summary.gross_rr} / ${summary.total_costs_rr} / ${summary.net_rr}")
+        MetricLine(t("Fees / Funding RR", "RR کارمزد / فاندینگ"), "${summary.total_fee_rr} / ${summary.total_funding_rr}")
+        MetricLine(t("Maximum Drawdown RR", "حداکثر دراودان RR"), summary.max_drawdown_rr.toString())
         MetricLine(t("Average Score", "میانگین امتیاز"), summary.average_score.toString())
-        MetricLine(t("Average Win RR", "میانگین RR برد"), summary.average_win_rr.toString())
-        MetricLine(t("Average Loss RR", "میانگین RR باخت"), summary.average_loss_rr.toString())
+        MetricLine(t("Average Win / Loss RR", "میانگین RR برد / باخت"), "${summary.average_win_rr} / ${summary.average_loss_rr}")
         MetricLine(t("Expectancy RR", "امیدریاضی RR"), summary.expectancy_rr.toString())
         MetricLine(t("Win / Loss Streak", "رشته برد / باخت"), "${summary.longest_win_streak} / ${summary.longest_loss_streak}")
+        MetricLine(t("Execution Model", "مدل اجرا"), summary.execution_model)
+        MetricLine(t("Anti Look-Ahead", "ضد نگاه‌به‌آینده"), if (summary.anti_lookahead_enforced) t("Enforced", "فعال") else t("Off", "خاموش"))
     }
 }
 
@@ -301,6 +309,7 @@ private fun localizeOutcome(value: String, t: (String, String) -> String): Strin
         "win" -> t("Win", "برد")
         "loss" -> t("Loss", "باخت")
         "unclosed" -> t("Unclosed", "بازمانده")
+        "no_entry" -> t("No Entry", "ورود فعال نشد")
         else -> value
     }
 }

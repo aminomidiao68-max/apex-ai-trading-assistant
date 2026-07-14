@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.0.0-alpha3",
-    "status": "APEX Omega Pro staged upgrade - Alpha 3"
+    "current_version": "3.0.0-alpha4",
+    "status": "APEX Omega Pro staged upgrade - Alpha 4"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -405,6 +405,24 @@
             "Lifecycle timestamps, transition reasons and scan counts",
             "Android Active/Armed/Forming/Closed setup tabs"
           ]
+        },
+        {
+          "version": "v3 Alpha 4 - Risk & Conservative Backtest",
+          "date": "2026-07-14T13:30:00+03:30",
+          "features": [
+            "Portfolio heat and open-risk budget hard gates",
+            "Drawdown-based deterministic risk reduction and maximum drawdown block",
+            "Explicit or transparently labelled structural correlation proxy",
+            "Spread, slippage and volatility-aware position sizing",
+            "Entry activation required before a backtest trade exists",
+            "Conservative same-bar stop-first and adverse gap execution",
+            "Fees, spread, slippage and funding deducted from net R results",
+            "Overlapping trades prevented by default",
+            "Unclosed trades marked to market by default",
+            "Strictly increasing timestamps and closed-candle anti-look-ahead contract",
+            "Android portfolio risk and conservative backtest diagnostics",
+            "18 backend regression and Alpha 4 tests"
+          ]
         }
       ]
     }
@@ -473,12 +491,12 @@
     },
     "risk_calculator": {
       "features": [
-        "Risk/Reward ratio calculation",
-        "Position size calculator",
-        "Max loss calculator",
-        "Risk percentage input",
-        "Account balance reference",
-        "Real-time calculation"
+        "Risk/Reward and cost-adjusted position sizing",
+        "Portfolio heat and open-risk budget",
+        "Drawdown risk multiplier and maximum drawdown block",
+        "Explicit/structural-proxy correlated exposure",
+        "Measured spread requirement and slippage policy",
+        "Hard-gate evidence and failed-gate reporting"
       ]
     },
     "trade_journal": {
@@ -495,13 +513,16 @@
     },
     "backtest_lab": {
       "features": [
-        "Historical data testing",
-        "Parameter sweep execution",
-        "Walk-forward analysis",
-        "Strategy validation",
-        "Results visualization",
-        "Win rate calculation",
-        "Profit factor analysis"
+        "Historical testing using closed candles only",
+        "Entry activation and expiry",
+        "Conservative stop-first intrabar policy",
+        "Fees, spread, slippage and funding costs",
+        "No overlapping positions by default",
+        "Mark-to-market for unclosed positions",
+        "Gross/cost/net R, drawdown and no-entry reporting",
+        "Parameter sweep with minimum activated-trade gate",
+        "Out-of-sample walk-forward analysis",
+        "Anti-look-ahead regression tests"
       ],
       "backend_endpoints": [
         "/api/v1/backtest/run",
@@ -918,8 +939,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "2.0-alpha3",
-    "last_updated": "2026-07-13T12:45:00Z",
+    "documentation_version": "2.0-alpha4",
+    "last_updated": "2026-07-14T13:30:00+03:30",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

@@ -231,14 +231,35 @@ data class RiskSettingsDto(
     val max_open_positions: Int,
     val value_per_point: Double,
     val breakeven_rr: Double,
-    val partial_tp_rr: List<Double>
+    val partial_tp_rr: List<Double>,
+    val max_portfolio_heat_pct: Double = 4.0,
+    val max_open_risk_pct: Double = 4.0,
+    val max_correlated_risk_pct: Double = 2.0,
+    val drawdown_reduction_start_pct: Double = 4.0,
+    val max_drawdown_pct: Double = 10.0,
+    val min_drawdown_risk_multiplier: Double = 0.25,
+    val max_spread_bps: Double = 8.0,
+    val default_slippage_bps: Double = 1.0,
+    val max_slippage_bps: Double = 5.0
 )
 
 data class TradeStatsDto(
     val trades_today: Int,
     val consecutive_losses: Int,
     val daily_loss_pct: Double,
-    val open_positions: Int
+    val open_positions: Int,
+    val current_drawdown_pct: Double = 0.0,
+    val open_risk_amount: Double = 0.0,
+    val portfolio_heat_pct: Double = 0.0
+)
+
+data class PortfolioPositionDto(
+    val symbol: String,
+    val market: String,
+    val direction: String,
+    val risk_amount: Double,
+    val correlation_to_candidate: Double? = null,
+    val correlation_source: String = "unknown"
 )
 
 data class RiskPlanRequestDto(
@@ -246,7 +267,13 @@ data class RiskPlanRequestDto(
     val stop_loss: Double,
     val direction: String,
     val risk_settings: RiskSettingsDto,
-    val trade_stats: TradeStatsDto
+    val trade_stats: TradeStatsDto,
+    val symbol: String = "BTCUSDT",
+    val market: String = "crypto",
+    val spread_bps: Double? = 2.0,
+    val estimated_slippage_bps: Double? = 1.0,
+    val atr_pct: Double? = 1.0,
+    val open_positions: List<PortfolioPositionDto> = emptyList()
 )
 
 data class RiskPlanResponse(
@@ -257,6 +284,20 @@ data class RiskPlanResponse(
     val max_loss_amount: Double,
     val breakeven_rr: Double,
     val partial_take_profit_rr: List<Double>,
+    val base_risk_amount: Double = 0.0,
+    val adjusted_risk_pct: Double = 0.0,
+    val risk_multiplier: Double = 0.0,
+    val effective_stop_distance: Double = 0.0,
+    val execution_cost_per_unit: Double = 0.0,
+    val portfolio_heat_pct: Double = 0.0,
+    val open_risk_pct: Double = 0.0,
+    val correlated_risk_pct: Double = 0.0,
+    val risk_budget_remaining: Double = 0.0,
+    val drawdown_risk_multiplier: Double = 1.0,
+    val volatility_risk_multiplier: Double = 1.0,
+    val correlation_source: String = "none",
+    val hard_gates: Map<String, Boolean> = emptyMap(),
+    val failed_gates: List<String> = emptyList(),
     val warnings: List<String>
 )
 
@@ -395,6 +436,17 @@ data class AnalyticsReportDto(
     val recent_notification_events_7d: Int
 )
 
+data class BacktestExecutionSettingsDto(
+    val fee_bps_per_side: Double? = null,
+    val spread_bps: Double? = null,
+    val slippage_bps: Double? = null,
+    val funding_bps_per_8h: Double = 0.0,
+    val entry_expiry_bars: Int = 3,
+    val intrabar_policy: String = "stop_first",
+    val mark_unclosed_to_market: Boolean = true,
+    val prevent_overlapping_trades: Boolean = true
+)
+
 data class BacktestRunRequestDto(
     val symbol: String,
     val market: String,
@@ -406,7 +458,8 @@ data class BacktestRunRequestDto(
     val take_profit_index: Int,
     val client_timezone: String = "Asia/Tehran",
     val risk_settings: RiskSettingsDto,
-    val trade_stats: TradeStatsDto
+    val trade_stats: TradeStatsDto,
+    val execution: BacktestExecutionSettingsDto = BacktestExecutionSettingsDto()
 )
 
 data class BacktestTradeResultDto(
@@ -418,7 +471,16 @@ data class BacktestTradeResultDto(
     val take_profit: Double,
     val outcome: String,
     val rr_realized: Double,
-    val bars_held: Int
+    val bars_held: Int,
+    val activated: Boolean = false,
+    val activation_time: String? = null,
+    val bars_to_entry: Int = 0,
+    val exit_price: Double? = null,
+    val exit_reason: String = "",
+    val gross_rr: Double = 0.0,
+    val costs_rr: Double = 0.0,
+    val fee_rr: Double = 0.0,
+    val funding_rr: Double = 0.0
 )
 
 data class BacktestSummaryDto(
@@ -439,6 +501,18 @@ data class BacktestSummaryDto(
     val profit_factor: Double,
     val longest_win_streak: Int,
     val longest_loss_streak: Int,
+    val activated_signals: Int = 0,
+    val no_entry: Int = 0,
+    val closed_trades: Int = 0,
+    val gross_rr: Double = 0.0,
+    val total_costs_rr: Double = 0.0,
+    val total_fee_rr: Double = 0.0,
+    val total_funding_rr: Double = 0.0,
+    val max_drawdown_rr: Double = 0.0,
+    val execution_model: String = "conservative_ohlc_v2",
+    val intrabar_policy: String = "stop_first",
+    val anti_lookahead_enforced: Boolean = true,
+    val assumptions: List<String> = emptyList(),
     val items: List<BacktestTradeResultDto>
 )
 
@@ -454,7 +528,9 @@ data class BacktestSweepRequestDto(
     val max_results: Int,
     val client_timezone: String = "Asia/Tehran",
     val risk_settings: RiskSettingsDto,
-    val trade_stats: TradeStatsDto
+    val trade_stats: TradeStatsDto,
+    val minimum_activated_trades: Int = 3,
+    val execution: BacktestExecutionSettingsDto = BacktestExecutionSettingsDto()
 )
 
 data class BacktestSweepCandidateDto(
@@ -471,7 +547,11 @@ data class BacktestSweepCandidateDto(
     val expectancy_rr: Double,
     val profit_factor: Double,
     val longest_win_streak: Int,
-    val longest_loss_streak: Int
+    val longest_loss_streak: Int,
+    val activated_signals: Int = 0,
+    val no_entry: Int = 0,
+    val total_costs_rr: Double = 0.0,
+    val max_drawdown_rr: Double = 0.0
 )
 
 data class BacktestSweepSummaryDto(
@@ -499,7 +579,9 @@ data class WalkForwardRequestDto(
     val max_steps: Int,
     val client_timezone: String = "Asia/Tehran",
     val risk_settings: RiskSettingsDto,
-    val trade_stats: TradeStatsDto
+    val trade_stats: TradeStatsDto,
+    val minimum_activated_trades: Int = 3,
+    val execution: BacktestExecutionSettingsDto = BacktestExecutionSettingsDto()
 )
 
 data class WalkForwardStepResultDto(

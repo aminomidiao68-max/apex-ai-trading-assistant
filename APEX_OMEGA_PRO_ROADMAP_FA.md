@@ -33,13 +33,16 @@
 - expiration by bars/timeframe
 - strict setup classifier و conflict budget
 
-## Alpha 4 — Risk & Backtest
+## ✅ Alpha 4 — Risk & Backtest (Completed)
 
 - Portfolio heat، drawdown، correlation و open-risk budget
 - volatility/spread/slippage adjustments
-- conservative intrabar execution
-- fees، funding و entry activation
-- anti-look-ahead tests
+- conservative intrabar execution با سیاست `stop_first`
+- fees، funding و entry activation/expiry
+- جلوگیری پیش‌فرض از معاملات هم‌پوشان
+- Mark-to-market برای معاملات بسته‌نشده
+- anti-look-ahead tests و الزام timestamps صعودی
+- گزارش Gross/Cost/Net R و Max Drawdown
 
 ## Alpha 5 — AI & Explainability
 

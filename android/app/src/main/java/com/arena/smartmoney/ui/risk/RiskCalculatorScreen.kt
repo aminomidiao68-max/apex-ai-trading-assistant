@@ -146,11 +146,17 @@ fun RiskCalculatorScreen(viewModel: RiskCalculatorViewModel = viewModel()) {
                         RiskChip(t("Protection", "محافظت"), protectionLabel, Modifier.weight(1f))
                         RiskChip(t("BE RR", "بریک‌اون RR"), result.breakeven_rr.toString(), Modifier.weight(1f))
                     }
-                    MetricLine(t("Risk Amount", "مقدار ریسک"), result.risk_amount.toString())
+                    MetricLine(t("Base / Adjusted Risk", "ریسک پایه / تعدیل‌شده"), "${result.base_risk_amount} / ${result.risk_amount}")
                     MetricLine(t("Position Size Units", "حجم پوزیشن"), result.position_size_units.toString())
-                    MetricLine(t("Stop Distance", "فاصله حد ضرر"), result.stop_distance.toString())
-                    MetricLine(t("Max Loss", "حداکثر ضرر"), result.max_loss_amount.toString())
+                    MetricLine(t("Stop / Effective Stop", "استاپ / استاپ مؤثر"), "${result.stop_distance} / ${result.effective_stop_distance}")
+                    MetricLine(t("Portfolio Heat", "حرارت پرتفوی"), "${result.portfolio_heat_pct}%")
+                    MetricLine(t("Correlated Risk", "ریسک همبسته"), "${result.correlated_risk_pct}% • ${result.correlation_source}")
+                    MetricLine(t("Risk Budget Remaining", "بودجه ریسک باقی‌مانده"), result.risk_budget_remaining.toString())
+                    MetricLine(t("DD / Vol Multipliers", "ضریب دراودان / نوسان"), "${result.drawdown_risk_multiplier} / ${result.volatility_risk_multiplier}")
                     MetricLine(t("Partial TPs", "تی‌پی‌های پله‌ای"), result.partial_take_profit_rr.joinToString())
+                    if (result.failed_gates.isNotEmpty()) {
+                        Text(t("Failed hard gates", "گیت‌های سخت ردشده") + ": ${result.failed_gates.joinToString()}", color = Color(0xFFFF8A8A))
+                    }
                     if (result.warnings.isNotEmpty()) {
                         Text(t("Warnings", "هشدارها") + ": ${result.warnings.joinToString()}", color = Color(0xFFFFD27A))
                     }

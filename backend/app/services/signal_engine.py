@@ -662,6 +662,13 @@ class SignalEngine:
                     direction=direction,
                     risk_settings=request.risk_settings,
                     trade_stats=request.trade_stats or TradeStats(),
+                    symbol=request.symbol.upper(),
+                    market=request.market,
+                    atr_pct=volatility_pct if volatility_pct > 0 else None,
+                    # SignalRequest has no measured spread field. The strict risk
+                    # engine therefore keeps execution approval blocked until a
+                    # live spread is supplied to /api/v1/risk/plan.
+                    spread_bps=None,
                 )
             )
             if not risk_plan.is_trade_allowed:
