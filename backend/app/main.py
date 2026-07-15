@@ -14,6 +14,8 @@ from app.config import settings
 from app.models import (
     AIExplainRequest,
     AIExplainResponse,
+    AutomatedPanelResearchRequest,
+    AutomatedPanelResearchResponse,
     AnalyticsReport,
     AnalyticsSummary,
     AuthLoginRequest,
@@ -42,6 +44,10 @@ from app.models import (
     Mt5OrderRequest,
     NotificationTestRequest,
     OandaOrderRequest,
+    ProviderConnectionTestResponse,
+    ProviderSecretStatus,
+    ProviderSecretStatusResponse,
+    ProviderSecretUpsertRequest,
     PurgedSplitPlanRequest,
     PurgedSplitPlanResponse,
     QuantValidationRequest,
@@ -63,18 +69,21 @@ from app.models import (
     TradeJournalItem,
     TradeJournalStats,
 )
-from app.services.ai_explainability_service import ai_explainability_service
+from app.services.ai_explainability_service import OpenAICompatibleProvider, ai_explainability_service
 from app.services.auth_service import AuthService
+from app.services.automated_panel_service import AutomatedPanelError, AutomatedPanelResearchService
 from app.services.backtest_service import BacktestService
 from app.services.binance_connector import BinanceFuturesConnector
 from app.services.bybit_connector import BybitConnector
 from app.services.ctrader_connector import CTraderConnector
+from app.services.deflated_performance_service import deflated_performance_service
 from app.services.execution_engine import ExecutionEngine
 from app.services.historical_data_service import HistoricalDataError, HistoricalDataService
 from app.services.market_data_service import MarketDataService
 from app.services.news_engine import mock_news
 from app.services.notification_service import NotificationService
 from app.services.orderflow_service import OrderFlowService
+from app.services.provider_secret_service import ProviderSecretService, ProviderVaultError
 from app.services.production_guard_service import (
     client_identity,
     http_logger,
@@ -95,6 +104,7 @@ from app.services.strict_decision_engine import apply_strict_decision
 from app.services.storage_service import StorageService
 from app.services.stored_research_service import StoredResearchError, StoredResearchService
 from app.services.strategy_panel_service import strategy_panel_validation_service
+from app.services.user_news_service import user_news_service
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 
@@ -110,11 +120,20 @@ mt5_connector = Mt5Connector()
 ctrader_connector = CTraderConnector()
 auth_service = AuthService()
 storage = StorageService()
+provider_secret_service = ProviderSecretService(storage.database)
 historical_data_service = HistoricalDataService(storage.database)
 stored_research_service = StoredResearchService(
     historical_data_service.store,
     backtest_service,
     quant_validation_service,
+)
+automated_panel_service = AutomatedPanelResearchService(
+    storage.database,
+    historical_data_service.store,
+    backtest_service,
+    strategy_panel_validation_service,
+    quant_validation_service,
+    deflated_performance_service,
 )
 notification_service = NotificationService(storage)
 readiness_service = ReadinessService(storage.database)
@@ -248,6 +267,43 @@ def current_user(
     credentials: HTTPAuthorizationCredentials = Depends(require_credentials),
 ):
     return auth_service.get_user_by_token(credentials.credentials)
+
+
+def optional_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
+):
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        return None
+    return auth_service.get_user_by_token(credentials.credentials)
+
+
+def _runtime_ai_provider_for_user(user_id: int, requested: str = "auto"):
+    selected = requested
+    if selected == "auto":
+        selected = (
+            "groq"
+            if provider_secret_service.get_material(user_id, "groq")
+            else "openai_compatible"
+        )
+    if selected == "groq":
+        material = provider_secret_service.get_material(user_id, "groq")
+        if material:
+            return OpenAICompatibleProvider(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=material.api_key,
+                model=material.model or "llama-3.3-70b-versatile",
+                provider_name="groq",
+            )
+    if selected == "openai_compatible":
+        material = provider_secret_service.get_material(user_id, "openai")
+        if material:
+            return OpenAICompatibleProvider(
+                base_url="https://api.openai.com/v1",
+                api_key=material.api_key,
+                model=material.model or "gpt-4.1-mini",
+                provider_name="openai_compatible",
+            )
+    return None
 
 
 import asyncio as _asyncio, time as _time
@@ -457,7 +513,12 @@ def ai_status() -> dict:
 @app.post("/api/v1/ai/explain", response_model=AIExplainResponse)
 async def explain_ai_decision(request: AIExplainRequest, user=Depends(current_user)):
     """Explain an immutable deterministic decision using cited evidence only."""
-    return await ai_explainability_service.explain(request)
+    runtime_provider = _runtime_ai_provider_for_user(user.id, request.provider)
+    return await ai_explainability_service.explain(
+        request,
+        runtime_provider=runtime_provider,
+        cache_namespace=f"user-{user.id}",
+    )
 
 
 @app.get("/api/v1/system/readiness", response_model=SystemReadinessResponse)
@@ -484,6 +545,54 @@ def me(user=Depends(current_user)):
 def logout(credentials: HTTPAuthorizationCredentials = Depends(require_credentials)):
     auth_service.logout(credentials.credentials)
     return MessageResponse(message="Logged out successfully")
+
+
+def _raise_provider_vault_error(exc: ProviderVaultError):
+    status = 503 if exc.code == "provider_vault_not_configured" else 400
+    raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
+
+
+@app.get("/api/v1/settings/providers", response_model=ProviderSecretStatusResponse)
+def provider_secret_status(user=Depends(current_user)):
+    return provider_secret_service.list_status(user.id)
+
+
+@app.post(
+    "/api/v1/settings/providers/{provider}",
+    response_model=ProviderSecretStatus,
+)
+def save_provider_secret(
+    provider: str,
+    request: ProviderSecretUpsertRequest,
+    user=Depends(current_user),
+):
+    try:
+        return provider_secret_service.upsert(user.id, provider, request)
+    except ProviderVaultError as exc:
+        _raise_provider_vault_error(exc)
+
+
+@app.post(
+    "/api/v1/settings/providers/{provider}/test",
+    response_model=ProviderConnectionTestResponse,
+)
+async def test_provider_secret(provider: str, user=Depends(current_user)):
+    try:
+        return await provider_secret_service.test_connection(user.id, provider)
+    except ProviderVaultError as exc:
+        _raise_provider_vault_error(exc)
+
+
+@app.delete(
+    "/api/v1/settings/providers/{provider}",
+    response_model=MessageResponse,
+)
+def delete_provider_secret(provider: str, user=Depends(current_user)):
+    try:
+        provider_secret_service.delete(user.id, provider)
+        return MessageResponse(message=f"Provider {provider} configuration deleted")
+    except ProviderVaultError as exc:
+        _raise_provider_vault_error(exc)
 
 
 @app.post("/api/v1/notifications/register-device")
@@ -548,6 +657,11 @@ async def apex_news_brief():
         }
 
 
+@app.get("/api/v1/news/personalized")
+async def personalized_news(user=Depends(current_user)) -> dict:
+    return await user_news_service.build(user.id, provider_secret_service)
+
+
 @app.get("/api/v1/news/mock")
 def get_mock_news(market: str = "forex") -> dict:
     return {"items": mock_news(market)}
@@ -596,6 +710,7 @@ async def get_smc_analysis(
     market: str = Query("", description="forex, crypto, or auto"),
     interval: str = Query("15min", description="Candle interval"),
     limit: int = Query(220, ge=50, le=500),
+    user=Depends(optional_current_user),
 ):
     """Pro SMC analysis with multi-timeframe bias, killzones, liquidity pools, order flow."""
     import logging
@@ -687,6 +802,10 @@ async def get_smc_analysis(
                 market=market_eff,
                 timeframe=_canonical_timeframe(interval),
                 language="fa",
+                runtime_provider=(
+                    _runtime_ai_provider_for_user(user.id, "auto") if user else None
+                ),
+                cache_namespace=(f"user-{user.id}" if user else "public"),
             )
         except Exception:
             # The strict deterministic decision remains available even if the
@@ -1360,7 +1479,12 @@ async def collect_historical_dataset(
 ):
     """Collect, validate, fingerprint and optionally persist finalized historical candles."""
     try:
-        return await historical_data_service.collect(request, user_id=user.id)
+        twelve_material = provider_secret_service.get_material(user.id, "twelvedata")
+        return await historical_data_service.collect(
+            request,
+            user_id=user.id,
+            runtime_twelvedata_key=(twelve_material.api_key if twelve_material else None),
+        )
     except HistoricalDataError as exc:
         _raise_historical_http_error(exc)
 
@@ -1431,6 +1555,24 @@ def validate_strategy_panel(
 ):
     """Estimate CSCV probability of backtest overfitting for a strategy panel."""
     return strategy_panel_validation_service.validate(request)
+
+
+@app.post(
+    "/api/v1/research/automated-panel/final-holdout",
+    response_model=AutomatedPanelResearchResponse,
+)
+def run_automated_panel_final_holdout(
+    request: AutomatedPanelResearchRequest,
+    user=Depends(current_user),
+):
+    """Lock a final holdout, build the panel on development data, and evaluate once."""
+    try:
+        return automated_panel_service.run(user.id, request)
+    except AutomatedPanelError as exc:
+        status = 409 if exc.code == "immutable_experiment_version_conflict" else 400
+        if exc.code == "historical_dataset_not_found":
+            status = 404
+        raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
 
 
 @app.post("/api/v1/signals/analyze", response_model=SignalResponse)

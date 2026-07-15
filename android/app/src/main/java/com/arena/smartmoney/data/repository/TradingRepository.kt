@@ -25,10 +25,12 @@ import com.arena.smartmoney.data.model.Mt5OrderRequestDto
 import com.arena.smartmoney.data.model.OandaOrderRequestDto
 import com.arena.smartmoney.data.model.LiveSignalScanRequestDto
 import com.arena.smartmoney.data.model.NotificationTestRequestDto
+import com.arena.smartmoney.data.model.ProviderSecretUpsertRequestDto
 import com.arena.smartmoney.data.model.RiskPlanRequestDto
 import com.arena.smartmoney.data.model.TradeJournalCloseRequestDto
 import com.arena.smartmoney.data.model.TradeJournalCreateRequestDto
 import com.arena.smartmoney.data.model.TradeSetupsResponseDto
+import com.arena.smartmoney.data.network.AuthTokenProvider
 import com.arena.smartmoney.data.network.TradingApiService
 import java.util.concurrent.ConcurrentHashMap
 
@@ -50,6 +52,28 @@ class TradingRepository(
     suspend fun getMe(authorization: String) = api.getMe(authorization)
 
     suspend fun logout(authorization: String) = api.logout(authorization)
+
+    suspend fun getProviderSecretStatus() = api.getProviderSecretStatus()
+
+    suspend fun saveProviderSecret(
+        provider: String,
+        apiKey: String,
+        accountId: String? = null,
+        model: String? = null,
+        enabled: Boolean = true,
+    ) = api.saveProviderSecret(
+        provider,
+        ProviderSecretUpsertRequestDto(
+            api_key = apiKey,
+            account_id = accountId,
+            model = model,
+            enabled = enabled,
+        )
+    )
+
+    suspend fun testProviderSecret(provider: String) = api.testProviderSecret(provider)
+
+    suspend fun deleteProviderSecret(provider: String) = api.deleteProviderSecret(provider)
 
     suspend fun registerDeviceToken(authorization: String, token: String, deviceName: String? = null) =
         api.registerDevice(
@@ -126,7 +150,12 @@ class TradingRepository(
 
     suspend fun getNewsBrief(): NewsBrief {
         return try {
-            api.getNewsBrief()
+            if (AuthTokenProvider.hasServerToken()) {
+                val personalized = api.getPersonalizedNewsBrief()
+                if (personalized.headlines.isNotEmpty()) personalized else api.getNewsBrief()
+            } else {
+                api.getNewsBrief()
+            }
         } catch (t: Throwable) {
             NewsBrief(
                 finnhub_configured = false,

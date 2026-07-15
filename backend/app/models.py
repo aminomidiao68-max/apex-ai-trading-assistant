@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 
 
 class MarketType(str, Enum):
@@ -557,7 +557,7 @@ class AIExplainRequest(BaseModel):
     probability_label: str = Field(default="model_estimate_not_calibrated", max_length=80)
     calibration_id: Optional[str] = Field(default=None, max_length=120)
     language: Literal["fa", "en"] = "fa"
-    provider: Literal["auto", "deterministic", "openai_compatible", "gemini"] = "auto"
+    provider: Literal["auto", "deterministic", "openai_compatible", "groq", "gemini"] = "auto"
 
     @model_validator(mode="after")
     def validate_ai_contract(self):
@@ -1064,6 +1064,141 @@ class StrategyPanelValidationResponse(BaseModel):
     actionable_for_live: bool = False
     deterministic_reproducible: bool = True
     disclaimer: str = "CSCV/PBO measures selection overfitting risk on this panel; it does not prove future profitability."
+
+
+class DeflatedPerformanceDiagnostics(BaseModel):
+    available: bool
+    sample_count: int = 0
+    active_return_count: int = 0
+    mean_rr: float = 0.0
+    standard_deviation_rr: float = 0.0
+    sharpe_like_per_observation: float = 0.0
+    skewness: float = 0.0
+    kurtosis: float = 0.0
+    probabilistic_sharpe_vs_zero: float = 0.0
+    expected_max_sharpe_threshold: float = 0.0
+    deflated_sharpe_probability: float = 0.0
+    strategy_trials: int = 1
+    eligible: bool = False
+    failed_requirements: List[str] = Field(default_factory=list)
+    scope: str = "per_observation_non_annualized"
+
+
+class AutomatedPanelResearchRequest(BaseModel):
+    experiment_id: str = Field(min_length=3, max_length=120)
+    experiment_version: str = Field(min_length=1, max_length=80)
+    dataset_id: str = Field(min_length=3, max_length=120)
+    dataset_version: str = Field(min_length=1, max_length=80)
+    holdout_fraction: float = Field(default=0.20, ge=0.10, le=0.40)
+    holdout_embargo_bars: int = Field(default=10, ge=2, le=1_000)
+    window_sizes: List[int] = Field(default_factory=lambda: [20, 30, 40], min_length=1, max_length=10)
+    lookahead_options: List[int] = Field(default_factory=lambda: [6, 8, 10], min_length=1, max_length=10)
+    score_thresholds: List[float] = Field(default_factory=lambda: [60.0, 65.0, 70.0], min_length=1, max_length=10)
+    take_profit_indices: List[int] = Field(default_factory=lambda: [0, 1, 2], min_length=1, max_length=3)
+    pbo_block_count: int = Field(default=8, ge=4, le=12)
+    selection_metric: Literal["expectancy", "sharpe_like"] = "sharpe_like"
+    max_signals_per_strategy: int = Field(default=200, ge=5, le=200)
+    minimum_development_trades: int = Field(default=30, ge=10, le=200)
+    minimum_holdout_trades: int = Field(default=50, ge=20, le=200)
+    bootstrap_samples: int = Field(default=2_000, ge=500, le=10_000)
+    monte_carlo_paths: int = Field(default=2_000, ge=500, le=10_000)
+    random_seed: int = Field(default=73_021, ge=0, le=2_147_483_647)
+    risk_settings: RiskSettings = Field(
+        default_factory=lambda: RiskSettings(account_balance=5_000, risk_per_trade_pct=1.0)
+    )
+    trade_stats: TradeStats = Field(default_factory=TradeStats)
+    execution: BacktestExecutionSettings = Field(default_factory=BacktestExecutionSettings)
+
+    @model_validator(mode="after")
+    def validate_automated_panel(self):
+        if self.pbo_block_count % 2:
+            raise ValueError("pbo_block_count must be even")
+        if self.holdout_embargo_bars < max(self.lookahead_options):
+            raise ValueError("holdout embargo must be >= maximum lookahead")
+        if min(self.window_sizes) < 20 or max(self.window_sizes) > 120:
+            raise ValueError("window_sizes must remain in [20,120]")
+        combinations = (
+            len(set(self.window_sizes))
+            * len(set(self.lookahead_options))
+            * len(set(self.score_thresholds))
+            * len(set(self.take_profit_indices))
+        )
+        if combinations < 3:
+            raise ValueError("automated panel requires at least three parameter combinations")
+        if combinations > 100:
+            raise ValueError("automated panel is capped at 100 parameter combinations")
+        return self
+
+
+class AutomatedSelectedConfiguration(BaseModel):
+    strategy_id: str
+    window_size: int
+    lookahead_candles: int
+    score_threshold: float
+    take_profit_index: int
+    development_activated_trades: int
+    development_net_rr: float
+    development_expectancy_rr: float
+
+
+class AutomatedPanelResearchResponse(BaseModel):
+    experiment_ref: str
+    experiment_fingerprint: str
+    dataset_ref: str
+    canonical_sha256: str
+    status: Literal[
+        "REJECT", "INCONCLUSIVE", "HIGH_OVERFIT_RISK",
+        "HOLDOUT_FAILED", "FINAL_HOLDOUT_CANDIDATE"
+    ]
+    development_start_index: int
+    development_end_index: int
+    holdout_start_index: int
+    holdout_end_index: int
+    holdout_embargo_bars: int
+    parameter_combinations: int
+    eligible_panel_strategies: int
+    panel_validation: Optional[StrategyPanelValidationResponse] = None
+    selected_configuration: Optional[AutomatedSelectedConfiguration] = None
+    holdout_backtest: Optional[BacktestSummary] = None
+    holdout_quant_validation: Optional[QuantValidationResponse] = None
+    deflated_performance: Optional[DeflatedPerformanceDiagnostics] = None
+    hard_gates: dict[str, bool] = Field(default_factory=dict)
+    failed_gates: List[str] = Field(default_factory=list)
+    limitations: List[str] = Field(default_factory=list)
+    experiment_reused: bool = False
+    actionable_for_live: bool = False
+
+
+class ProviderSecretUpsertRequest(BaseModel):
+    api_key: SecretStr = Field(min_length=8, max_length=500)
+    account_id: Optional[SecretStr] = Field(default=None, max_length=200)
+    model: Optional[str] = Field(default=None, max_length=120)
+    enabled: bool = True
+
+
+class ProviderSecretStatus(BaseModel):
+    provider: Literal["groq", "openai", "twelvedata", "finnhub", "newsapi", "oanda"]
+    configured: bool
+    enabled: bool
+    has_account_id: bool = False
+    model: Optional[str] = None
+    last_test_status: Optional[str] = None
+    last_tested_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ProviderSecretStatusResponse(BaseModel):
+    vault_configured: bool
+    providers: List[ProviderSecretStatus] = Field(default_factory=list)
+    raw_secrets_returned: bool = False
+
+
+class ProviderConnectionTestResponse(BaseModel):
+    provider: str
+    status: Literal["connected", "auth_failed", "unavailable", "not_configured", "vault_unavailable"]
+    tested_at: str
+    live_execution_enabled: bool = False
+    details_exposed: bool = False
 
 
 class ConnectorCapability(BaseModel):

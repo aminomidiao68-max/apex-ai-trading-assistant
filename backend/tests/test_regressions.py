@@ -938,3 +938,74 @@ def test_strategy_panel_endpoint_is_authenticated_and_never_live_actionable():
     assert response.status_code == 200, response.text
     assert response.json()["actionable_for_live"] is False
     assert response.json()["deterministic_reproducible"] is True
+
+
+def test_automated_final_holdout_endpoint_is_authenticated_and_sanitized():
+    payload = {
+        "experiment_id": "missing-dataset-experiment",
+        "experiment_version": "v1",
+        "dataset_id": "missing-automated-dataset",
+        "dataset_version": "v1",
+    }
+    assert client.post(
+        "/api/v1/research/automated-panel/final-holdout", json=payload
+    ).status_code == 401
+    response = client.post(
+        "/api/v1/research/automated-panel/final-holdout",
+        json=payload,
+        headers=_register(),
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "historical_dataset_not_found"
+
+
+def test_secure_byok_settings_never_return_raw_secrets(monkeypatch):
+    import base64
+    from app.services.provider_secret_service import ProviderSecretService
+
+    vault = ProviderSecretService(
+        main.storage.database,
+        master_key=base64.urlsafe_b64encode(b"v" * 32).decode(),
+    )
+    monkeypatch.setattr(main, "provider_secret_service", vault)
+    auth = _register()
+    raw_secret = "never-return-this-provider-secret-123"
+
+    initial = client.get("/api/v1/settings/providers", headers=auth)
+    assert initial.status_code == 200
+    assert initial.json()["vault_configured"] is True
+    assert initial.json()["raw_secrets_returned"] is False
+
+    saved = client.post(
+        "/api/v1/settings/providers/groq",
+        json={"api_key": raw_secret, "model": "test-model", "enabled": True},
+        headers=auth,
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["configured"] is True
+    assert raw_secret not in saved.text
+
+    async def fake_probe(material):
+        assert material.api_key == raw_secret
+        return "connected"
+
+    monkeypatch.setattr(vault, "_probe", fake_probe)
+    tested = client.post("/api/v1/settings/providers/groq/test", headers=auth)
+    assert tested.status_code == 200
+    assert tested.json()["status"] == "connected"
+    assert raw_secret not in tested.text
+
+    listed = client.get("/api/v1/settings/providers", headers=auth)
+    assert raw_secret not in listed.text
+    assert next(
+        item for item in listed.json()["providers"] if item["provider"] == "groq"
+    )["last_test_status"] == "connected"
+
+    personalized = client.get("/api/v1/news/personalized", headers=auth)
+    assert personalized.status_code == 200
+    assert personalized.json()["user_scoped"] is True
+    assert raw_secret not in personalized.text
+
+    deleted = client.delete("/api/v1/settings/providers/groq", headers=auth)
+    assert deleted.status_code == 200
+    assert raw_secret not in deleted.text

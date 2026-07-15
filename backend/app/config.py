@@ -20,7 +20,7 @@ def _csv(value: str | None) -> list[str]:
 class Settings(BaseModel):
     app_name: str = os.getenv("APP_NAME", "Arena Smart Money AI Trader API")
     app_env: str = os.getenv("APP_ENV", "development")
-    app_version: str = os.getenv("APP_VERSION", "3.1.0-robustness-alpha1")
+    app_version: str = os.getenv("APP_VERSION", "3.3.0-byok-alpha1")
     default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "UTC")
 
     # Browser CORS is disabled by default in production. Native Android clients
@@ -60,6 +60,8 @@ class Settings(BaseModel):
         os.getenv("DATABASE_CONNECT_TIMEOUT_SECONDS", "8")
     )
     backup_retention_days: int = int(os.getenv("BACKUP_RETENTION_DAYS", "14"))
+    user_secret_master_key: str = os.getenv("USER_SECRET_MASTER_KEY", "").strip()
+    user_secret_key_version: int = int(os.getenv("USER_SECRET_KEY_VERSION", "1"))
     session_ttl_hours: int = int(os.getenv("SESSION_TTL_HOURS", "168"))
 
     rate_limit_enabled: bool = _to_bool(os.getenv("RATE_LIMIT_ENABLED"), True)

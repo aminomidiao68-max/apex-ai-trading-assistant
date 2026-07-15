@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.1.0-robustness-alpha1",
-    "status": "APEX GA Program - Robustness Alpha 1"
+    "current_version": "3.3.0-byok-alpha1",
+    "status": "APEX GA Program - Secure BYOK Alpha 1"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -532,6 +532,38 @@
             "Stable and data-mined panel tests",
             "63 local backend tests"
           ]
+        },
+        {
+          "version": "v3.2 Validation Alpha 1 - Automated Panel & Final Holdout",
+          "date": "2026-07-14T22:00:00+03:30",
+          "features": [
+            "Automated parameter-grid strategy panel",
+            "Immutable PostgreSQL experiment lock schema v3",
+            "Development/embargo/final-holdout partition",
+            "Holdout preserved when panel robustness fails",
+            "Single selected configuration evaluated once",
+            "Probabilistic Sharpe diagnostics",
+            "Deflated Sharpe expected-maximum threshold",
+            "Stored idempotent experiment result",
+            "Final holdout quantitative gates",
+            "71 local backend tests"
+          ]
+        },
+        {
+          "version": "v3.3 BYOK Alpha 1 - Encrypted User Provider Vault",
+          "date": "2026-07-14T23:00:00+03:30",
+          "features": [
+            "Android Secure API Vault settings",
+            "AES-256-GCM encrypted provider secrets",
+            "PostgreSQL schema v4 user secret vault",
+            "Groq and OpenAI user-scoped explanation routing",
+            "TwelveData user-scoped historical routing",
+            "Finnhub and NewsAPI personalized news",
+            "OANDA Practice credential test",
+            "No raw secret read-back",
+            "User-scoped AI cache namespace",
+            "77 local backend tests"
+          ]
         }
       ]
     }
@@ -803,6 +835,38 @@
         "ROBUSTNESS_CANDIDATE"
       ],
       "endpoint": "/api/v1/research/strategy-panel/validate"
+    },
+    "automated_final_holdout": {
+      "schema_version": 3,
+      "live_authorization": false,
+      "statuses": [
+        "REJECT",
+        "INCONCLUSIVE",
+        "HIGH_OVERFIT_RISK",
+        "HOLDOUT_FAILED",
+        "FINAL_HOLDOUT_CANDIDATE"
+      ],
+      "endpoint": "/api/v1/research/automated-panel/final-holdout"
+    },
+    "secure_byok_vault": {
+      "schema_version": 4,
+      "encryption": "AES-256-GCM",
+      "providers": [
+        "groq",
+        "openai",
+        "twelvedata",
+        "finnhub",
+        "newsapi",
+        "oanda"
+      ],
+      "raw_secret_readback": false,
+      "live_execution": false,
+      "endpoints": [
+        "/api/v1/settings/providers",
+        "/api/v1/settings/providers/{provider}",
+        "/api/v1/settings/providers/{provider}/test",
+        "/api/v1/news/personalized"
+      ]
     }
   },
   "smc_ict_engine": {
@@ -1157,8 +1221,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "2.4-robustness-alpha1",
-    "last_updated": "2026-07-14T21:00:00+03:30",
+    "documentation_version": "2.6-byok-alpha1",
+    "last_updated": "2026-07-14T23:00:00+03:30",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

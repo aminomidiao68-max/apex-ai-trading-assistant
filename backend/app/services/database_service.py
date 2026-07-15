@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 2
+LATEST_SCHEMA_VERSION = 4
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -202,6 +202,26 @@ class DatabaseManager:
                     """,
                     (2, "historical_quant_dataset_registry", datetime.now(timezone.utc).isoformat()),
                 )
+            if 3 not in applied:
+                self._apply_schema_v3(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (3, "immutable_research_experiment_locks", datetime.now(timezone.utc).isoformat()),
+                )
+            if 4 not in applied:
+                self._apply_schema_v4(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (4, "encrypted_user_provider_secret_vault", datetime.now(timezone.utc).isoformat()),
+                )
             conn.commit()
 
     def _id_column(self) -> str:
@@ -366,6 +386,64 @@ class DatabaseManager:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_quant_datasets_created "
             "ON quant_datasets(created_at DESC)"
+        )
+
+    def _apply_schema_v3(self, conn: ConnectionAdapter) -> None:
+        id_column = self._id_column()
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS research_experiments (
+                id {id_column},
+                user_id {user_id_type} NOT NULL,
+                experiment_id TEXT NOT NULL,
+                version TEXT NOT NULL,
+                dataset_id TEXT NOT NULL,
+                dataset_version TEXT NOT NULL,
+                dataset_sha256 TEXT NOT NULL,
+                request_sha256 TEXT NOT NULL,
+                development_end_index INTEGER NOT NULL,
+                holdout_start_index INTEGER NOT NULL,
+                holdout_end_index INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                result_json TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(user_id, experiment_id, version)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_research_experiments_user_created "
+            "ON research_experiments(user_id, created_at DESC)"
+        )
+
+    def _apply_schema_v4(self, conn: ConnectionAdapter) -> None:
+        id_column = self._id_column()
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        binary_type = "BYTEA" if self.backend == "postgresql" else "BLOB"
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS user_provider_secrets (
+                id {id_column},
+                user_id {user_id_type} NOT NULL,
+                provider TEXT NOT NULL,
+                ciphertext {binary_type} NOT NULL,
+                nonce {binary_type} NOT NULL,
+                key_version INTEGER NOT NULL,
+                enabled INTEGER NOT NULL,
+                metadata_json TEXT NOT NULL DEFAULT '{{}}',
+                last_test_status TEXT,
+                last_tested_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(user_id, provider)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_user_provider_secrets_user "
+            "ON user_provider_secrets(user_id, provider)"
         )
 
     def _ensure_columns(

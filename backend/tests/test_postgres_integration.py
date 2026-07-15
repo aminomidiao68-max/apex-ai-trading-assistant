@@ -35,10 +35,12 @@ def test_postgresql_migration_auth_and_user_scoped_journal_roundtrip():
     health = database.health()
     assert health["connected"] is True
     assert health["persistent"] is True
-    assert health["schema_version"] == LATEST_SCHEMA_VERSION == 2
+    assert health["schema_version"] == LATEST_SCHEMA_VERSION == 4
     assert health["migration_current"] is True
     with database.connection() as conn:
         assert conn.execute("SELECT COUNT(*) AS count FROM quant_datasets").fetchone()["count"] >= 0
+        assert conn.execute("SELECT COUNT(*) AS count FROM research_experiments").fetchone()["count"] >= 0
+        assert conn.execute("SELECT COUNT(*) AS count FROM user_provider_secrets").fetchone()["count"] >= 0
 
     auth = AuthService(seed_demo_user=False)
     storage = StorageService()

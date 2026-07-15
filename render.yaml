@@ -14,7 +14,7 @@ services:
       - key: APP_ENV
         value: production
       - key: APP_VERSION
-        value: 3.1.0-robustness-alpha1
+        value: 3.3.0-byok-alpha1
       - key: DEFAULT_TIMEZONE
         value: UTC
       - key: CORS_ALLOWED_ORIGINS
@@ -29,6 +29,10 @@ services:
         value: 8
       - key: BACKUP_RETENTION_DAYS
         value: 14
+      - key: USER_SECRET_MASTER_KEY
+        sync: false
+      - key: USER_SECRET_KEY_VERSION
+        value: 1
       - key: SEED_DEMO_USER
         value: false
       - key: SESSION_TTL_HOURS

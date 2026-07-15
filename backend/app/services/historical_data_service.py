@@ -235,6 +235,9 @@ class YahooHistoricalProvider:
 class TwelveDataHistoricalProvider:
     name = "twelvedata"
 
+    def __init__(self, api_key: str | None = None) -> None:
+        self.api_key = settings.twelve_data_api_key if api_key is None else api_key
+
     def _symbol(self, symbol: str) -> str:
         normalized = symbol.upper().replace("/", "")
         if len(normalized) == 6 and normalized.isalpha():
@@ -242,7 +245,7 @@ class TwelveDataHistoricalProvider:
         return normalized
 
     async def fetch(self, request: HistoricalDataCollectRequest) -> HistoricalFetchResult:
-        if not settings.twelve_data_api_key:
+        if not self.api_key:
             raise HistoricalDataError("twelvedata_not_configured")
         if request.max_candles > 5_000:
             raise HistoricalDataError("twelvedata_request_exceeds_single_call_limit")
@@ -264,7 +267,7 @@ class TwelveDataHistoricalProvider:
                     "outputsize": request.max_candles,
                     "order": "ASC",
                     "timezone": "UTC",
-                    "apikey": settings.twelve_data_api_key,
+                    "apikey": self.api_key,
                 },
             )
         if not response.is_success:
@@ -428,12 +431,16 @@ class HistoricalDataService:
             "twelvedata": TwelveDataHistoricalProvider(),
         }
 
-    def _select_provider(self, request: HistoricalDataCollectRequest) -> str:
+    def _select_provider(
+        self,
+        request: HistoricalDataCollectRequest,
+        runtime_twelvedata_key: str | None = None,
+    ) -> str:
         if request.provider != "auto":
             return request.provider
         if request.market == MarketType.crypto:
             return "okx"
-        if settings.twelve_data_api_key:
+        if runtime_twelvedata_key or settings.twelve_data_api_key:
             return "twelvedata"
         return "yahoo"
 
@@ -491,9 +498,18 @@ class HistoricalDataService:
             "quality": quality,
         }
 
-    async def collect(self, request: HistoricalDataCollectRequest, user_id: int) -> HistoricalDataCollectResponse:
-        provider_name = self._select_provider(request)
-        provider = self.providers.get(provider_name)
+    async def collect(
+        self,
+        request: HistoricalDataCollectRequest,
+        user_id: int,
+        runtime_twelvedata_key: str | None = None,
+    ) -> HistoricalDataCollectResponse:
+        provider_name = self._select_provider(request, runtime_twelvedata_key)
+        provider = (
+            TwelveDataHistoricalProvider(runtime_twelvedata_key)
+            if provider_name == "twelvedata" and runtime_twelvedata_key
+            else self.providers.get(provider_name)
+        )
         if provider is None:
             raise HistoricalDataError("historical_provider_not_available")
         result = await provider.fetch(request)

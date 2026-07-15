@@ -20,6 +20,7 @@ class ReadinessService:
         items.append(self._twelvedata_check())
         items.append(self._finnhub_check())
         items.append(self._ai_provider_check())
+        items.append(self._provider_vault_check())
         items.append(self._database_persistence_check())
         items.append(self._backup_policy_check())
         items.append(self._rate_limit_check())
@@ -114,6 +115,21 @@ class ReadinessService:
             key="AI_PROVIDER",
             status="warning",
             message="Selected external AI provider is not configured; deterministic verified fallback remains active",
+        )
+
+    def _provider_vault_check(self) -> ReadinessItem:
+        if settings.user_secret_master_key:
+            return ReadinessItem(
+                category="security",
+                key="USER_SECRET_MASTER_KEY",
+                status="ready",
+                message="Encrypted user-scoped BYOK provider vault is configured",
+            )
+        return ReadinessItem(
+            category="security",
+            key="USER_SECRET_MASTER_KEY",
+            status="warning",
+            message="BYOK provider vault is unavailable until a server-side master key is configured",
         )
 
     def _database_persistence_check(self) -> ReadinessItem:

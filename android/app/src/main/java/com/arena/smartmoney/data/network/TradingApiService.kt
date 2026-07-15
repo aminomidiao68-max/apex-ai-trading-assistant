@@ -34,6 +34,10 @@ import com.arena.smartmoney.data.model.NotificationDispatchResultDto
 import com.arena.smartmoney.data.model.Mt5OrderRequestDto
 import com.arena.smartmoney.data.model.NotificationTestRequestDto
 import com.arena.smartmoney.data.model.OandaOrderRequestDto
+import com.arena.smartmoney.data.model.ProviderConnectionTestResponseDto
+import com.arena.smartmoney.data.model.ProviderSecretStatusDto
+import com.arena.smartmoney.data.model.ProviderSecretStatusResponseDto
+import com.arena.smartmoney.data.model.ProviderSecretUpsertRequestDto
 import com.arena.smartmoney.data.model.RiskPlanRequestDto
 import com.arena.smartmoney.data.model.RiskPlanResponse
 import com.arena.smartmoney.data.model.SessionResponse
@@ -51,6 +55,7 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
@@ -70,6 +75,25 @@ interface TradingApiService {
 
     @POST("api/v1/auth/logout")
     suspend fun logout(@Header("Authorization") authorization: String): MessageResponseDto
+
+    @GET("api/v1/settings/providers")
+    suspend fun getProviderSecretStatus(): ProviderSecretStatusResponseDto
+
+    @POST("api/v1/settings/providers/{provider}")
+    suspend fun saveProviderSecret(
+        @Path("provider") provider: String,
+        @Body request: ProviderSecretUpsertRequestDto
+    ): ProviderSecretStatusDto
+
+    @POST("api/v1/settings/providers/{provider}/test")
+    suspend fun testProviderSecret(
+        @Path("provider") provider: String
+    ): ProviderConnectionTestResponseDto
+
+    @DELETE("api/v1/settings/providers/{provider}")
+    suspend fun deleteProviderSecret(
+        @Path("provider") provider: String
+    ): MessageResponseDto
 
     @POST("api/v1/notifications/register-device")
     suspend fun registerDevice(
@@ -211,6 +235,9 @@ interface TradingApiService {
 
     @GET("api/v1/news/brief")
     suspend fun getNewsBrief(): NewsBrief
+
+    @GET("api/v1/news/personalized")
+    suspend fun getPersonalizedNewsBrief(): NewsBrief
     @GET("api/v1/analysis/smc")
     suspend fun getSmcAnalysis(
         @Query("symbol") symbol: String = "XAUUSD",

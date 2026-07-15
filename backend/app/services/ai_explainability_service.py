@@ -89,10 +89,17 @@ class AIProvider(Protocol):
 class OpenAICompatibleProvider:
     name = "openai_compatible"
 
-    def __init__(self) -> None:
-        self.base_url = settings.ai_openai_base_url
-        self.api_key = settings.ai_openai_api_key
-        self.model = settings.ai_openai_model
+    def __init__(
+        self,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+        provider_name: str = "openai_compatible",
+    ) -> None:
+        self.name = provider_name
+        self.base_url = (base_url or settings.ai_openai_base_url).rstrip("/")
+        self.api_key = settings.ai_openai_api_key if api_key is None else api_key
+        self.model = model or settings.ai_openai_model
 
     @property
     def configured(self) -> bool:
@@ -365,7 +372,7 @@ def build_evidence_request_from_report(
         language="en" if language == "en" else "fa",
         provider=(
             provider
-            if provider in {"auto", "deterministic", "openai_compatible", "gemini"}
+            if provider in {"auto", "deterministic", "openai_compatible", "groq", "gemini"}
             else "auto"
         ),
     )
@@ -407,7 +414,12 @@ class AIExplainabilityService:
             },
         }
 
-    async def explain(self, request: AIExplainRequest) -> AIExplainResponse:
+    async def explain(
+        self,
+        request: AIExplainRequest,
+        runtime_provider: AIProvider | None = None,
+        cache_namespace: str = "global",
+    ) -> AIExplainResponse:
         started = self._now()
         missing = self._critical_missing(request)
         if missing:
@@ -420,7 +432,7 @@ class AIExplainabilityService:
                 refusal_reason="missing_critical_data",
             )
 
-        selected = self._select_provider(request.provider)
+        selected = runtime_provider.name if runtime_provider is not None else self._select_provider(request.provider)
         if selected == "deterministic":
             return self._deterministic_response(
                 request,
@@ -430,7 +442,7 @@ class AIExplainabilityService:
                 started=started,
             )
 
-        cache_key = self._cache_key(selected, request)
+        cache_key = self._cache_key(f"{cache_namespace}:{selected}", request)
         cached = self._cache.get(cache_key)
         now = self._now()
         if cached and cached.expires_at > now:
@@ -438,9 +450,9 @@ class AIExplainabilityService:
         if cached:
             self._cache.pop(cache_key, None)
 
-        provider = self.providers.get(selected)
+        provider = runtime_provider or self.providers.get(selected)
         if (
-            not settings.ai_external_enabled
+            (not settings.ai_external_enabled and runtime_provider is None)
             or provider is None
             or not provider.configured
             or self._circuit_is_open(selected)
@@ -519,6 +531,8 @@ class AIExplainabilityService:
         market: str,
         timeframe: str,
         language: str = "fa",
+        runtime_provider: AIProvider | None = None,
+        cache_namespace: str = "global",
     ) -> dict[str, Any]:
         request = build_evidence_request_from_report(
             report,
@@ -527,7 +541,11 @@ class AIExplainabilityService:
             provider="auto",
             language=language,
         )
-        response = await self.explain(request)
+        response = await self.explain(
+            request,
+            runtime_provider=runtime_provider,
+            cache_namespace=cache_namespace,
+        )
         ai = dict(report.get("ai") or {})
         ai.update(response.model_dump())
         ai["evidence_items"] = [item.model_dump() for item in request.evidence]

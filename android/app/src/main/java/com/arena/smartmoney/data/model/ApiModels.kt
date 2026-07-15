@@ -222,6 +222,38 @@ data class NotificationDispatchResultDto(
     val message: String
 )
 
+data class ProviderSecretUpsertRequestDto(
+    val api_key: String,
+    val account_id: String? = null,
+    val model: String? = null,
+    val enabled: Boolean = true
+)
+
+data class ProviderSecretStatusDto(
+    val provider: String,
+    val configured: Boolean,
+    val enabled: Boolean,
+    val has_account_id: Boolean = false,
+    val model: String? = null,
+    val last_test_status: String? = null,
+    val last_tested_at: String? = null,
+    val updated_at: String? = null
+)
+
+data class ProviderSecretStatusResponseDto(
+    val vault_configured: Boolean,
+    val providers: List<ProviderSecretStatusDto> = emptyList(),
+    val raw_secrets_returned: Boolean = false
+)
+
+data class ProviderConnectionTestResponseDto(
+    val provider: String,
+    val status: String,
+    val tested_at: String,
+    val live_execution_enabled: Boolean = false,
+    val details_exposed: Boolean = false
+)
+
 data class RiskSettingsDto(
     val account_balance: Double,
     val risk_per_trade_pct: Double,

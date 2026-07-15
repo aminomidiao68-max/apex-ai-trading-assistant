@@ -220,3 +220,27 @@ def test_report_builder_preserves_honest_forex_proxy_and_negative_evidence():
 def test_calibrated_probability_requires_traceable_calibration_id():
     with pytest.raises(ValueError, match="calibration_id"):
         _request(probability_is_calibrated=True, calibration_id=None)
+
+
+def test_user_runtime_provider_is_opt_in_and_cache_is_user_scoped(monkeypatch):
+    monkeypatch.setattr(settings, "ai_external_enabled", False)
+    provider = _FakeProvider(_valid_draft())
+    provider.name = "groq"
+    service = AIExplainabilityService(providers={})
+    request = _request(provider="groq")
+
+    first = asyncio.run(
+        service.explain(request, runtime_provider=provider, cache_namespace="user-1")
+    )
+    second_user = asyncio.run(
+        service.explain(request, runtime_provider=provider, cache_namespace="user-2")
+    )
+    cached_first_user = asyncio.run(
+        service.explain(request, runtime_provider=provider, cache_namespace="user-1")
+    )
+
+    assert first.mode == "generated"
+    assert first.provider == "groq"
+    assert second_user.cached is False
+    assert cached_first_user.cached is True
+    assert provider.calls == 2

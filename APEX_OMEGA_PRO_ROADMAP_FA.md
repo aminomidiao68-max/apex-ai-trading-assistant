@@ -125,3 +125,29 @@
 - deterministic panel fingerprint
 - stable-panel و data-mined-panel tests
 - final holdout همچنان اجباری و Live خاموش
+
+## ⏳ GA Validation Alpha 1 — Automated Panel & Final Holdout
+
+- automated parameter-grid panel
+- immutable experiment ID/version
+- PostgreSQL schema v3 research lock
+- development/embargo/final-holdout partition
+- holdout not consumed when PBO fails
+- one selected configuration evaluated once
+- PSR و Deflated Sharpe diagnostics
+- expected maximum Sharpe multiple-trial threshold
+- final holdout quant/baseline gates
+- stored idempotent result و conflict detection
+- Live authorization همیشه false
+
+## ⏳ GA BYOK Alpha 1 — Encrypted Provider Settings
+
+- Android Secure API Vault UI
+- AES-256-GCM server-side encryption
+- PostgreSQL schema v4 user secret table
+- Groq/OpenAI/TwelveData/Finnhub/NewsAPI/OANDA slots
+- no plaintext storage یا read-back
+- user-scoped runtime provider routing
+- user-scoped AI cache namespace
+- personalized Finnhub/NewsAPI headlines
+- OANDA Practice test و Live execution خاموش

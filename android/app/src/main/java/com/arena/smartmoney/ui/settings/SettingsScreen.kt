@@ -12,33 +12,78 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.arena.smartmoney.BuildConfig
+import com.arena.smartmoney.data.model.ProviderSecretStatusDto
 import com.arena.smartmoney.data.network.AppConfig
 import com.arena.smartmoney.data.preferences.AppPreferencesManager
+import com.arena.smartmoney.data.repository.TradingRepository
+import com.arena.smartmoney.data.session.SessionManager
 import com.arena.smartmoney.ui.components.PremiumGlassCard
 import com.arena.smartmoney.ui.components.PremiumScreenBackground
 import com.arena.smartmoney.ui.components.PremiumSectionHeader
 import com.arena.smartmoney.ui.i18n.AppLanguageState
 import com.arena.smartmoney.ui.i18n.rememberTranslator
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(onOpenReadiness: () -> Unit) {
     val context = LocalContext.current
     val prefs = remember { AppPreferencesManager(context) }
+    val repository = remember { TradingRepository() }
+    val sessionManager = remember { SessionManager(context) }
+    val scope = rememberCoroutineScope()
     val t = rememberTranslator()
+
+    var providerStatuses by remember { mutableStateOf<List<ProviderSecretStatusDto>>(emptyList()) }
+    var vaultConfigured by remember { mutableStateOf(false) }
+    var selectedProvider by remember { mutableStateOf("groq") }
+    var providerApiKey by remember { mutableStateOf("") }
+    var providerAccountId by remember { mutableStateOf("") }
+    var providerModel by remember { mutableStateOf("") }
+    var providerEnabled by remember { mutableStateOf(true) }
+    var providerLoading by remember { mutableStateOf(false) }
+    var providerMessage by remember { mutableStateOf("") }
+
+    fun refreshProviderStatus() {
+        if (sessionManager.isLocalDemoSession() || sessionManager.getToken().isNullOrBlank()) return
+        scope.launch {
+            providerLoading = true
+            runCatching { repository.getProviderSecretStatus() }
+                .onSuccess { response ->
+                    vaultConfigured = response.vault_configured
+                    providerStatuses = response.providers
+                    providerLoading = false
+                }
+                .onFailure {
+                    providerLoading = false
+                    providerMessage = t(
+                        "Provider status is temporarily unavailable.",
+                        "وضعیت ارائه‌دهنده‌ها موقتاً در دسترس نیست."
+                    )
+                }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        refreshProviderStatus()
+    }
 
     var notificationsEnabled by remember { mutableStateOf(prefs.isNotificationsEnabled()) }
     var autoRefreshEnabled by remember { mutableStateOf(prefs.isAutoRefreshEnabled()) }
@@ -58,6 +103,8 @@ fun SettingsScreen(onOpenReadiness: () -> Unit) {
         testnetOnlyEnabled = testnetOnlyEnabled,
         riskAcknowledged = riskAcknowledged,
     )
+    val selectedProviderDefinition = providerDefinitions.first { it.id == selectedProvider }
+    val selectedProviderStatus = providerStatuses.firstOrNull { it.provider == selectedProvider }
 
     PremiumScreenBackground {
         androidx.compose.foundation.lazy.LazyColumn(
@@ -159,6 +206,228 @@ fun SettingsScreen(onOpenReadiness: () -> Unit) {
                 }
             }
             item {
+                PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+                    Text(
+                        t("Secure API Vault", "گاوصندوق امن API"),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        t(
+                            "Keys are encrypted on the backend and are never stored in Android preferences or returned to the app.",
+                            "کلیدها در بک‌اند رمزنگاری می‌شوند، در تنظیمات محلی اندروید ذخیره نمی‌شوند و هیچ‌وقت به برنامه برگردانده نمی‌شوند."
+                        ),
+                        color = Color(0xFFBCEEFF)
+                    )
+                    Text(
+                        t(
+                            "Previously exposed keys should be rotated before entry.",
+                            "کلیدهایی که قبلاً افشا شده‌اند باید پیش از ورود تعویض شوند."
+                        ),
+                        color = Color(0xFFFFD27A),
+                        fontWeight = FontWeight.Bold
+                    )
+                    if (sessionManager.isLocalDemoSession()) {
+                        Text(
+                            t(
+                                "Secure provider settings require a server account.",
+                                "تنظیمات امن ارائه‌دهنده نیازمند حساب متصل به سرور است."
+                            ),
+                            color = Color(0xFFFF8A8A)
+                        )
+                    } else {
+                        Text(
+                            t("Vault", "گاوصندوق") + ": " + when {
+                                providerLoading -> t("Checking...", "در حال بررسی...")
+                                vaultConfigured -> t("Ready", "آماده")
+                                else -> t("Server setup required", "نیازمند تنظیم سرور")
+                            },
+                            color = if (vaultConfigured) Color(0xFF33E6A6) else Color(0xFFFFD27A),
+                            fontWeight = FontWeight.Bold
+                        )
+                        providerDefinitions.chunked(3).forEach { rowProviders ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                rowProviders.forEach { definition ->
+                                    ProviderButton(
+                                        title = definition.title,
+                                        selected = selectedProvider == definition.id,
+                                        configured = providerStatuses.firstOrNull {
+                                            it.provider == definition.id
+                                        }?.configured == true,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        selectedProvider = definition.id
+                                        providerApiKey = ""
+                                        providerAccountId = ""
+                                        providerModel = providerStatuses.firstOrNull {
+                                            it.provider == definition.id
+                                        }?.model ?: definition.defaultModel.orEmpty()
+                                        providerEnabled = providerStatuses.firstOrNull {
+                                            it.provider == definition.id
+                                        }?.enabled ?: true
+                                        providerMessage = ""
+                                    }
+                                }
+                                repeat(3 - rowProviders.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                        Text(
+                            selectedProviderDefinition.descriptionFa,
+                            color = Color(0xFFDDF8FF)
+                        )
+                        Text(
+                            t("Status", "وضعیت") + ": " + when {
+                                selectedProviderStatus?.configured == true && selectedProviderStatus.enabled -> t("Configured", "تنظیم‌شده")
+                                selectedProviderStatus?.configured == true -> t("Saved but disabled", "ذخیره‌شده ولی غیرفعال")
+                                else -> t("Not configured", "تنظیم‌نشده")
+                            },
+                            color = Color(0xFF67ECFF),
+                            fontWeight = FontWeight.Bold
+                        )
+                        selectedProviderStatus?.last_test_status?.let { testStatus ->
+                            Text(
+                                t("Last connection test", "آخرین تست اتصال") + ": $testStatus",
+                                color = Color(0xFFBCEEFF)
+                            )
+                        }
+                        OutlinedTextField(
+                            value = providerApiKey,
+                            onValueChange = { providerApiKey = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(t("New API key / token", "کلید یا توکن جدید API")) },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            shape = RoundedCornerShape(16.dp),
+                            supportingText = {
+                                Text(t("The value is cleared after save.", "مقدار پس از ذخیره پاک می‌شود."))
+                            }
+                        )
+                        if (selectedProviderDefinition.requiresAccountId) {
+                            OutlinedTextField(
+                                value = providerAccountId,
+                                onValueChange = { providerAccountId = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(t("OANDA Account ID", "شناسه حساب OANDA")) },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                        }
+                        if (selectedProviderDefinition.defaultModel != null) {
+                            OutlinedTextField(
+                                value = providerModel,
+                                onValueChange = { providerModel = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(t("Explanation model", "مدل توضیح‌دهنده")) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                        }
+                        SettingToggle(
+                            title = t("Provider enabled", "ارائه‌دهنده فعال باشد"),
+                            description = t(
+                                "Enabled providers can be used only for your authenticated requests.",
+                                "ارائه‌دهنده فعال فقط برای درخواست‌های احراز‌شده خودت استفاده می‌شود."
+                            ),
+                            checked = providerEnabled,
+                            onCheckedChange = { providerEnabled = it }
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                enabled = !providerLoading && vaultConfigured &&
+                                    providerApiKey.trim().length >= 8 &&
+                                    (!selectedProviderDefinition.requiresAccountId || providerAccountId.isNotBlank()),
+                                onClick = {
+                                    providerLoading = true
+                                    providerMessage = ""
+                                    scope.launch {
+                                        runCatching {
+                                            repository.saveProviderSecret(
+                                                provider = selectedProvider,
+                                                apiKey = providerApiKey.trim(),
+                                                accountId = providerAccountId.trim().ifBlank { null },
+                                                model = providerModel.trim().ifBlank { null },
+                                                enabled = providerEnabled,
+                                            )
+                                        }.onSuccess {
+                                            providerApiKey = ""
+                                            providerAccountId = ""
+                                            providerLoading = false
+                                            providerMessage = t("Encrypted provider secret saved.", "کلید ارائه‌دهنده به‌صورت رمزنگاری‌شده ذخیره شد.")
+                                            refreshProviderStatus()
+                                        }.onFailure {
+                                            providerApiKey = ""
+                                            providerAccountId = ""
+                                            providerLoading = false
+                                            providerMessage = t("Secure save failed.", "ذخیره امن ناموفق بود.")
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text(t("Save", "ذخیره")) }
+                            OutlinedButton(
+                                enabled = !providerLoading && selectedProviderStatus?.configured == true,
+                                onClick = {
+                                    providerLoading = true
+                                    providerMessage = ""
+                                    scope.launch {
+                                        runCatching { repository.testProviderSecret(selectedProvider) }
+                                            .onSuccess { result ->
+                                                providerLoading = false
+                                                providerMessage = t("Connection", "اتصال") + ": ${result.status}"
+                                                refreshProviderStatus()
+                                            }
+                                            .onFailure {
+                                                providerLoading = false
+                                                providerMessage = t("Connection test failed.", "تست اتصال ناموفق بود.")
+                                            }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text(t("Test", "تست")) }
+                            OutlinedButton(
+                                enabled = !providerLoading && selectedProviderStatus?.configured == true,
+                                onClick = {
+                                    providerLoading = true
+                                    scope.launch {
+                                        runCatching { repository.deleteProviderSecret(selectedProvider) }
+                                            .onSuccess {
+                                                providerApiKey = ""
+                                                providerAccountId = ""
+                                                providerLoading = false
+                                                providerMessage = t("Provider secret deleted.", "کلید ارائه‌دهنده حذف شد.")
+                                                refreshProviderStatus()
+                                            }
+                                            .onFailure {
+                                                providerLoading = false
+                                                providerMessage = t("Delete failed.", "حذف ناموفق بود.")
+                                            }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text(t("Delete", "حذف")) }
+                        }
+                        if (providerMessage.isNotBlank()) {
+                            Text(providerMessage, color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
+                        }
+                        Text(
+                            t(
+                                "Groq/OpenAI can explain evidence only. OANDA remains dry-run while Live Execution is disabled.",
+                                "Groq/OpenAI فقط شواهد را توضیح می‌دهند. OANDA تا زمان خاموش بودن اجرای زنده در حالت Dry-run می‌ماند."
+                            ),
+                            color = Color(0xFFFFD27A)
+                        )
+                    }
+                }
+            }
+            item {
                 PremiumGlassCard {
                     Text(t("App Environment", "محیط برنامه"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
                     Text(t("App Version", "نسخه برنامه") + ": ${BuildConfig.VERSION_NAME}", color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
@@ -183,6 +452,39 @@ fun SettingsScreen(onOpenReadiness: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+private data class ProviderDefinition(
+    val id: String,
+    val title: String,
+    val descriptionFa: String,
+    val defaultModel: String? = null,
+    val requiresAccountId: Boolean = false,
+)
+
+private val providerDefinitions = listOf(
+    ProviderDefinition("groq", "Groq", "مدل توضیح‌دهنده سریع و سازگار با OpenAI؛ تصمیم‌گیر نیست.", "llama-3.3-70b-versatile"),
+    ProviderDefinition("openai", "OpenAI", "مدل توضیح‌دهنده اختیاری؛ موتور قطعی را Override نمی‌کند.", "gpt-4.1-mini"),
+    ProviderDefinition("twelvedata", "Twelve", "داده Forex/Gold و Historical برای درخواست‌های حساب شما."),
+    ProviderDefinition("finnhub", "Finnhub", "خبر و داده عمومی مالی برای حساب شما."),
+    ProviderDefinition("newsapi", "NewsAPI", "منبع جایگزین خبرهای Business؛ جای Economic Calendar نیست."),
+    ProviderDefinition("oanda", "OANDA", "توکن Practice به‌همراه Account ID؛ اجرای Live خاموش باقی می‌ماند.", requiresAccountId = true),
+)
+
+@Composable
+private fun ProviderButton(
+    title: String,
+    selected: Boolean,
+    configured: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val label = if (configured) "$title ✓" else title
+    if (selected) {
+        Button(onClick = onClick, modifier = modifier) { Text(label) }
+    } else {
+        OutlinedButton(onClick = onClick, modifier = modifier) { Text(label) }
     }
 }
 
