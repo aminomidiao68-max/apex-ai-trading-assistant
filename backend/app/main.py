@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 import asyncio
 from datetime import datetime, timezone
@@ -50,6 +51,8 @@ from app.models import (
     SignalHistoryItem,
     SignalRequest,
     SignalResponse,
+    StrategyPanelValidationRequest,
+    StrategyPanelValidationResponse,
     StoredBacktestResearchRequest,
     StoredBacktestResearchResponse,
     StoredWalkForwardResearchRequest,
@@ -91,6 +94,7 @@ from app.services.signal_engine import SignalEngine
 from app.services.strict_decision_engine import apply_strict_decision
 from app.services.storage_service import StorageService
 from app.services.stored_research_service import StoredResearchError, StoredResearchService
+from app.services.strategy_panel_service import strategy_panel_validation_service
 
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 
@@ -156,7 +160,7 @@ async def production_guard(request: Request, call_next):
         )
     elif (
         settings.rate_limit_enabled
-        and settings.app_env.lower() != "test"
+        and os.getenv("APP_ENV", settings.app_env).lower() != "test"
         and path not in {"/health", "/ready"}
     ):
         rate_decision = rate_limiter.check(identity, path)
@@ -1415,6 +1419,18 @@ def run_stored_walk_forward(
         return stored_research_service.run_purged_walk_forward(user.id, request)
     except StoredResearchError as exc:
         _raise_stored_research_http_error(exc)
+
+
+@app.post(
+    "/api/v1/research/strategy-panel/validate",
+    response_model=StrategyPanelValidationResponse,
+)
+def validate_strategy_panel(
+    request: StrategyPanelValidationRequest,
+    user=Depends(current_user),
+):
+    """Estimate CSCV probability of backtest overfitting for a strategy panel."""
+    return strategy_panel_validation_service.validate(request)
 
 
 @app.post("/api/v1/signals/analyze", response_model=SignalResponse)

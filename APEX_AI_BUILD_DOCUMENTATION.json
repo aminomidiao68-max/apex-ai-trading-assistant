@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.1.0-research-alpha1",
-    "status": "APEX GA Program - Stored Research Alpha 1"
+    "current_version": "3.1.0-robustness-alpha1",
+    "status": "APEX GA Program - Robustness Alpha 1"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -516,6 +516,22 @@
             "Zero-edge null benchmark disclaimer",
             "57 local backend tests"
           ]
+        },
+        {
+          "version": "v3.1 Robustness Alpha 1 - Market Baseline & CSCV/PBO",
+          "date": "2026-07-14T21:00:00+03:30",
+          "features": [
+            "Same-window always-long R-normalized baseline",
+            "Strategy return panel contract",
+            "Contiguous CSCV time blocks",
+            "IS-only strategy selection",
+            "Selected-strategy OOS rank percentile",
+            "Probability of Backtest Overfitting estimate",
+            "Multiple strategy panel gates",
+            "Deterministic panel fingerprint",
+            "Stable and data-mined panel tests",
+            "63 local backend tests"
+          ]
         }
       ]
     }
@@ -776,6 +792,17 @@
         "/api/v1/research/stored-backtest",
         "/api/v1/research/stored-walk-forward"
       ]
+    },
+    "strategy_robustness_lab": {
+      "method": "cscv_pbo_v1",
+      "live_authorization": false,
+      "statuses": [
+        "REJECT",
+        "INCONCLUSIVE",
+        "HIGH_OVERFIT_RISK",
+        "ROBUSTNESS_CANDIDATE"
+      ],
+      "endpoint": "/api/v1/research/strategy-panel/validate"
     }
   },
   "smc_ict_engine": {
@@ -1130,8 +1157,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "2.3-research-alpha1",
-    "last_updated": "2026-07-14T20:00:00+03:30",
+    "documentation_version": "2.4-robustness-alpha1",
+    "last_updated": "2026-07-14T21:00:00+03:30",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

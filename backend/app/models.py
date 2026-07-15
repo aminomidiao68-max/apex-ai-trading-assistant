@@ -1001,6 +1001,71 @@ class StoredWalkForwardResearchResponse(BaseModel):
     actionable_for_live: bool = False
 
 
+class StrategyReturnSeries(BaseModel):
+    strategy_id: str = Field(min_length=2, max_length=120)
+    strategy_version: str = Field(min_length=1, max_length=80)
+    returns_rr: List[float] = Field(min_length=100, max_length=20_000)
+
+
+class StrategyPanelValidationRequest(BaseModel):
+    panel_id: str = Field(min_length=3, max_length=120)
+    panel_version: str = Field(min_length=1, max_length=80)
+    dataset: QuantDatasetManifest
+    strategies: List[StrategyReturnSeries] = Field(min_length=3, max_length=100)
+    timestamps: List[datetime] = Field(default_factory=list, max_length=20_000)
+    block_count: int = Field(default=8, ge=4, le=12)
+    selection_metric: Literal["expectancy", "sharpe_like"] = "sharpe_like"
+
+    @model_validator(mode="after")
+    def validate_strategy_panel(self):
+        import math
+
+        if self.block_count % 2 != 0:
+            raise ValueError("block_count must be even for CSCV")
+        ids = [item.strategy_id for item in self.strategies]
+        if len(ids) != len(set(ids)):
+            raise ValueError("strategy_id values must be unique")
+        n = self.dataset.sample_count
+        if n < self.block_count * 10:
+            raise ValueError("dataset is too small for requested CSCV blocks")
+        for item in self.strategies:
+            if len(item.returns_rr) != n:
+                raise ValueError("every strategy return series must match dataset sample_count")
+            if any(not math.isfinite(float(value)) for value in item.returns_rr):
+                raise ValueError("strategy return series must contain only finite values")
+        if self.timestamps:
+            if len(self.timestamps) != n:
+                raise ValueError("timestamps length must match strategy observations")
+            if any(current <= previous for previous, current in zip(self.timestamps, self.timestamps[1:])):
+                raise ValueError("strategy panel timestamps must be strictly increasing")
+        return self
+
+
+class StrategyPanelValidationResponse(BaseModel):
+    panel_id: str
+    panel_version: str
+    dataset_id: str
+    analysis_fingerprint: str
+    status: Literal["REJECT", "INCONCLUSIVE", "HIGH_OVERFIT_RISK", "ROBUSTNESS_CANDIDATE"]
+    strategy_count: int
+    observation_count: int
+    block_count: int
+    cscv_combinations: int
+    selection_metric: str
+    probability_of_backtest_overfitting: float
+    median_selected_oos_rank_percentile: float
+    mean_is_oos_degradation: float
+    selected_strategy_frequency: dict[str, int] = Field(default_factory=dict)
+    most_selected_strategy_id: Optional[str] = None
+    most_selected_strategy_mean_oos_metric: Optional[float] = None
+    hard_gates: dict[str, bool] = Field(default_factory=dict)
+    failed_gates: List[str] = Field(default_factory=list)
+    limitations: List[str] = Field(default_factory=list)
+    actionable_for_live: bool = False
+    deterministic_reproducible: bool = True
+    disclaimer: str = "CSCV/PBO measures selection overfitting risk on this panel; it does not prove future profitability."
+
+
 class ConnectorCapability(BaseModel):
     connector: str
     market_type: str

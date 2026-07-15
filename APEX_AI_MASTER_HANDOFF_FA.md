@@ -2,7 +2,7 @@
 
 > **سند مرجع جامع برای بازیابی کامل Context پروژه و ادامه کار بدون نیاز به این گفتگو**  
 > نسخه سند: `1.0`  
-> وضعیت Baseline زنده در زمان ثبت اولیه: `3.0.0-rc1`؛ Candidate فعلی: `3.1.0-research-alpha1`  
+> وضعیت Baseline زنده در زمان ثبت اولیه: `3.0.0-rc1`؛ Candidate فعلی: `3.1.0-robustness-alpha1`  
 > تاریخ Snapshot: `2026-07-14`  
 > زبان مرجع: فارسی؛ نام فیلدها، مسیرها و قراردادهای کد انگلیسی باقی مانده‌اند.
 
@@ -1288,6 +1288,22 @@ Candidate `3.1.0-research-alpha1` Dataset Registry را به Backtest/Quant وص
 - Zero-edge benchmark صرفاً Null baseline است.
 - Local Gate: `57 passed, 1 skipped`.
 - Live authorization در همه Responseها false است.
+
+## 10.8) Post-RC Robustness Alpha 1 — Market Baseline & PBO
+
+Candidate `3.1.0-robustness-alpha1` موارد زیر را اضافه می‌کند:
+
+- same-window always-long benchmark در R units
+- Strategy Panel با حداقل پنج Variant
+- CSCV روی Blockهای زمانی پیوسته
+- انتخاب Strategy فقط در IS
+- OOS rank percentile برای Strategy منتخب
+- PBO estimate و degradation
+- Statusهای `HIGH_OVERFIT_RISK` و `ROBUSTNESS_CANDIDATE`
+- Stable-panel test با PBO صفر
+- Data-mined-panel test با PBO بالا
+- Local Gate: `63 passed, 1 skipped`
+- Low PBO نیز مجوز Live یا تضمین آینده نیست.
 
 ## 11) موتور Strict فعلی
 

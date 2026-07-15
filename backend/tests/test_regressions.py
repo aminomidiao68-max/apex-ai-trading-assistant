@@ -888,3 +888,53 @@ def test_stored_research_endpoints_are_authenticated_and_sanitize_missing_datase
     )
     assert walk.status_code == 404
     assert walk.json()["detail"]["code"] == "historical_dataset_not_found"
+
+
+def test_strategy_panel_endpoint_is_authenticated_and_never_live_actionable():
+    start = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    n = 200
+    payload = {
+        "panel_id": "api-strategy-panel",
+        "panel_version": "v1",
+        "dataset": {
+            "dataset_id": "api-panel-data",
+            "version": "v1",
+            "source": "test_fixture",
+            "symbol": "BTCUSDT",
+            "market": "crypto",
+            "timeframe": "1h",
+            "start_time": start.isoformat(),
+            "end_time": (start + timedelta(hours=n)).isoformat(),
+            "sample_count": n,
+            "source_sha256": "f" * 64,
+            "is_point_in_time": True,
+            "is_survivorship_bias_controlled": True,
+            "data_quality_score": 100,
+        },
+        "strategies": [
+            {
+                "strategy_id": f"api-s-{index}",
+                "strategy_version": "v1",
+                "returns_rr": [
+                    0.5 - index * 0.1 + (0.02 if row % 2 == 0 else -0.02)
+                    for row in range(n)
+                ],
+            }
+            for index in range(5)
+        ],
+        "timestamps": [
+            (start + timedelta(hours=index)).isoformat() for index in range(n)
+        ],
+        "block_count": 8,
+    }
+    assert client.post(
+        "/api/v1/research/strategy-panel/validate", json=payload
+    ).status_code == 401
+    response = client.post(
+        "/api/v1/research/strategy-panel/validate",
+        json=payload,
+        headers=_register(),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["actionable_for_live"] is False
+    assert response.json()["deterministic_reproducible"] is True

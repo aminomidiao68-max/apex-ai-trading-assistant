@@ -69,16 +69,16 @@ parameter_combinations_per_fold × executed_folds
 
 ## Benchmark
 
-در این مرحله Benchmark پیش‌فرض OOS برابر Zero-edge null baseline است.
+Benchmark OOS اکنون یک Always-long buy-and-hold روی همان پنجره زمانی هر Trade است و با Stop Distance همان Setup به R نرمال می‌شود.
 
-این Benchmark:
+محدودیت:
 
-- Buy-and-hold نیست.
-- Investable benchmark نیست.
-- فقط بررسی می‌کند Expectancy از Null صفر عبور می‌کند یا نه.
-- محدودیت آن صریحاً در Response ثبت می‌شود.
+- این Benchmark به Windowهای انتخاب‌شده توسط Strategy شرطی است.
+- معادل Full-period passive portfolio نیست.
+- Investable benchmark کامل نیست.
+- فقط مقایسه هم‌افق و هم‌مقیاس R را فراهم می‌کند.
 
-Benchmarkهای Market/Passive واقعی در مرحله بعد اضافه می‌شوند.
+Robustness Alpha بعدی PBO/CSCV را روی Panel چند Strategy اضافه می‌کند.
 
 ## Quant Promotion
 

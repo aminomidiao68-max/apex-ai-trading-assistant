@@ -122,6 +122,7 @@ class StoredResearchService:
         fold_results: list[StoredWalkForwardFoldResult] = []
         quant_folds: list[QuantWalkForwardFold] = []
         oos_returns: list[float] = []
+        oos_benchmark_returns: list[float] = []
         oos_timestamps: list[datetime] = []
         oos_source_indices: list[int] = []
         skipped_folds = 0
@@ -187,6 +188,7 @@ class StoredResearchService:
             )
             activated = [item for item in results if item.activated]
             fold_returns: list[float] = []
+            fold_benchmark_returns: list[float] = []
             fold_indices: list[int] = []
             fold_times: list[datetime] = []
             for item in activated:
@@ -196,7 +198,22 @@ class StoredResearchService:
                 source_index = decision_index + 1
                 if source_index < test_start or source_index > test_end:
                     raise StoredResearchError("oos_trade_outside_test_boundary")
+                risk_distance = abs(item.entry_price - item.stop_loss)
+                entry_index = min(
+                    test_end,
+                    source_index + max(0, item.bars_to_entry - 1),
+                )
+                exit_index = min(
+                    test_end,
+                    entry_index + max(0, item.bars_held - 1),
+                )
+                buy_hold_rr = (
+                    (candles[exit_index].close - item.entry_price) / risk_distance
+                    if risk_distance > 0
+                    else 0.0
+                )
                 fold_returns.append(item.rr_realized)
+                fold_benchmark_returns.append(round(buy_hold_rr, 6))
                 fold_indices.append(source_index)
                 fold_times.append(candles[source_index].timestamp)
 
@@ -249,6 +266,7 @@ class StoredResearchService:
                     )
                 )
                 oos_returns.extend(fold_returns)
+                oos_benchmark_returns.extend(fold_benchmark_returns)
                 oos_timestamps.extend(fold_times)
                 oos_source_indices.extend(fold_indices)
             cursor += request.step_size
@@ -256,7 +274,8 @@ class StoredResearchService:
         quant_validation = None
         limitations = [
             "Each configuration is selected on training data and evaluated only after an embargo.",
-            "Zero-edge benchmark is a null baseline, not buy-and-hold or an investable benchmark.",
+            "Benchmark is an always-long buy-and-hold return over the same strategy-conditioned trade windows, normalized by the strategy stop distance.",
+            "The conditional same-window benchmark is not a full-period investable buy-and-hold portfolio.",
             "Walk-forward evidence does not prove future profitability or authorize live execution.",
         ]
         if skipped_folds:
@@ -297,7 +316,7 @@ class StoredResearchService:
                     returns_rr=oos_returns,
                     timestamps=oos_timestamps,
                     return_source_indices=oos_source_indices,
-                    benchmark_returns_rr=[0.0] * len(oos_returns),
+                    benchmark_returns_rr=oos_benchmark_returns,
                     walk_forward_folds=quant_folds,
                     strategies_tried=min(100_000, combinations * max(1, len(fold_results))),
                     bootstrap_samples=request.bootstrap_samples,

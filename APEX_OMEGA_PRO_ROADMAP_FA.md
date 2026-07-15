@@ -111,3 +111,17 @@
 - Quant Evidence فقط روی Activated OOS trades
 - zero-edge null benchmark با limitation صریح
 - Live authorization همیشه false
+
+## ⏳ GA Robustness Alpha 1 — Market Baseline & CSCV/PBO
+
+- same-window always-long baseline in comparable R units
+- strategy-panel contract
+- contiguous block partition
+- combinatorially symmetric cross-validation
+- IS-only strategy selection
+- selected-strategy OOS rank
+- Probability of Backtest Overfitting estimate
+- minimum panel/observation/combination gates
+- deterministic panel fingerprint
+- stable-panel و data-mined-panel tests
+- final holdout همچنان اجباری و Live خاموش
