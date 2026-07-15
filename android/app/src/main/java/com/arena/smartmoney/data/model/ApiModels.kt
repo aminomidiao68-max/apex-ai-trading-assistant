@@ -60,6 +60,117 @@ data class ExecutionStatusResponse(
     val connectors: List<ConnectorStatusDto>
 )
 
+data class PaperExecutionControlUpdateDto(
+    val paper_trading_enabled: Boolean,
+    val kill_switch_engaged: Boolean,
+    val max_open_orders: Int = 5,
+    val max_order_notional: Double = 10000.0,
+    val default_fee_bps: Double = 4.0,
+    val default_slippage_bps: Double = 1.0,
+    val acknowledgement: String? = null
+)
+
+data class PaperExecutionControlDto(
+    val paper_trading_enabled: Boolean = false,
+    val kill_switch_engaged: Boolean = true,
+    val max_open_orders: Int = 5,
+    val max_order_notional: Double = 10000.0,
+    val default_fee_bps: Double = 4.0,
+    val default_slippage_bps: Double = 1.0,
+    val updated_at: String? = null,
+    val live_execution_enabled: Boolean = false
+)
+
+data class PaperOrderCreateRequestDto(
+    val idempotency_key: String,
+    val symbol: String,
+    val market: String,
+    val side: String,
+    val order_type: String,
+    val quantity: Double,
+    val reference_bid: Double,
+    val reference_ask: Double,
+    val available_quantity: Double? = null,
+    val limit_price: Double? = null,
+    val time_in_force: String = "GTC",
+    val max_slippage_bps: Double = 5.0,
+    val fee_bps: Double? = null,
+    val signal_score: Double = 85.0,
+    val risk_approved: Boolean = true,
+    val strategy_id: String? = null,
+    val setup_id: String? = null
+)
+
+data class PaperFillDto(
+    val fill_id: String,
+    val order_id: String,
+    val quantity: Double,
+    val price: Double,
+    val fee_amount: Double,
+    val liquidity: String,
+    val source: String,
+    val created_at: String
+)
+
+data class PaperOrderEventDto(
+    val event_id: String,
+    val order_id: String,
+    val sequence: Int,
+    val event_type: String,
+    val from_status: String? = null,
+    val to_status: String,
+    val reason: String,
+    val payload_hash: String,
+    val created_at: String
+)
+
+data class PaperOrderDto(
+    val order_id: String,
+    val idempotency_key: String,
+    val symbol: String,
+    val market: String,
+    val side: String,
+    val order_type: String,
+    val quantity: Double,
+    val limit_price: Double? = null,
+    val time_in_force: String,
+    val status: String,
+    val filled_quantity: Double,
+    val remaining_quantity: Double,
+    val average_fill_price: Double? = null,
+    val total_fees: Double = 0.0,
+    val reference_bid: Double,
+    val reference_ask: Double,
+    val max_slippage_bps: Double,
+    val signal_score: Double,
+    val risk_approved: Boolean,
+    val strategy_id: String? = null,
+    val setup_id: String? = null,
+    val created_at: String,
+    val updated_at: String,
+    val terminal_at: String? = null,
+    val live_routed: Boolean = false,
+    val fills: List<PaperFillDto> = emptyList(),
+    val events: List<PaperOrderEventDto> = emptyList()
+)
+
+data class PaperOrderListResponseDto(
+    val items: List<PaperOrderDto> = emptyList(),
+    val count: Int = 0
+)
+
+data class PaperReconciliationResponseDto(
+    val order_id: String,
+    val consistent: Boolean,
+    val filled_quantity_matches: Boolean,
+    val average_price_matches: Boolean,
+    val fees_match: Boolean,
+    val event_sequence_valid: Boolean,
+    val terminal_state_valid: Boolean,
+    val issues: List<String> = emptyList(),
+    val live_execution_enabled: Boolean = false
+)
+
 data class ConnectorCapabilityDto(
     val connector: String,
     val market_type: String,

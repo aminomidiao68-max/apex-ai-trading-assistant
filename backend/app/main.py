@@ -44,6 +44,13 @@ from app.models import (
     Mt5OrderRequest,
     NotificationTestRequest,
     OandaOrderRequest,
+    PaperExecutionControl,
+    PaperExecutionControlUpdateRequest,
+    PaperMarketTickRequest,
+    PaperOrder,
+    PaperOrderCreateRequest,
+    PaperOrderListResponse,
+    PaperReconciliationResponse,
     ProviderConnectionTestResponse,
     ProviderSecretStatus,
     ProviderSecretStatusResponse,
@@ -83,6 +90,7 @@ from app.services.market_data_service import MarketDataService
 from app.services.news_engine import mock_news
 from app.services.notification_service import NotificationService
 from app.services.orderflow_service import OrderFlowService
+from app.services.paper_oms_service import PaperOmsError, PaperOmsService
 from app.services.provider_secret_service import ProviderSecretService, ProviderVaultError
 from app.services.production_guard_service import (
     client_identity,
@@ -121,6 +129,7 @@ ctrader_connector = CTraderConnector()
 auth_service = AuthService()
 storage = StorageService()
 provider_secret_service = ProviderSecretService(storage.database)
+paper_oms_service = PaperOmsService(storage.database)
 historical_data_service = HistoricalDataService(storage.database)
 stored_research_service = StoredResearchService(
     historical_data_service.store,
@@ -1418,6 +1427,85 @@ async def market_websocket(websocket: WebSocket, symbol: str = "BTCUSDT", market
             {"error": "market_stream_unavailable", "request_id": request_id(None)}
         )
         await websocket.close()
+
+
+def _raise_paper_oms_error(exc: PaperOmsError):
+    status = 400
+    if exc.code == "paper_order_not_found":
+        status = 404
+    elif exc.code == "idempotency_key_payload_conflict":
+        status = 409
+    raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
+
+
+@app.get("/api/v1/paper/control", response_model=PaperExecutionControl)
+def get_paper_control(user=Depends(current_user)):
+    return paper_oms_service.get_control(user.id)
+
+
+@app.post("/api/v1/paper/control", response_model=PaperExecutionControl)
+def update_paper_control(
+    request: PaperExecutionControlUpdateRequest,
+    user=Depends(current_user),
+):
+    return paper_oms_service.update_control(user.id, request)
+
+
+@app.post("/api/v1/paper/orders", response_model=PaperOrder)
+def submit_paper_order(
+    request: PaperOrderCreateRequest,
+    user=Depends(current_user),
+):
+    try:
+        return paper_oms_service.submit(user.id, request)
+    except PaperOmsError as exc:
+        _raise_paper_oms_error(exc)
+
+
+@app.get("/api/v1/paper/orders", response_model=PaperOrderListResponse)
+def list_paper_orders(
+    limit: int = Query(default=100, ge=1, le=500),
+    user=Depends(current_user),
+):
+    return paper_oms_service.list(user.id, limit)
+
+
+@app.get("/api/v1/paper/orders/{order_id}", response_model=PaperOrder)
+def get_paper_order(order_id: str, user=Depends(current_user)):
+    try:
+        return paper_oms_service.get(user.id, order_id)
+    except PaperOmsError as exc:
+        _raise_paper_oms_error(exc)
+
+
+@app.post("/api/v1/paper/orders/{order_id}/cancel", response_model=PaperOrder)
+def cancel_paper_order(order_id: str, user=Depends(current_user)):
+    try:
+        return paper_oms_service.cancel(user.id, order_id)
+    except PaperOmsError as exc:
+        _raise_paper_oms_error(exc)
+
+
+@app.post("/api/v1/paper/ticks", response_model=PaperOrderListResponse)
+def process_paper_tick(
+    request: PaperMarketTickRequest,
+    user=Depends(current_user),
+):
+    try:
+        return paper_oms_service.process_tick(user.id, request)
+    except PaperOmsError as exc:
+        _raise_paper_oms_error(exc)
+
+
+@app.get(
+    "/api/v1/paper/orders/{order_id}/reconcile",
+    response_model=PaperReconciliationResponse,
+)
+def reconcile_paper_order(order_id: str, user=Depends(current_user)):
+    try:
+        return paper_oms_service.reconcile(user.id, order_id)
+    except PaperOmsError as exc:
+        _raise_paper_oms_error(exc)
 
 
 @app.get("/api/v1/execution/capabilities")

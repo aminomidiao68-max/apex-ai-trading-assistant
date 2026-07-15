@@ -171,6 +171,141 @@ fun BrokerScreen(viewModel: BrokerViewModel = viewModel()) {
                 }
             }
             item {
+                PremiumGlassCard(borderColor = Color(0x4059C7FF)) {
+                    Text(
+                        t("Paper OMS Command", "فرماندهی سفارش شبیه‌سازی"),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        t(
+                            "Paper orders use an isolated event ledger and never route to a broker.",
+                            "سفارش‌های شبیه‌سازی در دفتر رویداد مستقل ثبت می‌شوند و هرگز به بروکر ارسال نمی‌شوند."
+                        ),
+                        color = Color(0xFFBCEEFF)
+                    )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        BrokerChip(
+                            t("Paper", "شبیه‌سازی"),
+                            if (state.paperControl?.paper_trading_enabled == true) t("Enabled", "فعال") else t("Disabled", "خاموش"),
+                            Modifier.weight(1f)
+                        )
+                        BrokerChip(
+                            t("Kill Switch", "کلید توقف"),
+                            if (state.paperControl?.kill_switch_engaged != false) t("Engaged", "درگیر") else t("Released", "آزاد"),
+                            Modifier.weight(1f)
+                        )
+                        BrokerChip(
+                            t("Live Routed", "ارسال زنده"),
+                            "FALSE",
+                            Modifier.weight(1f)
+                        )
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = viewModel::armPaperMode, modifier = Modifier.weight(1f)) {
+                            Text(t("Arm Paper", "فعال‌سازی شبیه‌سازی"))
+                        }
+                        OutlinedButton(onClick = viewModel::engagePaperKillSwitch, modifier = Modifier.weight(1f)) {
+                            Text(t("KILL", "توقف"))
+                        }
+                        OutlinedButton(onClick = viewModel::disablePaperMode, modifier = Modifier.weight(1f)) {
+                            Text(t("Disable", "خاموش"))
+                        }
+                    }
+                    OutlinedTextField(
+                        value = state.paperPrice,
+                        onValueChange = viewModel::updatePaperPrice,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(t("Paper reference price", "قیمت مرجع شبیه‌سازی")) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(18.dp),
+                        textStyle = premiumTextFieldStyle(),
+                        colors = premiumTextFieldColors()
+                    )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ConnectorPickButton(
+                            "market", t("Market", "مارکت"), state.paperOrderType,
+                            Modifier.weight(1f)
+                        ) { viewModel.selectPaperOrderType("market") }
+                        ConnectorPickButton(
+                            "limit", t("Limit", "لیمیت"), state.paperOrderType,
+                            Modifier.weight(1f)
+                        ) { viewModel.selectPaperOrderType("limit") }
+                    }
+                    if (state.paperOrderType == "limit") {
+                        OutlinedTextField(
+                            value = state.paperLimitPrice,
+                            onValueChange = viewModel::updatePaperLimitPrice,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text(t("Paper limit price", "قیمت لیمیت شبیه‌سازی")) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(18.dp),
+                            textStyle = premiumTextFieldStyle(),
+                            colors = premiumTextFieldColors()
+                        )
+                    }
+                    Button(
+                        onClick = viewModel::submitPaperOrder,
+                        enabled = state.paperControl?.paper_trading_enabled == true &&
+                            state.paperControl?.kill_switch_engaged == false,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(t("Submit Paper Order", "ثبت سفارش شبیه‌سازی"))
+                    }
+                    if (state.paperMessage.isNotBlank()) {
+                        Text(state.paperMessage, color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
+                    }
+                    state.paperReconciliation?.let { reconciliation ->
+                        Text(
+                            t("Ledger consistent", "سازگاری دفتر") + ": ${reconciliation.consistent}",
+                            color = if (reconciliation.consistent) Color(0xFF33E6A6) else Color(0xFFFF8A8A),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            if (state.paperOrders.isNotEmpty()) {
+                item {
+                    Text(
+                        t("Recent Paper Orders", "سفارش‌های شبیه‌سازی اخیر"),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                items(state.paperOrders.take(10)) { order ->
+                    PremiumGlassCard {
+                        Text(
+                            "${order.symbol} • ${order.side.uppercase()} • ${order.order_type.uppercase()}",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(t("Status", "وضعیت") + ": ${order.status}", color = Color(0xFF67ECFF))
+                        Text(
+                            t("Filled / Total", "پرشده / کل") + ": ${order.filled_quantity} / ${order.quantity}",
+                            color = Color.White
+                        )
+                        Text(
+                            t("Average / Fees", "میانگین / کارمزد") + ": ${order.average_fill_price ?: "-"} / ${order.total_fees}",
+                            color = Color(0xFFBCEEFF)
+                        )
+                        Text("Live routed: ${order.live_routed}", color = Color(0xFFFFD27A))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = { viewModel.reconcilePaperOrder(order.order_id) },
+                                modifier = Modifier.weight(1f)
+                            ) { Text(t("Reconcile", "تطبیق دفتر")) }
+                            OutlinedButton(
+                                onClick = { viewModel.cancelPaperOrder(order.order_id) },
+                                enabled = order.status in listOf("accepted", "working", "partially_filled"),
+                                modifier = Modifier.weight(1f)
+                            ) { Text(t("Cancel", "لغو")) }
+                        }
+                    }
+                }
+            }
+            item {
                 Text(t("Connector Capabilities", "قابلیت‌های کانکتورها"), style = MaterialTheme.typography.titleLarge, color = Color.White, fontWeight = FontWeight.Bold)
             }
             items(state.capabilities) { capability ->

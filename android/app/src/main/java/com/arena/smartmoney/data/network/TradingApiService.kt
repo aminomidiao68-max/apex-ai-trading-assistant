@@ -34,6 +34,12 @@ import com.arena.smartmoney.data.model.NotificationDispatchResultDto
 import com.arena.smartmoney.data.model.Mt5OrderRequestDto
 import com.arena.smartmoney.data.model.NotificationTestRequestDto
 import com.arena.smartmoney.data.model.OandaOrderRequestDto
+import com.arena.smartmoney.data.model.PaperExecutionControlDto
+import com.arena.smartmoney.data.model.PaperExecutionControlUpdateDto
+import com.arena.smartmoney.data.model.PaperOrderCreateRequestDto
+import com.arena.smartmoney.data.model.PaperOrderDto
+import com.arena.smartmoney.data.model.PaperOrderListResponseDto
+import com.arena.smartmoney.data.model.PaperReconciliationResponseDto
 import com.arena.smartmoney.data.model.ProviderConnectionTestResponseDto
 import com.arena.smartmoney.data.model.ProviderSecretStatusDto
 import com.arena.smartmoney.data.model.ProviderSecretStatusResponseDto
@@ -132,6 +138,30 @@ interface TradingApiService {
 
     @GET("api/v1/execution/status")
     suspend fun getExecutionStatus(): ExecutionStatusResponse
+
+    @GET("api/v1/paper/control")
+    suspend fun getPaperControl(): PaperExecutionControlDto
+
+    @POST("api/v1/paper/control")
+    suspend fun updatePaperControl(
+        @Body request: PaperExecutionControlUpdateDto
+    ): PaperExecutionControlDto
+
+    @POST("api/v1/paper/orders")
+    suspend fun submitPaperOrder(
+        @Body request: PaperOrderCreateRequestDto
+    ): PaperOrderDto
+
+    @GET("api/v1/paper/orders")
+    suspend fun getPaperOrders(@Query("limit") limit: Int = 50): PaperOrderListResponseDto
+
+    @POST("api/v1/paper/orders/{orderId}/cancel")
+    suspend fun cancelPaperOrder(@Path("orderId") orderId: String): PaperOrderDto
+
+    @GET("api/v1/paper/orders/{orderId}/reconcile")
+    suspend fun reconcilePaperOrder(
+        @Path("orderId") orderId: String
+    ): PaperReconciliationResponseDto
 
     @GET("api/v1/execution/capabilities")
     suspend fun getExecutionCapabilities(): ExecutionCapabilitiesResponse

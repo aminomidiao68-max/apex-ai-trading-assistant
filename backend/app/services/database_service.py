@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 4
+LATEST_SCHEMA_VERSION = 5
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -221,6 +221,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (4, "encrypted_user_provider_secret_vault", datetime.now(timezone.utc).isoformat()),
+                )
+            if 5 not in applied:
+                self._apply_schema_v5(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (5, "paper_oms_event_ledger", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -444,6 +454,99 @@ class DatabaseManager:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_user_provider_secrets_user "
             "ON user_provider_secrets(user_id, provider)"
+        )
+
+    def _apply_schema_v5(self, conn: ConnectionAdapter) -> None:
+        id_column = self._id_column()
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_execution_controls (
+                user_id {user_id_type} PRIMARY KEY,
+                paper_trading_enabled INTEGER NOT NULL,
+                kill_switch_engaged INTEGER NOT NULL,
+                max_open_orders INTEGER NOT NULL,
+                max_order_notional REAL NOT NULL,
+                default_fee_bps REAL NOT NULL,
+                default_slippage_bps REAL NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_orders (
+                order_id TEXT PRIMARY KEY,
+                user_id {user_id_type} NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                request_hash TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                market TEXT NOT NULL,
+                side TEXT NOT NULL,
+                order_type TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                limit_price REAL,
+                time_in_force TEXT NOT NULL,
+                status TEXT NOT NULL,
+                filled_quantity REAL NOT NULL,
+                average_fill_price REAL,
+                total_fees REAL NOT NULL,
+                reference_bid REAL NOT NULL,
+                reference_ask REAL NOT NULL,
+                max_slippage_bps REAL NOT NULL,
+                fee_bps REAL NOT NULL,
+                signal_score REAL NOT NULL,
+                risk_approved INTEGER NOT NULL,
+                strategy_id TEXT,
+                setup_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                terminal_at TEXT,
+                UNIQUE(user_id, idempotency_key)
+            )
+            """
+        )
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_fills (
+                fill_id TEXT PRIMARY KEY,
+                order_id TEXT NOT NULL,
+                user_id {user_id_type} NOT NULL,
+                quantity REAL NOT NULL,
+                price REAL NOT NULL,
+                fee_amount REAL NOT NULL,
+                liquidity TEXT NOT NULL,
+                source TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_order_events (
+                event_id TEXT PRIMARY KEY,
+                order_id TEXT NOT NULL,
+                user_id {user_id_type} NOT NULL,
+                sequence INTEGER NOT NULL,
+                event_type TEXT NOT NULL,
+                from_status TEXT,
+                to_status TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                payload_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(order_id, sequence)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_orders_user_status "
+            "ON paper_orders(user_id, status, created_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_fills_order ON paper_fills(order_id, created_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_events_order ON paper_order_events(order_id, sequence)"
         )
 
     def _ensure_columns(

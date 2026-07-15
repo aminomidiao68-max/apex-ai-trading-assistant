@@ -2,7 +2,7 @@
 
 > **سند مرجع جامع برای بازیابی کامل Context پروژه و ادامه کار بدون نیاز به این گفتگو**  
 > نسخه سند: `1.0`  
-> وضعیت Baseline زنده در زمان ثبت اولیه: `3.0.0-rc1`؛ Candidate فعلی: `3.3.0-byok-alpha1`  
+> وضعیت Baseline زنده در زمان ثبت اولیه: `3.0.0-rc1`؛ Candidate فعلی: `3.4.0-paper-alpha1`  
 > تاریخ Snapshot: `2026-07-14`  
 > زبان مرجع: فارسی؛ نام فیلدها، مسیرها و قراردادهای کد انگلیسی باقی مانده‌اند.
 
@@ -1334,6 +1334,22 @@ Candidate `3.3.0-byok-alpha1`:
 - Groq/OpenAI user-scoped Explanation، TwelveData historical و Finnhub/NewsAPI personalized news را تغذیه می‌کنند.
 - OANDA فقط Practice test است و Live خاموش می‌ماند.
 - Local Gate: `77 passed, 1 skipped`.
+
+## 10.11) Post-RC Paper Alpha 1 — Paper OMS
+
+Candidate `3.4.0-paper-alpha1`:
+
+- Paper mode پیش‌فرض خاموش و Kill Switch فعال است.
+- Order/Fill/Event/Control ledger در PostgreSQL schema v5 ذخیره می‌شود.
+- Idempotency key و request hash از Duplicate order جلوگیری می‌کند.
+- Market/Limit، GTC/IOC/FOK و Partial Fill شبیه‌سازی می‌شوند.
+- Fill برای Buy از Ask و Sell از Bid با adverse slippage/fee محاسبه می‌شود.
+- PostgreSQL `FOR UPDATE` از double-fill و race جلوگیری می‌کند.
+- Kill Switch تمام سفارش‌های باز را Cancel می‌کند.
+- Reconciliation quantity/average/fee/event sequence را بررسی می‌کند.
+- Android Broker دارای Paper Command، Arm/Kill، Submit، Cancel و Reconcile است.
+- `live_routed=false` و `ENABLE_LIVE_EXECUTION=false` باقی می‌مانند.
+- Local Gate: `85 passed, 1 skipped`.
 
 ## 11) موتور Strict فعلی
 

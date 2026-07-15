@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.3.0-byok-alpha1",
-    "status": "APEX GA Program - Secure BYOK Alpha 1"
+    "current_version": "3.4.0-paper-alpha1",
+    "status": "APEX GA Program - Paper OMS Alpha 1"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -564,6 +564,23 @@
             "User-scoped AI cache namespace",
             "77 local backend tests"
           ]
+        },
+        {
+          "version": "v3.4 Paper Alpha 1 - Paper OMS & Execution Safety",
+          "date": "2026-07-15T17:00:00+03:30",
+          "features": [
+            "Default-disabled paper execution and engaged kill switch",
+            "User-scoped order, fill and append-only event ledger",
+            "Idempotency key and canonical request hash",
+            "Conservative bid/ask/slippage/fee simulation",
+            "Market and limit paper orders",
+            "GTC, IOC and FOK semantics",
+            "Partial fills and weighted average price",
+            "PostgreSQL FOR UPDATE concurrency guards",
+            "Paper ledger reconciliation",
+            "Android Paper OMS command UI",
+            "85 local backend tests"
+          ]
         }
       ]
     }
@@ -866,6 +883,25 @@
         "/api/v1/settings/providers/{provider}",
         "/api/v1/settings/providers/{provider}/test",
         "/api/v1/news/personalized"
+      ]
+    },
+    "paper_oms": {
+      "schema_version": 5,
+      "live_routed": false,
+      "states": [
+        "accepted",
+        "working",
+        "partially_filled",
+        "filled",
+        "canceled",
+        "rejected",
+        "expired"
+      ],
+      "endpoints": [
+        "/api/v1/paper/control",
+        "/api/v1/paper/orders",
+        "/api/v1/paper/ticks",
+        "/api/v1/paper/orders/{order_id}/reconcile"
       ]
     }
   },
@@ -1221,8 +1257,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "2.6-byok-alpha1",
-    "last_updated": "2026-07-14T23:00:00+03:30",
+    "documentation_version": "2.7-paper-alpha1",
+    "last_updated": "2026-07-15T17:00:00+03:30",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

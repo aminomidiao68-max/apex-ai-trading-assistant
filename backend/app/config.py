@@ -20,7 +20,7 @@ def _csv(value: str | None) -> list[str]:
 class Settings(BaseModel):
     app_name: str = os.getenv("APP_NAME", "Arena Smart Money AI Trader API")
     app_env: str = os.getenv("APP_ENV", "development")
-    app_version: str = os.getenv("APP_VERSION", "3.3.0-byok-alpha1")
+    app_version: str = os.getenv("APP_VERSION", "3.4.0-paper-alpha1")
     default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "UTC")
 
     # Browser CORS is disabled by default in production. Native Android clients

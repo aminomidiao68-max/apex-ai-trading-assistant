@@ -23,6 +23,8 @@ import com.arena.smartmoney.data.model.DeviceTokenRegisterRequestDto
 import com.arena.smartmoney.data.model.ExecutionPreviewRequestDto
 import com.arena.smartmoney.data.model.Mt5OrderRequestDto
 import com.arena.smartmoney.data.model.OandaOrderRequestDto
+import com.arena.smartmoney.data.model.PaperExecutionControlUpdateDto
+import com.arena.smartmoney.data.model.PaperOrderCreateRequestDto
 import com.arena.smartmoney.data.model.LiveSignalScanRequestDto
 import com.arena.smartmoney.data.model.NotificationTestRequestDto
 import com.arena.smartmoney.data.model.ProviderSecretUpsertRequestDto
@@ -101,6 +103,20 @@ class TradingRepository(
         api.getCandles(symbol = symbol, market = market, interval = interval, limit = limit)
 
     suspend fun getExecutionStatus() = api.getExecutionStatus()
+
+    suspend fun getPaperControl() = api.getPaperControl()
+
+    suspend fun updatePaperControl(request: PaperExecutionControlUpdateDto) =
+        api.updatePaperControl(request)
+
+    suspend fun submitPaperOrder(request: PaperOrderCreateRequestDto) =
+        api.submitPaperOrder(request)
+
+    suspend fun getPaperOrders(limit: Int = 50) = api.getPaperOrders(limit)
+
+    suspend fun cancelPaperOrder(orderId: String) = api.cancelPaperOrder(orderId)
+
+    suspend fun reconcilePaperOrder(orderId: String) = api.reconcilePaperOrder(orderId)
 
     suspend fun getExecutionCapabilities() = api.getExecutionCapabilities()
 

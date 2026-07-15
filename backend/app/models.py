@@ -1201,6 +1201,148 @@ class ProviderConnectionTestResponse(BaseModel):
     details_exposed: bool = False
 
 
+class PaperExecutionControlUpdateRequest(BaseModel):
+    paper_trading_enabled: bool
+    kill_switch_engaged: bool = True
+    max_open_orders: int = Field(default=5, ge=1, le=50)
+    max_order_notional: float = Field(default=10_000.0, gt=0.0, le=100_000_000.0)
+    default_fee_bps: float = Field(default=4.0, ge=0.0, le=100.0)
+    default_slippage_bps: float = Field(default=1.0, ge=0.0, le=100.0)
+    acknowledgement: Optional[str] = Field(default=None, max_length=80)
+
+    @model_validator(mode="after")
+    def validate_paper_control(self):
+        if self.paper_trading_enabled and self.acknowledgement != "I_UNDERSTAND_PAPER_ONLY":
+            raise ValueError("paper mode requires I_UNDERSTAND_PAPER_ONLY acknowledgement")
+        return self
+
+
+class PaperExecutionControl(BaseModel):
+    paper_trading_enabled: bool = False
+    kill_switch_engaged: bool = True
+    max_open_orders: int = 5
+    max_order_notional: float = 10_000.0
+    default_fee_bps: float = 4.0
+    default_slippage_bps: float = 1.0
+    updated_at: Optional[str] = None
+    live_execution_enabled: bool = False
+
+
+class PaperOrderCreateRequest(BaseModel):
+    idempotency_key: str = Field(pattern=r"^[A-Za-z0-9_-]{12,100}$")
+    symbol: str = Field(min_length=2, max_length=24)
+    market: MarketType
+    side: Literal["buy", "sell"]
+    order_type: Literal["market", "limit"] = "market"
+    quantity: float = Field(gt=0.0, le=1_000_000_000.0)
+    reference_bid: float = Field(gt=0.0)
+    reference_ask: float = Field(gt=0.0)
+    available_quantity: Optional[float] = Field(default=None, gt=0.0)
+    limit_price: Optional[float] = Field(default=None, gt=0.0)
+    time_in_force: Literal["GTC", "IOC", "FOK"] = "GTC"
+    max_slippage_bps: float = Field(default=5.0, ge=0.0, le=100.0)
+    fee_bps: Optional[float] = Field(default=None, ge=0.0, le=100.0)
+    signal_score: float = Field(default=0.0, ge=0.0, le=100.0)
+    risk_approved: bool = False
+    strategy_id: Optional[str] = Field(default=None, max_length=120)
+    setup_id: Optional[str] = Field(default=None, max_length=200)
+
+    @model_validator(mode="after")
+    def validate_paper_order(self):
+        if self.reference_ask < self.reference_bid:
+            raise ValueError("reference_ask must be >= reference_bid")
+        if self.order_type == "limit" and self.limit_price is None:
+            raise ValueError("limit_price is required for limit orders")
+        return self
+
+
+class PaperMarketTickRequest(BaseModel):
+    symbol: str = Field(min_length=2, max_length=24)
+    bid: float = Field(gt=0.0)
+    ask: float = Field(gt=0.0)
+    available_quantity: float = Field(gt=0.0)
+    timestamp: datetime
+    source: str = Field(default="user_supplied_paper_tick", min_length=2, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_tick(self):
+        if self.ask < self.bid:
+            raise ValueError("ask must be >= bid")
+        if self.timestamp.tzinfo is None:
+            raise ValueError("paper tick timestamp must be timezone-aware")
+        return self
+
+
+class PaperFill(BaseModel):
+    fill_id: str
+    order_id: str
+    quantity: float
+    price: float
+    fee_amount: float
+    liquidity: str
+    source: str
+    created_at: str
+
+
+class PaperOrderEvent(BaseModel):
+    event_id: str
+    order_id: str
+    sequence: int
+    event_type: str
+    from_status: Optional[str] = None
+    to_status: str
+    reason: str
+    payload_hash: str
+    created_at: str
+
+
+class PaperOrder(BaseModel):
+    order_id: str
+    idempotency_key: str
+    symbol: str
+    market: MarketType
+    side: str
+    order_type: str
+    quantity: float
+    limit_price: Optional[float] = None
+    time_in_force: str
+    status: str
+    filled_quantity: float
+    remaining_quantity: float
+    average_fill_price: Optional[float] = None
+    total_fees: float = 0.0
+    reference_bid: float
+    reference_ask: float
+    max_slippage_bps: float
+    signal_score: float
+    risk_approved: bool
+    strategy_id: Optional[str] = None
+    setup_id: Optional[str] = None
+    created_at: str
+    updated_at: str
+    terminal_at: Optional[str] = None
+    live_routed: bool = False
+    fills: List[PaperFill] = Field(default_factory=list)
+    events: List[PaperOrderEvent] = Field(default_factory=list)
+
+
+class PaperOrderListResponse(BaseModel):
+    items: List[PaperOrder] = Field(default_factory=list)
+    count: int
+
+
+class PaperReconciliationResponse(BaseModel):
+    order_id: str
+    consistent: bool
+    filled_quantity_matches: bool
+    average_price_matches: bool
+    fees_match: bool
+    event_sequence_valid: bool
+    terminal_state_valid: bool
+    issues: List[str] = Field(default_factory=list)
+    live_execution_enabled: bool = False
+
+
 class ConnectorCapability(BaseModel):
     connector: str
     market_type: str

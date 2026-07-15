@@ -1009,3 +1009,51 @@ def test_secure_byok_settings_never_return_raw_secrets(monkeypatch):
     deleted = client.delete("/api/v1/settings/providers/groq", headers=auth)
     assert deleted.status_code == 200
     assert raw_secret not in deleted.text
+
+
+def test_paper_oms_api_is_user_scoped_idempotent_and_never_live_routed():
+    assert client.get("/api/v1/paper/control").status_code == 401
+    auth = _register()
+    control = client.get("/api/v1/paper/control", headers=auth)
+    assert control.status_code == 200
+    assert control.json()["paper_trading_enabled"] is False
+    assert control.json()["kill_switch_engaged"] is True
+
+    armed = client.post(
+        "/api/v1/paper/control",
+        headers=auth,
+        json={
+            "paper_trading_enabled": True,
+            "kill_switch_engaged": False,
+            "acknowledgement": "I_UNDERSTAND_PAPER_ONLY",
+        },
+    )
+    assert armed.status_code == 200
+    key = f"paper-api-{uuid4().hex}"
+    payload = {
+        "idempotency_key": key,
+        "symbol": "BTCUSDT",
+        "market": "crypto",
+        "side": "buy",
+        "order_type": "market",
+        "quantity": 1,
+        "reference_bid": 99.9,
+        "reference_ask": 100,
+        "signal_score": 85,
+        "risk_approved": True,
+    }
+    first = client.post("/api/v1/paper/orders", headers=auth, json=payload)
+    second = client.post("/api/v1/paper/orders", headers=auth, json=payload)
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200
+    assert first.json()["order_id"] == second.json()["order_id"]
+    assert first.json()["status"] == "filled"
+    assert first.json()["live_routed"] is False
+
+    reconciled = client.get(
+        f"/api/v1/paper/orders/{first.json()['order_id']}/reconcile",
+        headers=auth,
+    )
+    assert reconciled.status_code == 200
+    assert reconciled.json()["consistent"] is True
+    assert reconciled.json()["live_execution_enabled"] is False

@@ -151,3 +151,18 @@
 - user-scoped AI cache namespace
 - personalized Finnhub/NewsAPI headlines
 - OANDA Practice test و Live execution خاموش
+
+## ⏳ GA Paper Alpha 1 — Paper OMS & Execution Safety
+
+- default-disabled paper mode و engaged kill switch
+- user-scoped order/fill/event ledger
+- idempotency key + request hash
+- accepted/working/partial/filled/canceled states
+- conservative bid/ask/slippage/fee fills
+- GTC/IOC/FOK
+- partial fills و weighted average
+- PostgreSQL FOR UPDATE concurrency guards
+- kill-switch mass cancellation
+- reconciliation diagnostics
+- Android Paper Command UI
+- live_routed=false
