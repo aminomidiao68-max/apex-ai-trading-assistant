@@ -1208,6 +1208,7 @@ class PaperExecutionControlUpdateRequest(BaseModel):
     max_order_notional: float = Field(default=10_000.0, gt=0.0, le=100_000_000.0)
     default_fee_bps: float = Field(default=4.0, ge=0.0, le=100.0)
     default_slippage_bps: float = Field(default=1.0, ge=0.0, le=100.0)
+    max_daily_drawdown_pct: float = Field(default=3.0, gt=0.0, le=20.0)
     acknowledgement: Optional[str] = Field(default=None, max_length=80)
 
     @model_validator(mode="after")
@@ -1224,6 +1225,7 @@ class PaperExecutionControl(BaseModel):
     max_order_notional: float = 10_000.0
     default_fee_bps: float = 4.0
     default_slippage_bps: float = 1.0
+    max_daily_drawdown_pct: float = 3.0
     updated_at: Optional[str] = None
     live_execution_enabled: bool = False
 
@@ -1329,6 +1331,34 @@ class PaperOrder(BaseModel):
 class PaperOrderListResponse(BaseModel):
     items: List[PaperOrder] = Field(default_factory=list)
     count: int
+
+
+class PaperPosition(BaseModel):
+    symbol: str
+    market: MarketType
+    quantity: float
+    average_entry_price: Optional[float] = None
+    mark_price: Optional[float] = None
+    realized_pnl: float = 0.0
+    unrealized_pnl: float = 0.0
+    total_fees: float = 0.0
+    notional: float = 0.0
+    updated_at: str
+
+
+class PaperPortfolio(BaseModel):
+    initial_cash: float
+    cash_balance: float
+    equity: float
+    peak_equity: float
+    realized_pnl: float
+    unrealized_pnl: float
+    total_fees: float
+    daily_drawdown_pct: float
+    kill_switch_engaged: bool
+    live_execution_enabled: bool = False
+    positions: List[PaperPosition] = Field(default_factory=list)
+    updated_at: str
 
 
 class PaperReconciliationResponse(BaseModel):

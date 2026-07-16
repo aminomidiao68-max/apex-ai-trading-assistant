@@ -39,6 +39,7 @@ import com.arena.smartmoney.data.model.PaperExecutionControlUpdateDto
 import com.arena.smartmoney.data.model.PaperOrderCreateRequestDto
 import com.arena.smartmoney.data.model.PaperOrderDto
 import com.arena.smartmoney.data.model.PaperOrderListResponseDto
+import com.arena.smartmoney.data.model.PaperPortfolioDto
 import com.arena.smartmoney.data.model.PaperReconciliationResponseDto
 import com.arena.smartmoney.data.model.ProviderConnectionTestResponseDto
 import com.arena.smartmoney.data.model.ProviderSecretStatusDto
@@ -146,6 +147,9 @@ interface TradingApiService {
     suspend fun updatePaperControl(
         @Body request: PaperExecutionControlUpdateDto
     ): PaperExecutionControlDto
+
+    @GET("api/v1/paper/portfolio")
+    suspend fun getPaperPortfolio(): PaperPortfolioDto
 
     @POST("api/v1/paper/orders")
     suspend fun submitPaperOrder(

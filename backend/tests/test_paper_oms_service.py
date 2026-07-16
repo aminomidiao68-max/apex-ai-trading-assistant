@@ -254,4 +254,81 @@ def test_reconciliation_detects_database_inconsistency(tmp_path):
     assert result.consistent is False
     assert result.filled_quantity_matches is False
     assert "filled_quantity_mismatch" in result.issues
-    assert service.database.schema_version() == LATEST_SCHEMA_VERSION == 5
+    assert service.database.schema_version() == LATEST_SCHEMA_VERSION == 6
+
+
+def test_portfolio_netting_realized_unrealized_and_fees(tmp_path):
+    service = _service(tmp_path)
+    _arm(service)
+    buy = service.submit(
+        1,
+        _market_order(
+            idempotency_key="paper-portfolio-buy-1",
+            quantity=2,
+            reference_bid=99.9,
+            reference_ask=100,
+        ),
+    )
+    portfolio = service.get_portfolio(1)
+    position = next(item for item in portfolio.positions if item.symbol == "BTCUSDT")
+    assert position.quantity == 2
+    assert position.total_fees == buy.total_fees
+    assert portfolio.cash_balance < portfolio.initial_cash
+
+    service.mark_portfolio(
+        1,
+        PaperMarketTickRequest(
+            symbol="BTCUSDT",
+            bid=109.9,
+            ask=110.1,
+            available_quantity=100,
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
+    marked = service.get_portfolio(1)
+    assert marked.unrealized_pnl > 0
+    assert marked.equity > marked.cash_balance
+
+    service.submit(
+        1,
+        _market_order(
+            idempotency_key="paper-portfolio-sell-1",
+            side="sell",
+            quantity=2,
+            reference_bid=110,
+            reference_ask=110.1,
+        ),
+    )
+    closed = service.get_portfolio(1)
+    closed_position = next(item for item in closed.positions if item.symbol == "BTCUSDT")
+    assert closed_position.quantity == 0
+    assert closed.realized_pnl > 0
+    assert closed.unrealized_pnl == 0
+    assert closed.total_fees > 0
+
+
+def test_daily_drawdown_automatically_engages_kill_switch(tmp_path):
+    service = _service(tmp_path)
+    _arm(service, max_order_notional=100_000, max_daily_drawdown_pct=3.0)
+    service.submit(
+        1,
+        _market_order(
+            idempotency_key="paper-drawdown-buy-1",
+                quantity=100,
+                available_quantity=100,
+                reference_bid=99.9,
+                reference_ask=100,
+        ),
+    )
+    portfolio = service.mark_portfolio(
+        1,
+        PaperMarketTickRequest(
+            symbol="BTCUSDT",
+            bid=59.9,
+            ask=60.1,
+            available_quantity=100,
+            timestamp=datetime.now(timezone.utc),
+        ),
+    )
+    assert portfolio.daily_drawdown_pct >= 3.0
+    assert service.get_control(1).kill_switch_engaged is True

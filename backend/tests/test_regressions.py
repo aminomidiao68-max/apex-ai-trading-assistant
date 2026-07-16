@@ -1050,6 +1050,11 @@ def test_paper_oms_api_is_user_scoped_idempotent_and_never_live_routed():
     assert first.json()["status"] == "filled"
     assert first.json()["live_routed"] is False
 
+    portfolio = client.get("/api/v1/paper/portfolio", headers=auth)
+    assert portfolio.status_code == 200
+    assert portfolio.json()["live_execution_enabled"] is False
+    assert portfolio.json()["positions"][0]["symbol"] == "BTCUSDT"
+
     reconciled = client.get(
         f"/api/v1/paper/orders/{first.json()['order_id']}/reconcile",
         headers=auth,

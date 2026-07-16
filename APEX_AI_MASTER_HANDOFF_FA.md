@@ -2,7 +2,7 @@
 
 > **سند مرجع جامع برای بازیابی کامل Context پروژه و ادامه کار بدون نیاز به این گفتگو**  
 > نسخه سند: `1.0`  
-> وضعیت Baseline زنده در زمان ثبت اولیه: `3.0.0-rc1`؛ Candidate فعلی: `3.4.0-paper-alpha1`  
+> وضعیت Baseline زنده در زمان ثبت اولیه: `3.0.0-rc1`؛ Candidate فعلی: `3.4.0-paper-alpha2`  
 > تاریخ Snapshot: `2026-07-14`  
 > زبان مرجع: فارسی؛ نام فیلدها، مسیرها و قراردادهای کد انگلیسی باقی مانده‌اند.
 
@@ -1350,6 +1350,21 @@ Candidate `3.4.0-paper-alpha1`:
 - Android Broker دارای Paper Command، Arm/Kill، Submit، Cancel و Reconcile است.
 - `live_routed=false` و `ENABLE_LIVE_EXECUTION=false` باقی می‌مانند.
 - Local Gate: `85 passed, 1 skipped`.
+
+## 10.12) Post-RC Paper Alpha 2 — Portfolio Ledger
+
+Candidate `3.4.0-paper-alpha2`:
+
+- PostgreSQL schema v6 با paper_accounts و paper_positions
+- Cash/Equity/Peak Equity و Daily Start
+- Signed quantity و weighted average entry
+- Position netting، partial close و direction flip
+- Realized/Unrealized PnL و Fee ledger
+- Mark-to-market با Paper Tick
+- Auto Kill Switch در عبور از Daily Drawdown
+- Android Equity/Unrealized/DD/Position UI
+- `live_routed=false`
+- Local Gate: `87 passed, 1 skipped`
 
 ## 11) موتور Strict فعلی
 

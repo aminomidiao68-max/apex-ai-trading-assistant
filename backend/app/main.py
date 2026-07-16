@@ -50,6 +50,7 @@ from app.models import (
     PaperOrder,
     PaperOrderCreateRequest,
     PaperOrderListResponse,
+    PaperPortfolio,
     PaperReconciliationResponse,
     ProviderConnectionTestResponse,
     ProviderSecretStatus,
@@ -1484,6 +1485,11 @@ def cancel_paper_order(order_id: str, user=Depends(current_user)):
         return paper_oms_service.cancel(user.id, order_id)
     except PaperOmsError as exc:
         _raise_paper_oms_error(exc)
+
+
+@app.get("/api/v1/paper/portfolio", response_model=PaperPortfolio)
+def get_paper_portfolio(user=Depends(current_user)):
+    return paper_oms_service.get_portfolio(user.id)
 
 
 @app.post("/api/v1/paper/ticks", response_model=PaperOrderListResponse)

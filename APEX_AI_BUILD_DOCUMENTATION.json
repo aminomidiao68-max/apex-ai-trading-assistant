@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.4.0-paper-alpha1",
-    "status": "APEX GA Program - Paper OMS Alpha 1"
+    "current_version": "3.4.0-paper-alpha2",
+    "status": "APEX GA Program - Paper Portfolio Alpha 2"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -581,6 +581,22 @@
             "Android Paper OMS command UI",
             "85 local backend tests"
           ]
+        },
+        {
+          "version": "v3.4 Paper Alpha 2 - Portfolio Equity Ledger",
+          "date": "2026-07-15T18:00:00+03:30",
+          "features": [
+            "Paper cash and equity ledger",
+            "Signed positions and weighted average entry",
+            "Position netting and flips",
+            "Realized/unrealized PnL",
+            "Fee ledger and mark-to-market",
+            "Peak and daily-start equity",
+            "Automatic daily drawdown kill switch",
+            "PostgreSQL schema v6",
+            "Android paper portfolio dashboard",
+            "87 local backend tests"
+          ]
         }
       ]
     }
@@ -903,6 +919,11 @@
         "/api/v1/paper/ticks",
         "/api/v1/paper/orders/{order_id}/reconcile"
       ]
+    },
+    "paper_portfolio": {
+      "schema_version": 6,
+      "live_routed": false,
+      "endpoint": "/api/v1/paper/portfolio"
     }
   },
   "smc_ict_engine": {
@@ -1257,8 +1278,8 @@
     }
   },
   "metadata": {
-    "documentation_version": "2.7-paper-alpha1",
-    "last_updated": "2026-07-15T17:00:00+03:30",
+    "documentation_version": "2.8-paper-alpha2",
+    "last_updated": "2026-07-15T18:00:00+03:30",
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"

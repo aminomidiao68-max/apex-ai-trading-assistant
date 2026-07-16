@@ -67,6 +67,7 @@ data class PaperExecutionControlUpdateDto(
     val max_order_notional: Double = 10000.0,
     val default_fee_bps: Double = 4.0,
     val default_slippage_bps: Double = 1.0,
+    val max_daily_drawdown_pct: Double = 3.0,
     val acknowledgement: String? = null
 )
 
@@ -77,6 +78,7 @@ data class PaperExecutionControlDto(
     val max_order_notional: Double = 10000.0,
     val default_fee_bps: Double = 4.0,
     val default_slippage_bps: Double = 1.0,
+    val max_daily_drawdown_pct: Double = 3.0,
     val updated_at: String? = null,
     val live_execution_enabled: Boolean = false
 )
@@ -157,6 +159,34 @@ data class PaperOrderDto(
 data class PaperOrderListResponseDto(
     val items: List<PaperOrderDto> = emptyList(),
     val count: Int = 0
+)
+
+data class PaperPositionDto(
+    val symbol: String,
+    val market: String,
+    val quantity: Double,
+    val average_entry_price: Double? = null,
+    val mark_price: Double? = null,
+    val realized_pnl: Double = 0.0,
+    val unrealized_pnl: Double = 0.0,
+    val total_fees: Double = 0.0,
+    val notional: Double = 0.0,
+    val updated_at: String
+)
+
+data class PaperPortfolioDto(
+    val initial_cash: Double,
+    val cash_balance: Double,
+    val equity: Double,
+    val peak_equity: Double,
+    val realized_pnl: Double,
+    val unrealized_pnl: Double,
+    val total_fees: Double,
+    val daily_drawdown_pct: Double,
+    val kill_switch_engaged: Boolean,
+    val live_execution_enabled: Boolean = false,
+    val positions: List<PaperPositionDto> = emptyList(),
+    val updated_at: String
 )
 
 data class PaperReconciliationResponseDto(

@@ -15,6 +15,7 @@ import com.arena.smartmoney.data.model.PaperExecutionControlDto
 import com.arena.smartmoney.data.model.PaperExecutionControlUpdateDto
 import com.arena.smartmoney.data.model.PaperOrderCreateRequestDto
 import com.arena.smartmoney.data.model.PaperOrderDto
+import com.arena.smartmoney.data.model.PaperPortfolioDto
 import com.arena.smartmoney.data.model.PaperReconciliationResponseDto
 import com.arena.smartmoney.data.repository.TradingRepository
 import kotlinx.coroutines.async
@@ -35,6 +36,7 @@ data class BrokerUiState(
     val preview: ExecutionPreviewResponseDto? = null,
     val executionResult: ExecutionActionResponseDto? = null,
     val paperControl: PaperExecutionControlDto? = null,
+    val paperPortfolio: PaperPortfolioDto? = null,
     val paperOrders: List<PaperOrderDto> = emptyList(),
     val paperPrice: String = "100.0",
     val paperLimitPrice: String = "",
@@ -59,11 +61,13 @@ class BrokerViewModel(
         viewModelScope.launch {
             runCatching {
                 val control = async { repository.getPaperControl() }
+                val portfolio = async { repository.getPaperPortfolio() }
                 val orders = async { repository.getPaperOrders(30) }
-                Pair(control.await(), orders.await())
-            }.onSuccess { (control, orders) ->
+                Triple(control.await(), portfolio.await(), orders.await())
+            }.onSuccess { (control, portfolio, orders) ->
                 _uiState.value = _uiState.value.copy(
                     paperControl = control,
+                    paperPortfolio = portfolio,
                     paperOrders = orders.items,
                 )
             }

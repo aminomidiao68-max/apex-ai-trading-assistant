@@ -109,6 +109,8 @@ class TradingRepository(
     suspend fun updatePaperControl(request: PaperExecutionControlUpdateDto) =
         api.updatePaperControl(request)
 
+    suspend fun getPaperPortfolio() = api.getPaperPortfolio()
+
     suspend fun submitPaperOrder(request: PaperOrderCreateRequestDto) =
         api.submitPaperOrder(request)
 

@@ -166,3 +166,15 @@
 - reconciliation diagnostics
 - Android Paper Command UI
 - live_routed=false
+
+## ⏳ GA Paper Alpha 2 — Portfolio Equity Ledger
+
+- paper cash/equity account
+- signed positions و weighted average entry
+- position netting و direction flip
+- realized/unrealized PnL
+- fee ledger و mark-to-market
+- peak/daily-start equity
+- automatic daily-drawdown kill switch
+- PostgreSQL schema v6
+- Android Equity/Position dashboard

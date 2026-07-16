@@ -202,6 +202,26 @@ fun BrokerScreen(viewModel: BrokerViewModel = viewModel()) {
                             Modifier.weight(1f)
                         )
                     }
+                    state.paperPortfolio?.let { portfolio ->
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            BrokerChip(t("Equity", "اکوئیتی"), String.format(Locale.US, "%.2f", portfolio.equity), Modifier.weight(1f))
+                            BrokerChip(t("Unrealized", "تحقق‌نیافته"), String.format(Locale.US, "%.2f", portfolio.unrealized_pnl), Modifier.weight(1f))
+                            BrokerChip(t("Daily DD", "افت روزانه"), String.format(Locale.US, "%.2f%%", portfolio.daily_drawdown_pct), Modifier.weight(1f))
+                        }
+                        Text(
+                            t("Cash / Realized / Fees", "نقد / تحقق‌یافته / کارمزد") + ": " +
+                                "${String.format(Locale.US, "%.2f", portfolio.cash_balance)} / " +
+                                "${String.format(Locale.US, "%.2f", portfolio.realized_pnl)} / " +
+                                String.format(Locale.US, "%.2f", portfolio.total_fees),
+                            color = Color(0xFFBCEEFF)
+                        )
+                        portfolio.positions.filter { it.quantity != 0.0 }.take(5).forEach { position ->
+                            Text(
+                                "${position.symbol} • qty ${position.quantity} • mark ${position.mark_price ?: "-"} • uPnL ${String.format(Locale.US, "%.2f", position.unrealized_pnl)}",
+                                color = Color.White
+                            )
+                        }
+                    }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = viewModel::armPaperMode, modifier = Modifier.weight(1f)) {
                             Text(t("Arm Paper", "فعال‌سازی شبیه‌سازی"))

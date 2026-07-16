@@ -16,6 +16,8 @@ from app.models import (
     PaperOrderCreateRequest,
     PaperOrderEvent,
     PaperOrderListResponse,
+    PaperPortfolio,
+    PaperPosition,
     PaperReconciliationResponse,
 )
 from app.services.database_service import DatabaseManager
@@ -68,9 +70,30 @@ class PaperOmsService:
             )
             conn.commit()
 
+    def _ensure_account(self, conn, user_id: int) -> None:
+        row = conn.execute(
+            "SELECT user_id FROM paper_accounts WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            now = self._now()
+            today = datetime.now(timezone.utc).date().isoformat()
+            initial_cash = 100_000.0
+            conn.execute(
+                """
+                INSERT INTO paper_accounts (
+                    user_id, initial_cash, cash_balance, realized_pnl, total_fees,
+                    peak_equity, daily_start_equity, trading_day, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, initial_cash, initial_cash, 0.0, 0.0, initial_cash, initial_cash, today, now),
+            )
+            conn.commit()
+
     def get_control(self, user_id: int) -> PaperExecutionControl:
         with self.database.connection() as conn:
             self._ensure_control(conn, user_id)
+            self._ensure_account(conn, user_id)
             row = conn.execute(
                 "SELECT * FROM paper_execution_controls WHERE user_id = ?",
                 (user_id,),
@@ -82,6 +105,7 @@ class PaperOmsService:
             max_order_notional=float(row["max_order_notional"]),
             default_fee_bps=float(row["default_fee_bps"]),
             default_slippage_bps=float(row["default_slippage_bps"]),
+            max_daily_drawdown_pct=float(row["max_daily_drawdown_pct"]),
             updated_at=row["updated_at"],
             live_execution_enabled=settings.enable_live_execution,
         )
@@ -99,7 +123,8 @@ class PaperOmsService:
                 UPDATE paper_execution_controls
                 SET paper_trading_enabled = ?, kill_switch_engaged = ?,
                     max_open_orders = ?, max_order_notional = ?,
-                    default_fee_bps = ?, default_slippage_bps = ?, updated_at = ?
+                    default_fee_bps = ?, default_slippage_bps = ?,
+                    max_daily_drawdown_pct = ?, updated_at = ?
                 WHERE user_id = ?
                 """,
                 (
@@ -109,6 +134,7 @@ class PaperOmsService:
                     request.max_order_notional,
                     request.default_fee_bps,
                     request.default_slippage_bps,
+                    request.max_daily_drawdown_pct,
                     now,
                     user_id,
                 ),
@@ -288,6 +314,98 @@ class PaperOmsService:
             conn.commit()
             return self._get_order_with_conn(conn, user_id, order_id)
 
+    def _apply_position_fill(
+        self,
+        conn,
+        user_id: int,
+        symbol: str,
+        market: str,
+        side: str,
+        quantity: float,
+        price: float,
+        fee: float,
+    ) -> None:
+        self._ensure_account(conn, user_id)
+        row = conn.execute(
+            "SELECT * FROM paper_positions WHERE user_id = ? AND symbol = ?",
+            (user_id, symbol),
+        ).fetchone()
+        old_quantity = float(row["quantity"] if row else 0.0)
+        old_average = float(row["average_entry_price"] or 0.0) if row else 0.0
+        signed_fill = quantity if side == "buy" else -quantity
+        new_quantity = old_quantity + signed_fill
+        realized = 0.0
+        if old_quantity == 0.0 or old_quantity * signed_fill > 0:
+            total_abs = abs(old_quantity) + abs(signed_fill)
+            new_average = (
+                (old_average * abs(old_quantity) + price * abs(signed_fill)) / total_abs
+                if total_abs > 0
+                else None
+            )
+        else:
+            closed_quantity = min(abs(old_quantity), abs(signed_fill))
+            direction = 1.0 if old_quantity > 0 else -1.0
+            realized = closed_quantity * (price - old_average) * direction
+            if abs(new_quantity) <= 1e-12:
+                new_quantity = 0.0
+                new_average = None
+            elif old_quantity * new_quantity > 0:
+                new_average = old_average
+            else:
+                new_average = price
+        now = self._now()
+        old_realized = float(row["realized_pnl"] if row else 0.0)
+        old_fees = float(row["total_fees"] if row else 0.0)
+        if row is None:
+            conn.execute(
+                """
+                INSERT INTO paper_positions (
+                    user_id, symbol, market, quantity, average_entry_price,
+                    mark_price, realized_pnl, total_fees, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    symbol,
+                    market,
+                    new_quantity,
+                    new_average,
+                    price,
+                    realized,
+                    fee,
+                    now,
+                ),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE paper_positions
+                SET quantity = ?, average_entry_price = ?, mark_price = ?,
+                    realized_pnl = ?, total_fees = ?, updated_at = ?
+                WHERE user_id = ? AND symbol = ?
+                """,
+                (
+                    new_quantity,
+                    new_average,
+                    price,
+                    old_realized + realized,
+                    old_fees + fee,
+                    now,
+                    user_id,
+                    symbol,
+                ),
+            )
+        conn.execute(
+            """
+            UPDATE paper_accounts
+            SET cash_balance = cash_balance + ? - ?,
+                realized_pnl = realized_pnl + ?,
+                total_fees = total_fees + ?, updated_at = ?
+            WHERE user_id = ?
+            """,
+            (realized, fee, realized, fee, now, user_id),
+        )
+
     def _process_order_tick(self, conn, user_id: int, order_id: str, tick: PaperMarketTickRequest) -> None:
         order_sql = "SELECT * FROM paper_orders WHERE user_id = ? AND order_id = ?"
         if self.database.backend == "postgresql":
@@ -354,6 +472,16 @@ class PaperOmsService:
                 now,
             ),
         )
+        self._apply_position_fill(
+            conn,
+            user_id,
+            row["symbol"],
+            row["market"],
+            side,
+            fill_quantity,
+            price,
+            fee,
+        )
         conn.execute(
             """
             UPDATE paper_orders
@@ -405,8 +533,115 @@ class PaperOmsService:
             for row in rows:
                 self._process_order_tick(conn, user_id, row["order_id"], tick)
             conn.commit()
-            items = [self._get_order_with_conn(conn, user_id, row["order_id"]) for row in rows]
+            order_ids = [row["order_id"] for row in rows]
+        self.mark_portfolio(user_id, tick)
+        items = [self.get(user_id, order_id) for order_id in order_ids]
         return PaperOrderListResponse(items=items, count=len(items))
+
+    def get_portfolio(self, user_id: int) -> PaperPortfolio:
+        with self.database.connection() as conn:
+            self._ensure_control(conn, user_id)
+            self._ensure_account(conn, user_id)
+            account = conn.execute(
+                "SELECT * FROM paper_accounts WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            rows = conn.execute(
+                "SELECT * FROM paper_positions WHERE user_id = ? ORDER BY symbol",
+                (user_id,),
+            ).fetchall()
+            positions = []
+            unrealized_total = 0.0
+            for row in rows:
+                quantity = float(row["quantity"])
+                average = float(row["average_entry_price"] or 0.0)
+                mark = float(row["mark_price"] or average)
+                unrealized = quantity * (mark - average) if quantity else 0.0
+                unrealized_total += unrealized
+                positions.append(
+                    PaperPosition(
+                        symbol=row["symbol"],
+                        market=MarketType(row["market"]),
+                        quantity=quantity,
+                        average_entry_price=row["average_entry_price"],
+                        mark_price=row["mark_price"],
+                        realized_pnl=float(row["realized_pnl"]),
+                        unrealized_pnl=unrealized,
+                        total_fees=float(row["total_fees"]),
+                        notional=abs(quantity * mark),
+                        updated_at=row["updated_at"],
+                    )
+                )
+            equity = float(account["cash_balance"]) + unrealized_total
+            today = datetime.now(timezone.utc).date().isoformat()
+            daily_start = float(account["daily_start_equity"])
+            if account["trading_day"] != today:
+                daily_start = equity
+                conn.execute(
+                    "UPDATE paper_accounts SET daily_start_equity = ?, trading_day = ? WHERE user_id = ?",
+                    (daily_start, today, user_id),
+                )
+            peak = max(float(account["peak_equity"]), equity)
+            conn.execute(
+                "UPDATE paper_accounts SET peak_equity = ?, updated_at = ? WHERE user_id = ?",
+                (peak, self._now(), user_id),
+            )
+            conn.commit()
+            control = conn.execute(
+                "SELECT kill_switch_engaged FROM paper_execution_controls WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        daily_drawdown = (
+            max(0.0, (daily_start - equity) / daily_start * 100.0)
+            if daily_start > 0
+            else 0.0
+        )
+        return PaperPortfolio(
+            initial_cash=float(account["initial_cash"]),
+            cash_balance=float(account["cash_balance"]),
+            equity=equity,
+            peak_equity=peak,
+            realized_pnl=float(account["realized_pnl"]),
+            unrealized_pnl=unrealized_total,
+            total_fees=float(account["total_fees"]),
+            daily_drawdown_pct=daily_drawdown,
+            kill_switch_engaged=bool(control["kill_switch_engaged"]),
+            live_execution_enabled=settings.enable_live_execution,
+            positions=positions,
+            updated_at=self._now(),
+        )
+
+    def mark_portfolio(self, user_id: int, tick: PaperMarketTickRequest) -> PaperPortfolio:
+        mark = (tick.bid + tick.ask) / 2.0
+        with self.database.connection() as conn:
+            self._ensure_account(conn, user_id)
+            conn.execute(
+                "UPDATE paper_positions SET mark_price = ?, updated_at = ? WHERE user_id = ? AND symbol = ?",
+                (mark, self._now(), user_id, tick.symbol.upper()),
+            )
+            conn.commit()
+        portfolio = self.get_portfolio(user_id)
+        control = self.get_control(user_id)
+        if (
+            control.paper_trading_enabled
+            and not control.kill_switch_engaged
+            and portfolio.daily_drawdown_pct >= control.max_daily_drawdown_pct
+        ):
+            self.update_control(
+                user_id,
+                PaperExecutionControlUpdateRequest(
+                    paper_trading_enabled=True,
+                    kill_switch_engaged=True,
+                    max_open_orders=control.max_open_orders,
+                    max_order_notional=control.max_order_notional,
+                    default_fee_bps=control.default_fee_bps,
+                    default_slippage_bps=control.default_slippage_bps,
+                    max_daily_drawdown_pct=control.max_daily_drawdown_pct,
+                    acknowledgement="I_UNDERSTAND_PAPER_ONLY",
+                ),
+            )
+            portfolio = self.get_portfolio(user_id)
+        return portfolio
 
     def _cancel_with_conn(self, conn, user_id: int, order_id: str, reason: str) -> None:
         row = conn.execute(

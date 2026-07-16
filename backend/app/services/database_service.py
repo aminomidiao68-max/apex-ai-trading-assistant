@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 5
+LATEST_SCHEMA_VERSION = 6
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -231,6 +231,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (5, "paper_oms_event_ledger", datetime.now(timezone.utc).isoformat()),
+                )
+            if 6 not in applied:
+                self._apply_schema_v6(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (6, "paper_portfolio_equity_ledger", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -469,6 +479,7 @@ class DatabaseManager:
                 max_order_notional REAL NOT NULL,
                 default_fee_bps REAL NOT NULL,
                 default_slippage_bps REAL NOT NULL,
+                max_daily_drawdown_pct REAL NOT NULL DEFAULT 3.0,
                 updated_at TEXT NOT NULL
             )
             """
@@ -547,6 +558,48 @@ class DatabaseManager:
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_paper_events_order ON paper_order_events(order_id, sequence)"
+        )
+
+    def _apply_schema_v6(self, conn: ConnectionAdapter) -> None:
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        self._ensure_columns(
+            conn,
+            "paper_execution_controls",
+            ["max_daily_drawdown_pct REAL NOT NULL DEFAULT 3.0"],
+        )
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_accounts (
+                user_id {user_id_type} PRIMARY KEY,
+                initial_cash REAL NOT NULL,
+                cash_balance REAL NOT NULL,
+                realized_pnl REAL NOT NULL,
+                total_fees REAL NOT NULL,
+                peak_equity REAL NOT NULL,
+                daily_start_equity REAL NOT NULL,
+                trading_day TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_positions (
+                user_id {user_id_type} NOT NULL,
+                symbol TEXT NOT NULL,
+                market TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                average_entry_price REAL,
+                mark_price REAL,
+                realized_pnl REAL NOT NULL,
+                total_fees REAL NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, symbol)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_positions_user ON paper_positions(user_id, symbol)"
         )
 
     def _ensure_columns(
