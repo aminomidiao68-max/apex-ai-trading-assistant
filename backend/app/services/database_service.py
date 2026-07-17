@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 8
+LATEST_SCHEMA_VERSION = 9
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -261,6 +261,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (8, "paper_margin_funding_liquidation_ledger", datetime.now(timezone.utc).isoformat()),
+                )
+            if 9 not in applied:
+                self._apply_schema_v9(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (9, "paper_recovery_concentration_shadow_reconciliation", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -765,6 +775,93 @@ class DatabaseManager:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_paper_margin_events_user_created "
             "ON paper_margin_events(user_id, created_at DESC)"
+        )
+
+    def _apply_schema_v9(self, conn: ConnectionAdapter) -> None:
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        self._ensure_columns(
+            conn,
+            "paper_execution_controls",
+            [
+                "max_symbol_margin_pct REAL NOT NULL DEFAULT 30.0",
+                "max_risk_group_margin_pct REAL NOT NULL DEFAULT 50.0",
+                "max_directional_notional_multiple REAL NOT NULL DEFAULT 3.0",
+            ],
+        )
+        self._ensure_columns(
+            conn,
+            "paper_orders",
+            ["risk_group TEXT NOT NULL DEFAULT 'unclassified'"],
+        )
+        self._ensure_columns(
+            conn,
+            "paper_positions",
+            ["risk_group TEXT NOT NULL DEFAULT 'unclassified'"],
+        )
+        for table in ("paper_orders", "paper_positions"):
+            conn.execute(
+                f"""
+                UPDATE {table}
+                SET risk_group = CASE
+                    WHEN market = 'crypto' AND (UPPER(symbol) LIKE 'BTC%' OR UPPER(symbol) LIKE 'ETH%')
+                        THEN 'crypto_major_structural_proxy'
+                    WHEN market = 'crypto' AND (UPPER(symbol) LIKE 'USDT%' OR UPPER(symbol) LIKE 'USDC%' OR UPPER(symbol) LIKE 'DAI%')
+                        THEN 'crypto_stable_structural_proxy'
+                    WHEN market = 'crypto' THEN 'crypto_alt_structural_proxy'
+                    WHEN UPPER(symbol) LIKE 'XAU%' OR UPPER(symbol) LIKE 'XAG%'
+                        THEN 'metals_usd_structural_proxy'
+                    WHEN UPPER(symbol) LIKE '%USD%' THEN 'forex_usd_structural_proxy'
+                    WHEN UPPER(symbol) LIKE '%EUR%' THEN 'forex_eur_structural_proxy'
+                    ELSE 'other_structural_proxy'
+                END
+                WHERE risk_group = 'unclassified'
+                """
+            )
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_connector_checkpoints (
+                user_id {user_id_type} NOT NULL,
+                connector TEXT NOT NULL,
+                state TEXT NOT NULL,
+                consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                backoff_until TEXT,
+                latency_ms INTEGER,
+                server_time_offset_ms INTEGER,
+                last_probe_at TEXT,
+                last_success_at TEXT,
+                last_error_code TEXT,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, connector)
+            )
+            """
+        )
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_shadow_reconciliations (
+                user_id {user_id_type} NOT NULL,
+                run_id TEXT NOT NULL,
+                connector TEXT NOT NULL,
+                snapshot_id TEXT NOT NULL,
+                request_hash TEXT NOT NULL,
+                status TEXT NOT NULL,
+                matched_orders INTEGER NOT NULL,
+                mismatched_orders INTEGER NOT NULL,
+                missing_local_orders INTEGER NOT NULL,
+                missing_external_orders INTEGER NOT NULL,
+                issues_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, run_id),
+                UNIQUE(user_id, connector, snapshot_id)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_connector_state "
+            "ON paper_connector_checkpoints(user_id, state)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_shadow_reconcile_created "
+            "ON paper_shadow_reconciliations(user_id, created_at DESC)"
         )
 
     def _ensure_columns(

@@ -29,6 +29,9 @@ def _arm(service: PaperOmsService, **overrides):
         "default_maintenance_margin_rate": 0.005,
         "liquidation_fee_bps": 20,
         "max_margin_utilization_pct": 70,
+        "max_symbol_margin_pct": 100,
+        "max_risk_group_margin_pct": 100,
+        "max_directional_notional_multiple": 20,
         "acknowledgement": "I_UNDERSTAND_PAPER_ONLY",
     }
     values.update(overrides)
@@ -78,7 +81,7 @@ def test_margin_control_defaults_leverage_and_utilization_gates(tmp_path):
                 leverage=1,
             ),
         )
-    assert service.database.schema_version() == LATEST_SCHEMA_VERSION == 8
+    assert service.database.schema_version() == LATEST_SCHEMA_VERSION == 9
 
 
 def test_isolated_margin_metrics_and_configuration_conflict(tmp_path):

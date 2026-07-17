@@ -208,3 +208,17 @@
 - Android leverage/margin dashboard
 - exchange-specific tiers, ADL and insurance fund remain future work
 - live_routed=false و Live Execution خاموش
+
+## ⏳ GA Paper Alpha 5 — Recovery, Concentration & Testnet Shadow
+
+- Binance/Bybit public Testnet connectivity probes
+- latency and server-clock offset diagnostics
+- durable connector checkpoints and exponential backoff
+- user-scoped idempotent shadow reconciliation
+- provider verification explicitly false for user snapshots
+- full order/fill/event/position/account ledger audit
+- symbol, structural risk-group and directional concentration gates
+- fill-time recheck for working orders
+- Android checkpoint/audit dashboard
+- authenticated private Testnet reconciliation remains future work
+- live_routed=false و Live Execution خاموش

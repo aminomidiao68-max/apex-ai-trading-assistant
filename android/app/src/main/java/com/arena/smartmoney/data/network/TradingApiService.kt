@@ -36,6 +36,10 @@ import com.arena.smartmoney.data.model.NotificationTestRequestDto
 import com.arena.smartmoney.data.model.OandaOrderRequestDto
 import com.arena.smartmoney.data.model.PaperExecutionControlDto
 import com.arena.smartmoney.data.model.PaperExecutionControlUpdateDto
+import com.arena.smartmoney.data.model.PaperConnectorCheckpointDto
+import com.arena.smartmoney.data.model.PaperConnectorCheckpointListDto
+import com.arena.smartmoney.data.model.PaperConnectorProbeRequestDto
+import com.arena.smartmoney.data.model.PaperLedgerAuditDto
 import com.arena.smartmoney.data.model.PaperFeedStatusDto
 import com.arena.smartmoney.data.model.PaperFeedSubscriptionDto
 import com.arena.smartmoney.data.model.PaperFeedSubscriptionListDto
@@ -174,6 +178,18 @@ interface TradingApiService {
     suspend fun syncPaperFeed(
         @Body request: PaperFeedSyncRequestDto
     ): PaperFeedSyncResponseDto
+
+    @GET("api/v1/paper/testnet/checkpoints")
+    suspend fun getPaperTestnetCheckpoints(): PaperConnectorCheckpointListDto
+
+    @POST("api/v1/paper/testnet/connectors/{connector}/probe")
+    suspend fun probePaperTestnetConnector(
+        @Path("connector") connector: String,
+        @Body request: PaperConnectorProbeRequestDto
+    ): PaperConnectorCheckpointDto
+
+    @GET("api/v1/paper/audit")
+    suspend fun auditPaperLedger(): PaperLedgerAuditDto
 
     @GET("api/v1/paper/portfolio")
     suspend fun getPaperPortfolio(): PaperPortfolioDto

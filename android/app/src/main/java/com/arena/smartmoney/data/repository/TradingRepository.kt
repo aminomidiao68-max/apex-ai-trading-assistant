@@ -24,6 +24,7 @@ import com.arena.smartmoney.data.model.ExecutionPreviewRequestDto
 import com.arena.smartmoney.data.model.Mt5OrderRequestDto
 import com.arena.smartmoney.data.model.OandaOrderRequestDto
 import com.arena.smartmoney.data.model.PaperExecutionControlUpdateDto
+import com.arena.smartmoney.data.model.PaperConnectorProbeRequestDto
 import com.arena.smartmoney.data.model.PaperFeedSubscriptionUpsertDto
 import com.arena.smartmoney.data.model.PaperFeedSyncRequestDto
 import com.arena.smartmoney.data.model.PaperOrderCreateRequestDto
@@ -123,6 +124,13 @@ class TradingRepository(
 
     suspend fun syncPaperFeed(symbols: List<String> = emptyList()) =
         api.syncPaperFeed(PaperFeedSyncRequestDto(symbols))
+
+    suspend fun getPaperTestnetCheckpoints() = api.getPaperTestnetCheckpoints()
+
+    suspend fun probePaperTestnetConnector(connector: String, force: Boolean = false) =
+        api.probePaperTestnetConnector(connector, PaperConnectorProbeRequestDto(force))
+
+    suspend fun auditPaperLedger() = api.auditPaperLedger()
 
     suspend fun getPaperPortfolio() = api.getPaperPortfolio()
 

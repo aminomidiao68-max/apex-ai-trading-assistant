@@ -1215,3 +1215,83 @@ def test_paper_margin_funding_api_is_authenticated_idempotent_and_never_live():
     assert events.status_code == 200
     assert events.json()["count"] == 1
     assert events.json()["items"][0]["event_type"] == "funding"
+
+
+def test_paper_recovery_audit_and_shadow_reconciliation_api_are_never_live():
+    assert client.get("/api/v1/paper/audit").status_code == 401
+    auth = _register()
+    armed = client.post(
+        "/api/v1/paper/control",
+        headers=auth,
+        json={
+            "paper_trading_enabled": True,
+            "kill_switch_engaged": False,
+            "max_symbol_margin_pct": 100,
+            "max_risk_group_margin_pct": 100,
+            "max_directional_notional_multiple": 20,
+            "acknowledgement": "I_UNDERSTAND_PAPER_ONLY",
+        },
+    )
+    assert armed.status_code == 200, armed.text
+    order = client.post(
+        "/api/v1/paper/orders",
+        headers=auth,
+        json={
+            "idempotency_key": f"recovery-api-{uuid4().hex}",
+            "symbol": "BTCUSDT",
+            "market": "crypto",
+            "side": "buy",
+            "quantity": 2,
+            "reference_bid": 99.9,
+            "reference_ask": 100,
+            "available_quantity": 2,
+            "leverage": 2,
+            "signal_score": 85,
+            "risk_approved": True,
+        },
+    )
+    assert order.status_code == 200, order.text
+    order_data = order.json()
+    assert order_data["correlation_source"] == "structural_proxy"
+
+    audit = client.get("/api/v1/paper/audit", headers=auth)
+    assert audit.status_code == 200, audit.text
+    assert audit.json()["consistent"] is True
+    assert audit.json()["repair_performed"] is False
+    assert audit.json()["actionable_for_live"] is False
+    assert audit.json()["live_execution_enabled"] is False
+
+    checkpoints = client.get("/api/v1/paper/testnet/checkpoints", headers=auth)
+    assert checkpoints.status_code == 200
+    assert checkpoints.json()["count"] == 2
+    assert all(not item["authenticated"] for item in checkpoints.json()["items"])
+    assert all(not item["order_routing_enabled"] for item in checkpoints.json()["items"])
+
+    payload = {
+        "run_id": f"shadow-api-run-{uuid4().hex}",
+        "connector": "binance_futures_testnet",
+        "snapshot_id": f"snapshot-{uuid4().hex}",
+        "snapshot_timestamp": datetime.now(timezone.utc).isoformat(),
+        "orders": [{
+            "order_id": order_data["order_id"],
+            "status": order_data["status"],
+            "filled_quantity": order_data["filled_quantity"],
+            "average_fill_price": order_data["average_fill_price"],
+            "total_fees": order_data["total_fees"],
+        }],
+    }
+    first = client.post(
+        "/api/v1/paper/testnet/shadow-reconcile",
+        headers=auth,
+        json=payload,
+    )
+    second = client.post(
+        "/api/v1/paper/testnet/shadow-reconcile",
+        headers=auth,
+        json=payload,
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["status"] == "CONSISTENT"
+    assert first.json()["snapshot_verified_by_provider"] is False
+    assert first.json()["actionable_for_live"] is False
+    assert second.json()["duplicate"] is True

@@ -1215,6 +1215,9 @@ class PaperExecutionControlUpdateRequest(BaseModel):
     default_maintenance_margin_rate: float = Field(default=0.005, gt=0.0, le=0.20)
     liquidation_fee_bps: float = Field(default=20.0, ge=0.0, le=200.0)
     max_margin_utilization_pct: float = Field(default=70.0, gt=0.0, le=95.0)
+    max_symbol_margin_pct: float = Field(default=30.0, gt=0.0, le=100.0)
+    max_risk_group_margin_pct: float = Field(default=50.0, gt=0.0, le=100.0)
+    max_directional_notional_multiple: float = Field(default=3.0, gt=0.0, le=20.0)
     acknowledgement: Optional[str] = Field(default=None, max_length=80)
 
     @model_validator(mode="after")
@@ -1238,6 +1241,9 @@ class PaperExecutionControl(BaseModel):
     default_maintenance_margin_rate: float = 0.005
     liquidation_fee_bps: float = 20.0
     max_margin_utilization_pct: float = 70.0
+    max_symbol_margin_pct: float = 30.0
+    max_risk_group_margin_pct: float = 50.0
+    max_directional_notional_multiple: float = 3.0
     updated_at: Optional[str] = None
     live_execution_enabled: bool = False
 
@@ -1334,6 +1340,8 @@ class PaperOrder(BaseModel):
     leverage: float = 1.0
     margin_mode: Literal["isolated", "cross"] = "isolated"
     maintenance_margin_rate: float = 0.005
+    risk_group: str = "unclassified"
+    correlation_source: Literal["structural_proxy"] = "structural_proxy"
     signal_score: float
     risk_approved: bool
     strategy_id: Optional[str] = None
@@ -1451,6 +1459,8 @@ class PaperPosition(BaseModel):
     mark_price: Optional[float] = None
     leverage: float = 1.0
     margin_mode: Literal["isolated", "cross"] = "isolated"
+    risk_group: str = "unclassified"
+    correlation_source: Literal["structural_proxy"] = "structural_proxy"
     initial_margin: float = 0.0
     maintenance_margin: float = 0.0
     maintenance_margin_rate: float = 0.005
@@ -1541,6 +1551,93 @@ class PaperReconciliationResponse(BaseModel):
     terminal_state_valid: bool
     issues: List[str] = Field(default_factory=list)
     live_execution_enabled: bool = False
+
+
+PaperTestnetConnector = Literal["binance_futures_testnet", "bybit_testnet"]
+
+
+class PaperConnectorProbeRequest(BaseModel):
+    force: bool = False
+
+
+class PaperConnectorCheckpoint(BaseModel):
+    connector: PaperTestnetConnector
+    state: Literal["unknown", "connected", "backoff", "disconnected"]
+    public_connectivity_only: bool = True
+    authenticated: bool = False
+    order_routing_enabled: bool = False
+    consecutive_failures: int = 0
+    backoff_until: Optional[str] = None
+    latency_ms: Optional[int] = None
+    server_time_offset_ms: Optional[int] = None
+    last_probe_at: Optional[str] = None
+    last_success_at: Optional[str] = None
+    last_error_code: Optional[str] = None
+    live_execution_enabled: bool = False
+
+
+class PaperConnectorCheckpointListResponse(BaseModel):
+    items: List[PaperConnectorCheckpoint] = Field(default_factory=list)
+    count: int
+    live_execution_enabled: bool = False
+
+
+class PaperShadowOrderSnapshot(BaseModel):
+    order_id: str = Field(min_length=8, max_length=100)
+    status: Literal["accepted", "working", "partially_filled", "filled", "canceled", "rejected", "expired"]
+    filled_quantity: float = Field(ge=0.0)
+    average_fill_price: Optional[float] = Field(default=None, gt=0.0)
+    total_fees: float = Field(default=0.0, ge=0.0)
+
+
+class PaperShadowReconciliationRequest(BaseModel):
+    run_id: str = Field(pattern=r"^[A-Za-z0-9_-]{12,100}$")
+    connector: PaperTestnetConnector
+    snapshot_id: str = Field(pattern=r"^[A-Za-z0-9_-]{8,100}$")
+    snapshot_timestamp: datetime
+    orders: List[PaperShadowOrderSnapshot] = Field(default_factory=list, max_length=200)
+    source: str = Field(default="user_supplied_shadow_snapshot", min_length=2, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_shadow_snapshot(self):
+        if self.snapshot_timestamp.tzinfo is None:
+            raise ValueError("shadow snapshot timestamp must be timezone-aware")
+        ids = [item.order_id for item in self.orders]
+        if len(ids) != len(set(ids)):
+            raise ValueError("shadow snapshot order_id values must be unique")
+        return self
+
+
+class PaperShadowReconciliationResponse(BaseModel):
+    run_id: str
+    connector: PaperTestnetConnector
+    snapshot_id: str
+    status: Literal["CONSISTENT", "MISMATCH", "EMPTY"]
+    matched_orders: int = 0
+    mismatched_orders: int = 0
+    missing_local_orders: int = 0
+    missing_external_orders: int = 0
+    issues: List[str] = Field(default_factory=list)
+    duplicate: bool = False
+    snapshot_verified_by_provider: bool = False
+    public_connectivity_only: bool = True
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+    created_at: str
+
+
+class PaperLedgerAuditResponse(BaseModel):
+    consistent: bool
+    order_count: int
+    fill_count: int
+    event_count: int
+    position_count: int
+    margin_event_count: int
+    issues: List[str] = Field(default_factory=list)
+    repair_performed: bool = False
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+    audited_at: str
 
 
 class ConnectorCapability(BaseModel):

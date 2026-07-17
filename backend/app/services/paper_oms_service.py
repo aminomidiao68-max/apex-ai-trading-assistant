@@ -63,6 +63,24 @@ class PaperOmsService:
         event_id = tick.event_id or f"tick_{payload_hash[:48]}"
         return event_id, payload_hash
 
+    @staticmethod
+    def _risk_group(symbol: str, market: MarketType | str) -> str:
+        upper = symbol.upper().replace("-", "").replace("_", "")
+        market_value = market.value if isinstance(market, MarketType) else str(market)
+        if market_value == "crypto":
+            if upper.startswith(("BTC", "ETH")):
+                return "crypto_major_structural_proxy"
+            if upper.startswith(("USDC", "USDT", "DAI")):
+                return "crypto_stable_structural_proxy"
+            return "crypto_alt_structural_proxy"
+        if upper.startswith(("XAU", "XAG")):
+            return "metals_usd_structural_proxy"
+        if "USD" in upper:
+            return "forex_usd_structural_proxy"
+        if "EUR" in upper:
+            return "forex_eur_structural_proxy"
+        return "other_structural_proxy"
+
     def _ensure_control(self, conn, user_id: int) -> None:
         row = conn.execute(
             "SELECT user_id FROM paper_execution_controls WHERE user_id = ?",
@@ -123,6 +141,9 @@ class PaperOmsService:
             default_maintenance_margin_rate=float(row["default_maintenance_margin_rate"]),
             liquidation_fee_bps=float(row["liquidation_fee_bps"]),
             max_margin_utilization_pct=float(row["max_margin_utilization_pct"]),
+            max_symbol_margin_pct=float(row["max_symbol_margin_pct"]),
+            max_risk_group_margin_pct=float(row["max_risk_group_margin_pct"]),
+            max_directional_notional_multiple=float(row["max_directional_notional_multiple"]),
             updated_at=row["updated_at"],
             live_execution_enabled=settings.enable_live_execution,
         )
@@ -147,7 +168,9 @@ class PaperOmsService:
                     default_fee_bps = ?, default_slippage_bps = ?,
                     max_daily_drawdown_pct = ?, max_tick_age_seconds = ?,
                     max_leverage = ?, default_maintenance_margin_rate = ?,
-                    liquidation_fee_bps = ?, max_margin_utilization_pct = ?, updated_at = ?
+                    liquidation_fee_bps = ?, max_margin_utilization_pct = ?,
+                    max_symbol_margin_pct = ?, max_risk_group_margin_pct = ?,
+                    max_directional_notional_multiple = ?, updated_at = ?
                 WHERE user_id = ?
                 """,
                 (
@@ -164,6 +187,9 @@ class PaperOmsService:
                     request.default_maintenance_margin_rate,
                     request.liquidation_fee_bps,
                     request.max_margin_utilization_pct,
+                    request.max_symbol_margin_pct,
+                    request.max_risk_group_margin_pct,
+                    request.max_directional_notional_multiple,
                     now,
                     user_id,
                 ),
@@ -469,6 +495,7 @@ class PaperOmsService:
             if int(open_count["count"] or 0) >= int(control["max_open_orders"]):
                 raise PaperOmsError("max_open_paper_orders_reached")
             reference = request.reference_ask if request.side == "buy" else request.reference_bid
+            risk_group = self._risk_group(request.symbol, request.market)
             notional = request.quantity * reference
             if notional > float(control["max_order_notional"]):
                 raise PaperOmsError("paper_order_notional_limit_exceeded")
@@ -497,7 +524,7 @@ class PaperOmsService:
                     (user_id,),
                 ).fetchone()
                 position_rows = conn.execute(
-                    "SELECT quantity, average_entry_price, mark_price, initial_margin "
+                    "SELECT symbol, risk_group, quantity, average_entry_price, mark_price, initial_margin "
                     "FROM paper_positions WHERE user_id = ?",
                     (user_id,),
                 ).fetchall()
@@ -516,6 +543,29 @@ class PaperOmsService:
                 allowed_margin = max(0.0, equity) * float(control["max_margin_utilization_pct"]) / 100.0
                 if equity <= 0.0 or projected_margin > allowed_margin + 1e-9:
                     raise PaperOmsError("paper_margin_utilization_limit_exceeded")
+                current_symbol_margin = sum(
+                    float(item["initial_margin"] or 0.0)
+                    for item in position_rows
+                    if item["symbol"] == request.symbol.upper()
+                )
+                if current_symbol_margin + required_margin > equity * float(control["max_symbol_margin_pct"]) / 100.0 + 1e-9:
+                    raise PaperOmsError("paper_symbol_margin_concentration_limit_exceeded")
+                current_group_margin = sum(
+                    float(item["initial_margin"] or 0.0)
+                    for item in position_rows
+                    if item["risk_group"] == risk_group
+                )
+                if current_group_margin + required_margin > equity * float(control["max_risk_group_margin_pct"]) / 100.0 + 1e-9:
+                    raise PaperOmsError("paper_risk_group_concentration_limit_exceeded")
+                candidate_direction = 1.0 if signed_request > 0 else -1.0
+                directional_notional = sum(
+                    abs(float(item["quantity"]) * float(item["mark_price"] or item["average_entry_price"] or 0.0))
+                    for item in position_rows
+                    if float(item["quantity"]) * candidate_direction > 0.0
+                )
+                projected_directional = directional_notional + opening_quantity * reference
+                if projected_directional > equity * float(control["max_directional_notional_multiple"]) + 1e-9:
+                    raise PaperOmsError("paper_directional_exposure_limit_exceeded")
 
             order_id = uuid4().hex
             fee_bps = request.fee_bps if request.fee_bps is not None else float(control["default_fee_bps"])
@@ -526,10 +576,10 @@ class PaperOmsService:
                     side, order_type, quantity, limit_price, time_in_force, status,
                     filled_quantity, average_fill_price, total_fees,
                     reference_bid, reference_ask, max_slippage_bps, fee_bps,
-                    leverage, margin_mode, maintenance_margin_rate,
+                    leverage, margin_mode, maintenance_margin_rate, risk_group,
                     signal_score, risk_approved, strategy_id, setup_id,
                     created_at, updated_at, terminal_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     order_id,
@@ -554,6 +604,7 @@ class PaperOmsService:
                     request.leverage,
                     request.margin_mode,
                     float(control["default_maintenance_margin_rate"]),
+                    risk_group,
                     request.signal_score,
                     1,
                     request.strategy_id,
@@ -613,6 +664,7 @@ class PaperOmsService:
         margin_mode: str,
         maintenance_margin_rate: float,
         liquidation_fee_bps: float,
+        risk_group: str,
     ) -> None:
         self._ensure_account(conn, user_id)
         row = conn.execute(
@@ -674,6 +726,11 @@ class PaperOmsService:
                 new_leverage = leverage
                 new_margin_mode = margin_mode
                 new_maintenance_rate = maintenance_margin_rate
+        new_risk_group = (
+            row["risk_group"]
+            if row is not None and old_quantity != 0.0 and old_quantity * new_quantity > 0.0
+            else risk_group
+        )
         liquidation_price = self._liquidation_price(
             new_quantity,
             new_average,
@@ -691,10 +748,10 @@ class PaperOmsService:
                 """
                 INSERT INTO paper_positions (
                     user_id, symbol, market, quantity, average_entry_price,
-                    mark_price, leverage, margin_mode, initial_margin,
+                    mark_price, leverage, margin_mode, risk_group, initial_margin,
                     maintenance_margin_rate, liquidation_price, accumulated_funding,
                     position_status, liquidated_at, realized_pnl, total_fees, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -705,6 +762,7 @@ class PaperOmsService:
                     price,
                     new_leverage,
                     new_margin_mode,
+                    new_risk_group,
                     new_initial_margin,
                     new_maintenance_rate,
                     liquidation_price,
@@ -721,7 +779,7 @@ class PaperOmsService:
                 """
                 UPDATE paper_positions
                 SET quantity = ?, average_entry_price = ?, mark_price = ?,
-                    leverage = ?, margin_mode = ?, initial_margin = ?,
+                    leverage = ?, margin_mode = ?, risk_group = ?, initial_margin = ?,
                     maintenance_margin_rate = ?, liquidation_price = ?,
                     accumulated_funding = ?, position_status = ?, liquidated_at = NULL,
                     realized_pnl = ?, total_fees = ?, updated_at = ?
@@ -733,6 +791,7 @@ class PaperOmsService:
                     price,
                     new_leverage,
                     new_margin_mode,
+                    new_risk_group,
                     new_initial_margin,
                     new_maintenance_rate,
                     liquidation_price,
@@ -789,7 +848,7 @@ class PaperOmsService:
             (user_id,),
         ).fetchone()
         rows = conn.execute(
-            "SELECT quantity, average_entry_price, mark_price, initial_margin "
+            "SELECT symbol, risk_group, quantity, average_entry_price, mark_price, initial_margin "
             "FROM paper_positions WHERE user_id = ?",
             (user_id,),
         ).fetchall()
@@ -807,6 +866,28 @@ class PaperOmsService:
         allowed = max(0.0, equity) * float(control["max_margin_utilization_pct"]) / 100.0
         if equity <= 0.0 or used_margin + required > allowed + 1e-9:
             return "margin_utilization_changed_before_fill"
+        symbol_margin = sum(
+            float(item["initial_margin"] or 0.0)
+            for item in rows
+            if item["symbol"] == order_row["symbol"]
+        )
+        if symbol_margin + required > equity * float(control["max_symbol_margin_pct"]) / 100.0 + 1e-9:
+            return "symbol_concentration_changed_before_fill"
+        group_margin = sum(
+            float(item["initial_margin"] or 0.0)
+            for item in rows
+            if item["risk_group"] == order_row["risk_group"]
+        )
+        if group_margin + required > equity * float(control["max_risk_group_margin_pct"]) / 100.0 + 1e-9:
+            return "risk_group_concentration_changed_before_fill"
+        direction = 1.0 if signed_fill > 0 else -1.0
+        directional_notional = sum(
+            abs(float(item["quantity"]) * float(item["mark_price"] or item["average_entry_price"] or 0.0))
+            for item in rows
+            if float(item["quantity"]) * direction > 0.0
+        )
+        if directional_notional + opening_quantity * fill_price > equity * float(control["max_directional_notional_multiple"]) + 1e-9:
+            return "directional_exposure_changed_before_fill"
         return None
 
     def _process_order_tick(self, conn, user_id: int, order_id: str, tick: PaperMarketTickRequest) -> float:
@@ -903,6 +984,7 @@ class PaperOmsService:
             row["margin_mode"],
             float(row["maintenance_margin_rate"]),
             float(control["liquidation_fee_bps"]),
+            row["risk_group"],
         )
         conn.execute(
             """
@@ -1042,6 +1124,9 @@ class PaperOmsService:
                     default_maintenance_margin_rate=control_state.default_maintenance_margin_rate,
                     liquidation_fee_bps=control_state.liquidation_fee_bps,
                     max_margin_utilization_pct=control_state.max_margin_utilization_pct,
+                    max_symbol_margin_pct=control_state.max_symbol_margin_pct,
+                    max_risk_group_margin_pct=control_state.max_risk_group_margin_pct,
+                    max_directional_notional_multiple=control_state.max_directional_notional_multiple,
                     acknowledgement="I_UNDERSTAND_PAPER_ONLY",
                 ),
             )
@@ -1108,6 +1193,8 @@ class PaperOmsService:
                         mark_price=row["mark_price"],
                         leverage=float(row["leverage"]),
                         margin_mode=row["margin_mode"],
+                        risk_group=row["risk_group"],
+                        correlation_source="structural_proxy",
                         initial_margin=initial_margin,
                         maintenance_margin=maintenance,
                         maintenance_margin_rate=float(row["maintenance_margin_rate"]),
@@ -1219,6 +1306,9 @@ class PaperOmsService:
                     default_maintenance_margin_rate=control.default_maintenance_margin_rate,
                     liquidation_fee_bps=control.liquidation_fee_bps,
                     max_margin_utilization_pct=control.max_margin_utilization_pct,
+                    max_symbol_margin_pct=control.max_symbol_margin_pct,
+                    max_risk_group_margin_pct=control.max_risk_group_margin_pct,
+                    max_directional_notional_multiple=control.max_directional_notional_multiple,
                     acknowledgement="I_UNDERSTAND_PAPER_ONLY",
                 ),
             )
@@ -1460,6 +1550,8 @@ class PaperOmsService:
             leverage=float(row["leverage"]),
             margin_mode=row["margin_mode"],
             maintenance_margin_rate=float(row["maintenance_margin_rate"]),
+            risk_group=row["risk_group"],
+            correlation_source="structural_proxy",
             signal_score=float(row["signal_score"]),
             risk_approved=bool(row["risk_approved"]),
             strategy_id=row["strategy_id"],

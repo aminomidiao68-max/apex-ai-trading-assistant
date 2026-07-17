@@ -55,7 +55,13 @@ from app.models import (
     PaperFeedSyncResponse,
     PaperFundingSettlementRequest,
     PaperFundingSettlementResponse,
+    PaperLedgerAuditResponse,
+    PaperConnectorCheckpoint,
+    PaperConnectorCheckpointListResponse,
+    PaperConnectorProbeRequest,
     PaperMarginEventListResponse,
+    PaperShadowReconciliationRequest,
+    PaperShadowReconciliationResponse,
     PaperMarketTickRequest,
     PaperOrder,
     PaperOrderCreateRequest,
@@ -103,6 +109,7 @@ from app.services.notification_service import NotificationService
 from app.services.orderflow_service import OrderFlowService
 from app.services.paper_market_feed_service import PaperFeedError, PaperMarketFeedService
 from app.services.paper_oms_service import PaperOmsError, PaperOmsService
+from app.services.paper_recovery_service import PaperRecoveryError, PaperRecoveryService
 from app.services.provider_secret_service import ProviderSecretService, ProviderVaultError
 from app.services.production_guard_service import (
     client_identity,
@@ -163,6 +170,7 @@ auth_service = AuthService()
 storage = StorageService()
 provider_secret_service = ProviderSecretService(storage.database)
 paper_oms_service = PaperOmsService(storage.database)
+paper_recovery_service = PaperRecoveryService(storage.database)
 paper_market_feed_service = PaperMarketFeedService(storage.database, paper_oms_service)
 paper_feed_worker_task: asyncio.Task | None = None
 historical_data_service = HistoricalDataService(storage.database)
@@ -1483,6 +1491,11 @@ def _raise_paper_feed_error(exc: PaperFeedError):
     raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
 
 
+def _raise_paper_recovery_error(exc: PaperRecoveryError):
+    status = 409 if "payload_conflict" in exc.code else 400
+    raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
+
+
 @app.get("/api/v1/paper/control", response_model=PaperExecutionControl)
 def get_paper_control(user=Depends(current_user)):
     return paper_oms_service.get_control(user.id)
@@ -1543,6 +1556,48 @@ async def sync_paper_market_feed(
     user=Depends(current_user),
 ):
     return await paper_market_feed_service.sync_user(user.id, request)
+
+
+@app.get(
+    "/api/v1/paper/testnet/checkpoints",
+    response_model=PaperConnectorCheckpointListResponse,
+)
+def list_paper_testnet_checkpoints(user=Depends(current_user)):
+    return paper_recovery_service.list_checkpoints(user.id)
+
+
+@app.post(
+    "/api/v1/paper/testnet/connectors/{connector}/probe",
+    response_model=PaperConnectorCheckpoint,
+)
+async def probe_paper_testnet_connector(
+    connector: str,
+    request: PaperConnectorProbeRequest,
+    user=Depends(current_user),
+):
+    try:
+        return await paper_recovery_service.probe_connector(user.id, connector, request.force)
+    except PaperRecoveryError as exc:
+        _raise_paper_recovery_error(exc)
+
+
+@app.post(
+    "/api/v1/paper/testnet/shadow-reconcile",
+    response_model=PaperShadowReconciliationResponse,
+)
+def reconcile_paper_testnet_shadow(
+    request: PaperShadowReconciliationRequest,
+    user=Depends(current_user),
+):
+    try:
+        return paper_recovery_service.reconcile_shadow_snapshot(user.id, request)
+    except PaperRecoveryError as exc:
+        _raise_paper_recovery_error(exc)
+
+
+@app.get("/api/v1/paper/audit", response_model=PaperLedgerAuditResponse)
+def audit_paper_ledger(user=Depends(current_user)):
+    return paper_recovery_service.audit_ledger(user.id)
 
 
 @app.post("/api/v1/paper/orders", response_model=PaperOrder)

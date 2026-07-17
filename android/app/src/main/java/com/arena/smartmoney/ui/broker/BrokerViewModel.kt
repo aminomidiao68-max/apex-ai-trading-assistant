@@ -13,6 +13,8 @@ import com.arena.smartmoney.data.model.Mt5OrderRequestDto
 import com.arena.smartmoney.data.model.OandaOrderRequestDto
 import com.arena.smartmoney.data.model.PaperExecutionControlDto
 import com.arena.smartmoney.data.model.PaperExecutionControlUpdateDto
+import com.arena.smartmoney.data.model.PaperConnectorCheckpointDto
+import com.arena.smartmoney.data.model.PaperLedgerAuditDto
 import com.arena.smartmoney.data.model.PaperFeedStatusDto
 import com.arena.smartmoney.data.model.PaperFeedSubscriptionDto
 import com.arena.smartmoney.data.model.PaperFeedSubscriptionUpsertDto
@@ -43,6 +45,8 @@ data class BrokerUiState(
     val paperOrders: List<PaperOrderDto> = emptyList(),
     val paperFeedStatus: PaperFeedStatusDto? = null,
     val paperFeedSubscriptions: List<PaperFeedSubscriptionDto> = emptyList(),
+    val paperTestnetCheckpoints: List<PaperConnectorCheckpointDto> = emptyList(),
+    val paperLedgerAudit: PaperLedgerAuditDto? = null,
     val paperPrice: String = "100.0",
     val paperLimitPrice: String = "",
     val paperLeverage: String = "5",
@@ -59,6 +63,8 @@ private data class PaperStateBundle(
     val orders: List<PaperOrderDto>,
     val feedStatus: PaperFeedStatusDto,
     val subscriptions: List<PaperFeedSubscriptionDto>,
+    val checkpoints: List<PaperConnectorCheckpointDto>,
+    val audit: PaperLedgerAuditDto,
 )
 
 class BrokerViewModel(
@@ -80,12 +86,16 @@ class BrokerViewModel(
                 val orders = async { repository.getPaperOrders(30) }
                 val feedStatus = async { repository.getPaperFeedStatus() }
                 val subscriptions = async { repository.getPaperFeedSubscriptions() }
+                val checkpoints = async { repository.getPaperTestnetCheckpoints() }
+                val audit = async { repository.auditPaperLedger() }
                 PaperStateBundle(
                     control = control.await(),
                     portfolio = portfolio.await(),
                     orders = orders.await().items,
                     feedStatus = feedStatus.await(),
                     subscriptions = subscriptions.await().items,
+                    checkpoints = checkpoints.await().items,
+                    audit = audit.await(),
                 )
             }.onSuccess { state ->
                 _uiState.value = _uiState.value.copy(
@@ -94,6 +104,8 @@ class BrokerViewModel(
                     paperOrders = state.orders,
                     paperFeedStatus = state.feedStatus,
                     paperFeedSubscriptions = state.subscriptions,
+                    paperTestnetCheckpoints = state.checkpoints,
+                    paperLedgerAudit = state.audit,
                 )
             }
         }
@@ -318,6 +330,9 @@ class BrokerViewModel(
                         default_maintenance_margin_rate = current?.default_maintenance_margin_rate ?: 0.005,
                         liquidation_fee_bps = current?.liquidation_fee_bps ?: 20.0,
                         max_margin_utilization_pct = current?.max_margin_utilization_pct ?: 70.0,
+                        max_symbol_margin_pct = current?.max_symbol_margin_pct ?: 30.0,
+                        max_risk_group_margin_pct = current?.max_risk_group_margin_pct ?: 50.0,
+                        max_directional_notional_multiple = current?.max_directional_notional_multiple ?: 3.0,
                         acknowledgement = if (enabled) "I_UNDERSTAND_PAPER_ONLY" else null,
                     )
                 )
@@ -411,6 +426,47 @@ class BrokerViewModel(
                 .onFailure { error ->
                     _uiState.value = _uiState.value.copy(
                         paperMessage = error.message ?: "Paper feed disable failed"
+                    )
+                }
+        }
+    }
+
+    fun probePaperTestnet(connector: String) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(loading = true, paperMessage = "")
+            runCatching { repository.probePaperTestnetConnector(connector, force = true) }
+                .onSuccess { checkpoint ->
+                    _uiState.value = _uiState.value.copy(
+                        loading = false,
+                        paperMessage = "${checkpoint.connector}: ${checkpoint.state}; public connectivity only",
+                    )
+                    loadPaperState()
+                }
+                .onFailure { error ->
+                    _uiState.value = _uiState.value.copy(
+                        loading = false,
+                        paperMessage = error.message ?: "Testnet public probe failed",
+                    )
+                }
+        }
+    }
+
+    fun runPaperLedgerAudit() {
+        viewModelScope.launch {
+            runCatching { repository.auditPaperLedger() }
+                .onSuccess { audit ->
+                    _uiState.value = _uiState.value.copy(
+                        paperLedgerAudit = audit,
+                        paperMessage = if (audit.consistent) {
+                            "Paper ledger audit passed"
+                        } else {
+                            "Paper ledger issues: ${audit.issues.take(3).joinToString()}"
+                        },
+                    )
+                }
+                .onFailure { error ->
+                    _uiState.value = _uiState.value.copy(
+                        paperMessage = error.message ?: "Paper ledger audit failed"
                     )
                 }
         }

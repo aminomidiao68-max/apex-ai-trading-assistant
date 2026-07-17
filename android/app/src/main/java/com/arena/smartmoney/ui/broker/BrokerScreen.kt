@@ -267,6 +267,45 @@ fun BrokerScreen(viewModel: BrokerViewModel = viewModel()) {
                         ),
                         color = Color(0xFFFFD27A)
                     )
+                    Text(
+                        t("Testnet Recovery & Ledger Audit", "بازیابی تست‌نت و حسابرسی دفتر"),
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    state.paperTestnetCheckpoints.forEach { checkpoint ->
+                        Text(
+                            "${checkpoint.connector} • ${checkpoint.state.uppercase()} • ${checkpoint.latency_ms ?: "-"}ms • failures ${checkpoint.consecutive_failures}",
+                            color = if (checkpoint.state == "connected") Color(0xFF33E6A6) else Color(0xFFFFD27A)
+                        )
+                    }
+                    state.paperLedgerAudit?.let { audit ->
+                        Text(
+                            t("Ledger consistent", "سازگاری دفتر") + ": ${audit.consistent} • " +
+                                "orders ${audit.order_count} • fills ${audit.fill_count} • issues ${audit.issues.size}",
+                            color = if (audit.consistent) Color(0xFF33E6A6) else Color(0xFFFF8A8A)
+                        )
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { viewModel.probePaperTestnet("binance_futures_testnet") },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Binance Testnet") }
+                        OutlinedButton(
+                            onClick = { viewModel.probePaperTestnet("bybit_testnet") },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Bybit Testnet") }
+                        OutlinedButton(
+                            onClick = viewModel::runPaperLedgerAudit,
+                            modifier = Modifier.weight(1f)
+                        ) { Text(t("Audit", "حسابرسی")) }
+                    }
+                    Text(
+                        t(
+                            "Probes test public connectivity only: no authentication and no order routing.",
+                            "این Probe فقط اتصال عمومی تست‌نت را بررسی می‌کند؛ بدون احراز هویت و بدون ارسال سفارش."
+                        ),
+                        color = Color(0xFFFFD27A)
+                    )
                     state.paperPortfolio?.let { portfolio ->
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             BrokerChip(t("Equity", "اکوئیتی"), String.format(Locale.US, "%.2f", portfolio.equity), Modifier.weight(1f))
@@ -293,7 +332,7 @@ fun BrokerScreen(viewModel: BrokerViewModel = viewModel()) {
                         )
                         portfolio.positions.filter { it.quantity != 0.0 || it.position_status == "liquidated" }.take(5).forEach { position ->
                             Text(
-                                "${position.symbol} • ${position.margin_mode.uppercase()} ${position.leverage}x • qty ${position.quantity} • uPnL ${String.format(Locale.US, "%.2f", position.unrealized_pnl)}",
+                                "${position.symbol} • ${position.margin_mode.uppercase()} ${position.leverage}x • ${position.risk_group} • qty ${position.quantity} • uPnL ${String.format(Locale.US, "%.2f", position.unrealized_pnl)}",
                                 color = Color.White
                             )
                             Text(

@@ -74,6 +74,9 @@ data class PaperExecutionControlUpdateDto(
     val default_maintenance_margin_rate: Double = 0.005,
     val liquidation_fee_bps: Double = 20.0,
     val max_margin_utilization_pct: Double = 70.0,
+    val max_symbol_margin_pct: Double = 30.0,
+    val max_risk_group_margin_pct: Double = 50.0,
+    val max_directional_notional_multiple: Double = 3.0,
     val acknowledgement: String? = null
 )
 
@@ -91,6 +94,9 @@ data class PaperExecutionControlDto(
     val default_maintenance_margin_rate: Double = 0.005,
     val liquidation_fee_bps: Double = 20.0,
     val max_margin_utilization_pct: Double = 70.0,
+    val max_symbol_margin_pct: Double = 30.0,
+    val max_risk_group_margin_pct: Double = 50.0,
+    val max_directional_notional_multiple: Double = 3.0,
     val updated_at: String? = null,
     val live_execution_enabled: Boolean = false
 )
@@ -167,6 +173,46 @@ data class PaperFeedSyncResponseDto(
     val live_execution_enabled: Boolean = false
 )
 
+data class PaperConnectorProbeRequestDto(
+    val force: Boolean = false
+)
+
+data class PaperConnectorCheckpointDto(
+    val connector: String,
+    val state: String,
+    val public_connectivity_only: Boolean = true,
+    val authenticated: Boolean = false,
+    val order_routing_enabled: Boolean = false,
+    val consecutive_failures: Int = 0,
+    val backoff_until: String? = null,
+    val latency_ms: Int? = null,
+    val server_time_offset_ms: Int? = null,
+    val last_probe_at: String? = null,
+    val last_success_at: String? = null,
+    val last_error_code: String? = null,
+    val live_execution_enabled: Boolean = false
+)
+
+data class PaperConnectorCheckpointListDto(
+    val items: List<PaperConnectorCheckpointDto> = emptyList(),
+    val count: Int = 0,
+    val live_execution_enabled: Boolean = false
+)
+
+data class PaperLedgerAuditDto(
+    val consistent: Boolean,
+    val order_count: Int,
+    val fill_count: Int,
+    val event_count: Int,
+    val position_count: Int,
+    val margin_event_count: Int,
+    val issues: List<String> = emptyList(),
+    val repair_performed: Boolean = false,
+    val actionable_for_live: Boolean = false,
+    val live_execution_enabled: Boolean = false,
+    val audited_at: String
+)
+
 data class PaperOrderCreateRequestDto(
     val idempotency_key: String,
     val symbol: String,
@@ -233,6 +279,8 @@ data class PaperOrderDto(
     val leverage: Double = 1.0,
     val margin_mode: String = "isolated",
     val maintenance_margin_rate: Double = 0.005,
+    val risk_group: String = "unclassified",
+    val correlation_source: String = "structural_proxy",
     val signal_score: Double,
     val risk_approved: Boolean,
     val strategy_id: String? = null,
@@ -258,6 +306,8 @@ data class PaperPositionDto(
     val mark_price: Double? = null,
     val leverage: Double = 1.0,
     val margin_mode: String = "isolated",
+    val risk_group: String = "unclassified",
+    val correlation_source: String = "structural_proxy",
     val initial_margin: Double = 0.0,
     val maintenance_margin: Double = 0.0,
     val maintenance_margin_rate: Double = 0.005,

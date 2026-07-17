@@ -2138,3 +2138,21 @@ Live Execution: false
 ```
 
 Paper Alpha 4 is an exchange-agnostic simulation. It does not implement complete exchange risk tiers, ADL, insurance funds or portfolio-margin rules and makes no profitability claim.
+
+---
+
+## Addendum — Paper Alpha 5 Recovery/Concentration/Testnet Shadow
+
+```text
+Version: 3.4.0-paper-alpha5
+Schema: v9
+Testnet probes: Binance Futures / Bybit public connectivity only
+Authentication: false
+Order routing: false
+Shadow snapshots: provider_verified=false / actionable_for_live=false
+Correlation source: structural_proxy (not statistical correlation)
+Ledger audit: diagnostic only / repair_performed=false
+Live Execution: false
+```
+
+Paper Alpha 5 adds durable public connectivity checkpoints, sanitized backoff, shadow-only reconciliation and deterministic concentration controls. Private authenticated Testnet order/fill reconciliation is still not implemented and no profitability claim is made.
