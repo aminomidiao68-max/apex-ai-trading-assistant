@@ -52,7 +52,10 @@ def test_postgresql_migration_auth_and_user_scoped_journal_roundtrip():
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_name = 'paper_execution_controls'"
         ).fetchall()
-        names = {row["column_name"] for row in control_columns}
+        names = {
+            value.decode() if isinstance(value := row["column_name"], bytes) else str(value)
+            for row in control_columns
+        }
         assert {
             "automated_feed_enabled",
             "max_tick_age_seconds",
@@ -68,7 +71,10 @@ def test_postgresql_migration_auth_and_user_scoped_journal_roundtrip():
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_name = 'paper_positions'"
         ).fetchall()
-        position_names = {row["column_name"] for row in position_columns}
+        position_names = {
+            value.decode() if isinstance(value := row["column_name"], bytes) else str(value)
+            for row in position_columns
+        }
         assert {
             "leverage",
             "margin_mode",

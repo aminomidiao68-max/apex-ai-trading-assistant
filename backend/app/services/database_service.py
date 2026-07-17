@@ -49,7 +49,10 @@ class ConnectionAdapter:
         if self.backend == "sqlite":
             return CursorAdapter(self.raw.execute(sql, tuple(params)))
 
-        translated = sql.replace("?", "%s")
+        # psycopg interprets every percent sign as a client-side placeholder.
+        # Escape literal SQL percent signs (for example LIKE '%USD%') before
+        # translating the portable qmark placeholders used by this adapter.
+        translated = sql.replace("%", "%%").replace("?", "%s")
         match = _INSERT_TABLE_RE.match(translated)
         should_return_id = (
             match is not None
