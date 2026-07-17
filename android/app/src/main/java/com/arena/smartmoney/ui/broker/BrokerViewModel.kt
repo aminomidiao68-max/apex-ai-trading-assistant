@@ -13,6 +13,9 @@ import com.arena.smartmoney.data.model.Mt5OrderRequestDto
 import com.arena.smartmoney.data.model.OandaOrderRequestDto
 import com.arena.smartmoney.data.model.PaperExecutionControlDto
 import com.arena.smartmoney.data.model.PaperExecutionControlUpdateDto
+import com.arena.smartmoney.data.model.PaperFeedStatusDto
+import com.arena.smartmoney.data.model.PaperFeedSubscriptionDto
+import com.arena.smartmoney.data.model.PaperFeedSubscriptionUpsertDto
 import com.arena.smartmoney.data.model.PaperOrderCreateRequestDto
 import com.arena.smartmoney.data.model.PaperOrderDto
 import com.arena.smartmoney.data.model.PaperPortfolioDto
@@ -38,12 +41,22 @@ data class BrokerUiState(
     val paperControl: PaperExecutionControlDto? = null,
     val paperPortfolio: PaperPortfolioDto? = null,
     val paperOrders: List<PaperOrderDto> = emptyList(),
+    val paperFeedStatus: PaperFeedStatusDto? = null,
+    val paperFeedSubscriptions: List<PaperFeedSubscriptionDto> = emptyList(),
     val paperPrice: String = "100.0",
     val paperLimitPrice: String = "",
     val paperOrderType: String = "market",
     val paperMessage: String = "",
     val paperReconciliation: PaperReconciliationResponseDto? = null,
     val error: String? = null
+)
+
+private data class PaperStateBundle(
+    val control: PaperExecutionControlDto,
+    val portfolio: PaperPortfolioDto,
+    val orders: List<PaperOrderDto>,
+    val feedStatus: PaperFeedStatusDto,
+    val subscriptions: List<PaperFeedSubscriptionDto>,
 )
 
 class BrokerViewModel(
@@ -63,12 +76,22 @@ class BrokerViewModel(
                 val control = async { repository.getPaperControl() }
                 val portfolio = async { repository.getPaperPortfolio() }
                 val orders = async { repository.getPaperOrders(30) }
-                Triple(control.await(), portfolio.await(), orders.await())
-            }.onSuccess { (control, portfolio, orders) ->
+                val feedStatus = async { repository.getPaperFeedStatus() }
+                val subscriptions = async { repository.getPaperFeedSubscriptions() }
+                PaperStateBundle(
+                    control = control.await(),
+                    portfolio = portfolio.await(),
+                    orders = orders.await().items,
+                    feedStatus = feedStatus.await(),
+                    subscriptions = subscriptions.await().items,
+                )
+            }.onSuccess { state ->
                 _uiState.value = _uiState.value.copy(
-                    paperControl = control,
-                    paperPortfolio = portfolio,
-                    paperOrders = orders.items,
+                    paperControl = state.control,
+                    paperPortfolio = state.portfolio,
+                    paperOrders = state.orders,
+                    paperFeedStatus = state.feedStatus,
+                    paperFeedSubscriptions = state.subscriptions,
                 )
             }
         }
@@ -237,25 +260,50 @@ class BrokerViewModel(
     }
 
     fun armPaperMode() {
-        updatePaperControl(enabled = true, killSwitch = false)
+        updatePaperControl(enabled = true, killSwitch = false, automatedFeed = false)
     }
 
     fun engagePaperKillSwitch() {
-        updatePaperControl(enabled = true, killSwitch = true)
+        updatePaperControl(enabled = true, killSwitch = true, automatedFeed = false)
     }
 
     fun disablePaperMode() {
-        updatePaperControl(enabled = false, killSwitch = true)
+        updatePaperControl(enabled = false, killSwitch = true, automatedFeed = false)
     }
 
-    private fun updatePaperControl(enabled: Boolean, killSwitch: Boolean) {
+    fun enableAutomatedFeed() {
+        updatePaperControl(enabled = true, killSwitch = false, automatedFeed = true)
+    }
+
+    fun disableAutomatedFeed() {
+        val control = _uiState.value.paperControl
+        updatePaperControl(
+            enabled = control?.paper_trading_enabled == true,
+            killSwitch = control?.kill_switch_engaged != false,
+            automatedFeed = false,
+        )
+    }
+
+    private fun updatePaperControl(
+        enabled: Boolean,
+        killSwitch: Boolean,
+        automatedFeed: Boolean,
+    ) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loading = true, paperMessage = "")
+            val current = _uiState.value.paperControl
             runCatching {
                 repository.updatePaperControl(
                     PaperExecutionControlUpdateDto(
                         paper_trading_enabled = enabled,
                         kill_switch_engaged = killSwitch,
+                        automated_feed_enabled = automatedFeed,
+                        max_open_orders = current?.max_open_orders ?: 5,
+                        max_order_notional = current?.max_order_notional ?: 10000.0,
+                        default_fee_bps = current?.default_fee_bps ?: 4.0,
+                        default_slippage_bps = current?.default_slippage_bps ?: 1.0,
+                        max_daily_drawdown_pct = current?.max_daily_drawdown_pct ?: 3.0,
+                        max_tick_age_seconds = current?.max_tick_age_seconds ?: 30,
                         acknowledgement = if (enabled) "I_UNDERSTAND_PAPER_ONLY" else null,
                     )
                 )
@@ -276,6 +324,81 @@ class BrokerViewModel(
                     paperMessage = error.message ?: "Paper control update failed"
                 )
             }
+        }
+    }
+
+    fun subscribeCurrentSymbolToPaperFeed() {
+        val symbol = _uiState.value.symbol.uppercase()
+        if (!symbol.endsWith("USDT")) {
+            _uiState.value = _uiState.value.copy(
+                paperMessage = "Automated real quote feed currently supports Crypto/USDT only"
+            )
+            return
+        }
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(loading = true, paperMessage = "")
+            runCatching {
+                repository.upsertPaperFeedSubscription(
+                    PaperFeedSubscriptionUpsertDto(symbol = symbol)
+                )
+            }.onSuccess { subscription ->
+                _uiState.value = _uiState.value.copy(
+                    loading = false,
+                    paperMessage = "Real OKX feed subscribed: ${subscription.symbol}",
+                )
+                loadPaperState()
+            }.onFailure { error ->
+                _uiState.value = _uiState.value.copy(
+                    loading = false,
+                    paperMessage = error.message ?: "Paper feed subscription failed",
+                )
+            }
+        }
+    }
+
+    fun syncPaperFeedNow() {
+        val symbol = _uiState.value.symbol.uppercase()
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(loading = true, paperMessage = "")
+            runCatching { repository.syncPaperFeed(listOf(symbol)) }
+                .onSuccess { result ->
+                    val item = result.items.firstOrNull()
+                    val midpoint = if (item?.bid != null && item.ask != null) {
+                        (item.bid + item.ask) / 2.0
+                    } else null
+                    _uiState.value = _uiState.value.copy(
+                        loading = false,
+                        paperPrice = midpoint?.toString() ?: _uiState.value.paperPrice,
+                        paperMessage = if (item?.ok == true) {
+                            "Real quote synced: ${item.provider}; duplicate=${item.duplicate_tick}"
+                        } else {
+                            "Feed sync failed: ${item?.error_code ?: "no_enabled_subscription"}"
+                        },
+                    )
+                    loadPaperState()
+                }
+                .onFailure { error ->
+                    _uiState.value = _uiState.value.copy(
+                        loading = false,
+                        paperMessage = error.message ?: "Paper feed sync failed",
+                    )
+                }
+        }
+    }
+
+    fun disableCurrentPaperFeedSubscription() {
+        val symbol = _uiState.value.symbol.uppercase()
+        viewModelScope.launch {
+            runCatching { repository.disablePaperFeedSubscription(symbol) }
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(paperMessage = "Paper feed subscription disabled")
+                    loadPaperState()
+                }
+                .onFailure { error ->
+                    _uiState.value = _uiState.value.copy(
+                        paperMessage = error.message ?: "Paper feed disable failed"
+                    )
+                }
         }
     }
 

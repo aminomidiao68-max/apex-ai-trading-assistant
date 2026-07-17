@@ -14,7 +14,7 @@ services:
       - key: APP_ENV
         value: production
       - key: APP_VERSION
-        value: 3.4.0-paper-alpha2
+        value: 3.4.0-paper-alpha3
       - key: DEFAULT_TIMEZONE
         value: UTC
       - key: CORS_ALLOWED_ORIGINS
@@ -55,6 +55,14 @@ services:
         value: deterministic
       - key: AI_EXTERNAL_ENABLED
         value: false
+      - key: PAPER_FEED_WORKER_ENABLED
+        value: true
+      - key: PAPER_FEED_WORKER_SWEEP_SECONDS
+        value: 2
+      - key: PAPER_FEED_WORKER_BATCH_SIZE
+        value: 20
+      - key: PAPER_FEED_PROVIDER_TIMEOUT_SECONDS
+        value: 8
       - key: ENABLE_LIVE_EXECUTION
         value: false
 

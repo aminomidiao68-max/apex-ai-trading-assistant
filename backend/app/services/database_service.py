@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 6
+LATEST_SCHEMA_VERSION = 7
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -241,6 +241,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (6, "paper_portfolio_equity_ledger", datetime.now(timezone.utc).isoformat()),
+                )
+            if 7 not in applied:
+                self._apply_schema_v7(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (7, "paper_automated_market_feed", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -600,6 +610,69 @@ class DatabaseManager:
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_paper_positions_user ON paper_positions(user_id, symbol)"
+        )
+
+    def _apply_schema_v7(self, conn: ConnectionAdapter) -> None:
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        self._ensure_columns(
+            conn,
+            "paper_execution_controls",
+            [
+                "automated_feed_enabled INTEGER NOT NULL DEFAULT 0",
+                "max_tick_age_seconds INTEGER NOT NULL DEFAULT 30",
+            ],
+        )
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_feed_subscriptions (
+                user_id {user_id_type} NOT NULL,
+                symbol TEXT NOT NULL,
+                market TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                enabled INTEGER NOT NULL,
+                poll_interval_seconds INTEGER NOT NULL,
+                next_poll_at TEXT NOT NULL,
+                last_attempt_at TEXT,
+                last_success_at TEXT,
+                last_provider_timestamp TEXT,
+                last_event_id TEXT,
+                consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                last_error_code TEXT,
+                lease_owner TEXT,
+                lease_until TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, symbol)
+            )
+            """
+        )
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_market_ticks (
+                tick_id TEXT PRIMARY KEY,
+                user_id {user_id_type} NOT NULL,
+                event_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                source TEXT NOT NULL,
+                bid REAL NOT NULL,
+                ask REAL NOT NULL,
+                available_quantity REAL NOT NULL,
+                provider_timestamp TEXT NOT NULL,
+                payload_hash TEXT NOT NULL,
+                affected_order_ids_json TEXT NOT NULL,
+                received_at TEXT NOT NULL,
+                processed_at TEXT NOT NULL,
+                UNIQUE(user_id, event_id)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_feed_due "
+            "ON paper_feed_subscriptions(enabled, next_poll_at, lease_until)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_ticks_user_symbol "
+            "ON paper_market_ticks(user_id, symbol, processed_at DESC)"
         )
 
     def _ensure_columns(

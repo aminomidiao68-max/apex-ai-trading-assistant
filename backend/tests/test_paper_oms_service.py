@@ -254,7 +254,7 @@ def test_reconciliation_detects_database_inconsistency(tmp_path):
     assert result.consistent is False
     assert result.filled_quantity_matches is False
     assert "filled_quantity_mismatch" in result.issues
-    assert service.database.schema_version() == LATEST_SCHEMA_VERSION == 6
+    assert service.database.schema_version() == LATEST_SCHEMA_VERSION == 7
 
 
 def test_portfolio_netting_realized_unrealized_and_fees(tmp_path):
@@ -309,7 +309,12 @@ def test_portfolio_netting_realized_unrealized_and_fees(tmp_path):
 
 def test_daily_drawdown_automatically_engages_kill_switch(tmp_path):
     service = _service(tmp_path)
-    _arm(service, max_order_notional=100_000, max_daily_drawdown_pct=3.0)
+    _arm(
+        service,
+        max_order_notional=100_000,
+        max_daily_drawdown_pct=3.0,
+        automated_feed_enabled=True,
+    )
     service.submit(
         1,
         _market_order(
@@ -331,4 +336,6 @@ def test_daily_drawdown_automatically_engages_kill_switch(tmp_path):
         ),
     )
     assert portfolio.daily_drawdown_pct >= 3.0
-    assert service.get_control(1).kill_switch_engaged is True
+    control = service.get_control(1)
+    assert control.kill_switch_engaged is True
+    assert control.automated_feed_enabled is False

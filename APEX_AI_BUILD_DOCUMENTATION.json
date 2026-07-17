@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.4.0-paper-alpha2",
-    "status": "APEX GA Program - Paper Portfolio Alpha 2"
+    "current_version": "3.4.0-paper-alpha3",
+    "status": "APEX GA Program - Automated Paper Market Feed Alpha 3"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -1283,5 +1283,34 @@
     "format": "JSON for AI readability",
     "language": "English (with Persian support notes)",
     "target_audience": "Developers, AI systems, Documentation processors"
+  },
+  "paper_alpha3": {
+    "scope": "Opt-in automated real public crypto quote feed for Paper OMS",
+    "provider": "OKX public best bid/ask",
+    "supported_markets": [
+      "crypto"
+    ],
+    "schema_version": 7,
+    "safety": {
+      "default_enabled": false,
+      "tick_idempotency": true,
+      "stale_quote_rejection": true,
+      "database_worker_lease": true,
+      "sanitized_backoff": true,
+      "live_routed": false,
+      "live_execution_enabled": false
+    },
+    "api_paths": [
+      "/api/v1/paper/feed/status",
+      "/api/v1/paper/feed/subscriptions",
+      "/api/v1/paper/feed/sync"
+    ],
+    "limitations": [
+      "Crypto only in this phase",
+      "Polling, not provider WebSocket",
+      "No full order-book queue simulation",
+      "No funding, margin, or liquidation simulation",
+      "No performance or profit guarantee"
+    ]
   }
 }

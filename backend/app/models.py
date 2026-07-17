@@ -1204,11 +1204,13 @@ class ProviderConnectionTestResponse(BaseModel):
 class PaperExecutionControlUpdateRequest(BaseModel):
     paper_trading_enabled: bool
     kill_switch_engaged: bool = True
+    automated_feed_enabled: bool = False
     max_open_orders: int = Field(default=5, ge=1, le=50)
     max_order_notional: float = Field(default=10_000.0, gt=0.0, le=100_000_000.0)
     default_fee_bps: float = Field(default=4.0, ge=0.0, le=100.0)
     default_slippage_bps: float = Field(default=1.0, ge=0.0, le=100.0)
     max_daily_drawdown_pct: float = Field(default=3.0, gt=0.0, le=20.0)
+    max_tick_age_seconds: int = Field(default=30, ge=5, le=300)
     acknowledgement: Optional[str] = Field(default=None, max_length=80)
 
     @model_validator(mode="after")
@@ -1221,11 +1223,13 @@ class PaperExecutionControlUpdateRequest(BaseModel):
 class PaperExecutionControl(BaseModel):
     paper_trading_enabled: bool = False
     kill_switch_engaged: bool = True
+    automated_feed_enabled: bool = False
     max_open_orders: int = 5
     max_order_notional: float = 10_000.0
     default_fee_bps: float = 4.0
     default_slippage_bps: float = 1.0
     max_daily_drawdown_pct: float = 3.0
+    max_tick_age_seconds: int = 30
     updated_at: Optional[str] = None
     live_execution_enabled: bool = False
 
@@ -1265,6 +1269,7 @@ class PaperMarketTickRequest(BaseModel):
     available_quantity: float = Field(gt=0.0)
     timestamp: datetime
     source: str = Field(default="user_supplied_paper_tick", min_length=2, max_length=100)
+    event_id: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9_-]{12,100}$")
 
     @model_validator(mode="after")
     def validate_tick(self):
@@ -1331,6 +1336,98 @@ class PaperOrder(BaseModel):
 class PaperOrderListResponse(BaseModel):
     items: List[PaperOrder] = Field(default_factory=list)
     count: int
+    tick_event_id: Optional[str] = None
+    duplicate_tick: bool = False
+
+
+class PaperFeedSubscriptionUpsertRequest(BaseModel):
+    symbol: str = Field(min_length=2, max_length=24, pattern=r"^[A-Za-z0-9_-]+$")
+    market: MarketType = MarketType.crypto
+    poll_interval_seconds: int = Field(default=15, ge=5, le=300)
+    acknowledgement: str = Field(pattern=r"^I_UNDERSTAND_PAPER_ONLY$")
+
+    @model_validator(mode="after")
+    def validate_supported_feed_market(self):
+        if self.market != MarketType.crypto:
+            raise ValueError("automated paper feed currently supports crypto only")
+        return self
+
+
+class PaperFeedSyncRequest(BaseModel):
+    symbols: List[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def normalize_symbols(self):
+        normalized = []
+        for symbol in self.symbols:
+            value = symbol.strip().upper()
+            if not value or len(value) > 24 or not value.replace("-", "").replace("_", "").isalnum():
+                raise ValueError("invalid paper feed symbol")
+            if value not in normalized:
+                normalized.append(value)
+        self.symbols = normalized
+        return self
+
+
+class PaperFeedSubscription(BaseModel):
+    symbol: str
+    market: MarketType
+    provider: str
+    enabled: bool
+    poll_interval_seconds: int
+    next_poll_at: str
+    last_attempt_at: Optional[str] = None
+    last_success_at: Optional[str] = None
+    last_provider_timestamp: Optional[str] = None
+    last_event_id: Optional[str] = None
+    consecutive_failures: int = 0
+    last_error_code: Optional[str] = None
+    updated_at: str
+    is_real_market_quote: bool = True
+    live_routed: bool = False
+
+
+class PaperFeedSubscriptionListResponse(BaseModel):
+    items: List[PaperFeedSubscription] = Field(default_factory=list)
+    count: int
+
+
+class PaperFeedSyncItem(BaseModel):
+    symbol: str
+    ok: bool
+    provider: str
+    event_id: Optional[str] = None
+    duplicate_tick: bool = False
+    affected_orders: int = 0
+    bid: Optional[float] = None
+    ask: Optional[float] = None
+    provider_timestamp: Optional[str] = None
+    error_code: Optional[str] = None
+    is_real_market_quote: bool = True
+    live_routed: bool = False
+
+
+class PaperFeedSyncResponse(BaseModel):
+    items: List[PaperFeedSyncItem] = Field(default_factory=list)
+    count: int
+    success_count: int
+    failure_count: int
+    live_execution_enabled: bool = False
+
+
+class PaperFeedStatus(BaseModel):
+    automated_feed_enabled: bool
+    paper_trading_enabled: bool
+    kill_switch_engaged: bool
+    worker_enabled: bool
+    subscription_count: int
+    due_subscription_count: int
+    latest_success_at: Optional[str] = None
+    latest_error_code: Optional[str] = None
+    supported_markets: List[str] = Field(default_factory=lambda: ["crypto"])
+    providers: List[str] = Field(default_factory=lambda: ["okx_public"])
+    is_real_market_quote: bool = True
+    live_execution_enabled: bool = False
 
 
 class PaperPosition(BaseModel):

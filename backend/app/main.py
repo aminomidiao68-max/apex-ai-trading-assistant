@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import time
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
@@ -46,6 +47,12 @@ from app.models import (
     OandaOrderRequest,
     PaperExecutionControl,
     PaperExecutionControlUpdateRequest,
+    PaperFeedStatus,
+    PaperFeedSubscription,
+    PaperFeedSubscriptionListResponse,
+    PaperFeedSubscriptionUpsertRequest,
+    PaperFeedSyncRequest,
+    PaperFeedSyncResponse,
     PaperMarketTickRequest,
     PaperOrder,
     PaperOrderCreateRequest,
@@ -91,6 +98,7 @@ from app.services.market_data_service import MarketDataService
 from app.services.news_engine import mock_news
 from app.services.notification_service import NotificationService
 from app.services.orderflow_service import OrderFlowService
+from app.services.paper_market_feed_service import PaperFeedError, PaperMarketFeedService
 from app.services.paper_oms_service import PaperOmsError, PaperOmsService
 from app.services.provider_secret_service import ProviderSecretService, ProviderVaultError
 from app.services.production_guard_service import (
@@ -115,7 +123,28 @@ from app.services.stored_research_service import StoredResearchError, StoredRese
 from app.services.strategy_panel_service import strategy_panel_validation_service
 from app.services.user_news_service import user_news_service
 
-app = FastAPI(title=settings.app_name, version=settings.app_version)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    global paper_feed_worker_task
+    if settings.paper_feed_worker_enabled and paper_feed_worker_task is None:
+        paper_feed_worker_task = asyncio.create_task(
+            paper_market_feed_service.run_forever(),
+            name="paper-market-feed-worker",
+        )
+    try:
+        yield
+    finally:
+        if paper_feed_worker_task is not None:
+            paper_feed_worker_task.cancel()
+            try:
+                await paper_feed_worker_task
+            except asyncio.CancelledError:
+                pass
+            paper_feed_worker_task = None
+
+
+app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
 
 
 engine = SignalEngine()
@@ -131,6 +160,8 @@ auth_service = AuthService()
 storage = StorageService()
 provider_secret_service = ProviderSecretService(storage.database)
 paper_oms_service = PaperOmsService(storage.database)
+paper_market_feed_service = PaperMarketFeedService(storage.database, paper_oms_service)
+paper_feed_worker_task: asyncio.Task | None = None
 historical_data_service = HistoricalDataService(storage.database)
 stored_research_service = StoredResearchService(
     historical_data_service.store,
@@ -149,6 +180,7 @@ notification_service = NotificationService(storage)
 readiness_service = ReadinessService(storage.database)
 orderflow_service = OrderFlowService(ttl_seconds=20)
 setup_state_engine = SetupStateEngine()
+
 
 # Native Android clients do not require CORS. Browser access is enabled only
 # for an explicit environment-specific allowlist (CORS_ALLOWED_ORIGINS).
@@ -1434,8 +1466,13 @@ def _raise_paper_oms_error(exc: PaperOmsError):
     status = 400
     if exc.code == "paper_order_not_found":
         status = 404
-    elif exc.code == "idempotency_key_payload_conflict":
+    elif exc.code in {"idempotency_key_payload_conflict", "tick_event_id_payload_conflict"}:
         status = 409
+    raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
+
+
+def _raise_paper_feed_error(exc: PaperFeedError):
+    status = 404 if exc.code == "paper_feed_subscription_not_found" else 400
     raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
 
 
@@ -1449,7 +1486,56 @@ def update_paper_control(
     request: PaperExecutionControlUpdateRequest,
     user=Depends(current_user),
 ):
-    return paper_oms_service.update_control(user.id, request)
+    try:
+        return paper_oms_service.update_control(user.id, request)
+    except PaperOmsError as exc:
+        _raise_paper_oms_error(exc)
+
+
+@app.get("/api/v1/paper/feed/status", response_model=PaperFeedStatus)
+def get_paper_feed_status(user=Depends(current_user)):
+    return paper_market_feed_service.status(user.id)
+
+
+@app.get(
+    "/api/v1/paper/feed/subscriptions",
+    response_model=PaperFeedSubscriptionListResponse,
+)
+def list_paper_feed_subscriptions(user=Depends(current_user)):
+    return paper_market_feed_service.list_subscriptions(user.id)
+
+
+@app.post(
+    "/api/v1/paper/feed/subscriptions",
+    response_model=PaperFeedSubscription,
+)
+def upsert_paper_feed_subscription(
+    request: PaperFeedSubscriptionUpsertRequest,
+    user=Depends(current_user),
+):
+    try:
+        return paper_market_feed_service.upsert_subscription(user.id, request)
+    except PaperFeedError as exc:
+        _raise_paper_feed_error(exc)
+
+
+@app.delete(
+    "/api/v1/paper/feed/subscriptions/{symbol}",
+    response_model=PaperFeedSubscription,
+)
+def disable_paper_feed_subscription(symbol: str, user=Depends(current_user)):
+    try:
+        return paper_market_feed_service.disable_subscription(user.id, symbol)
+    except PaperFeedError as exc:
+        _raise_paper_feed_error(exc)
+
+
+@app.post("/api/v1/paper/feed/sync", response_model=PaperFeedSyncResponse)
+async def sync_paper_market_feed(
+    request: PaperFeedSyncRequest,
+    user=Depends(current_user),
+):
+    return await paper_market_feed_service.sync_user(user.id, request)
 
 
 @app.post("/api/v1/paper/orders", response_model=PaperOrder)

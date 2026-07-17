@@ -63,23 +63,99 @@ data class ExecutionStatusResponse(
 data class PaperExecutionControlUpdateDto(
     val paper_trading_enabled: Boolean,
     val kill_switch_engaged: Boolean,
+    val automated_feed_enabled: Boolean = false,
     val max_open_orders: Int = 5,
     val max_order_notional: Double = 10000.0,
     val default_fee_bps: Double = 4.0,
     val default_slippage_bps: Double = 1.0,
     val max_daily_drawdown_pct: Double = 3.0,
+    val max_tick_age_seconds: Int = 30,
     val acknowledgement: String? = null
 )
 
 data class PaperExecutionControlDto(
     val paper_trading_enabled: Boolean = false,
     val kill_switch_engaged: Boolean = true,
+    val automated_feed_enabled: Boolean = false,
     val max_open_orders: Int = 5,
     val max_order_notional: Double = 10000.0,
     val default_fee_bps: Double = 4.0,
     val default_slippage_bps: Double = 1.0,
     val max_daily_drawdown_pct: Double = 3.0,
+    val max_tick_age_seconds: Int = 30,
     val updated_at: String? = null,
+    val live_execution_enabled: Boolean = false
+)
+
+data class PaperFeedSubscriptionUpsertDto(
+    val symbol: String,
+    val market: String = "crypto",
+    val poll_interval_seconds: Int = 15,
+    val acknowledgement: String = "I_UNDERSTAND_PAPER_ONLY"
+)
+
+data class PaperFeedSubscriptionDto(
+    val symbol: String,
+    val market: String,
+    val provider: String,
+    val enabled: Boolean,
+    val poll_interval_seconds: Int,
+    val next_poll_at: String,
+    val last_attempt_at: String? = null,
+    val last_success_at: String? = null,
+    val last_provider_timestamp: String? = null,
+    val last_event_id: String? = null,
+    val consecutive_failures: Int = 0,
+    val last_error_code: String? = null,
+    val updated_at: String,
+    val is_real_market_quote: Boolean = true,
+    val live_routed: Boolean = false
+)
+
+data class PaperFeedSubscriptionListDto(
+    val items: List<PaperFeedSubscriptionDto> = emptyList(),
+    val count: Int = 0
+)
+
+data class PaperFeedStatusDto(
+    val automated_feed_enabled: Boolean = false,
+    val paper_trading_enabled: Boolean = false,
+    val kill_switch_engaged: Boolean = true,
+    val worker_enabled: Boolean = false,
+    val subscription_count: Int = 0,
+    val due_subscription_count: Int = 0,
+    val latest_success_at: String? = null,
+    val latest_error_code: String? = null,
+    val supported_markets: List<String> = emptyList(),
+    val providers: List<String> = emptyList(),
+    val is_real_market_quote: Boolean = true,
+    val live_execution_enabled: Boolean = false
+)
+
+data class PaperFeedSyncRequestDto(
+    val symbols: List<String> = emptyList()
+)
+
+data class PaperFeedSyncItemDto(
+    val symbol: String,
+    val ok: Boolean,
+    val provider: String,
+    val event_id: String? = null,
+    val duplicate_tick: Boolean = false,
+    val affected_orders: Int = 0,
+    val bid: Double? = null,
+    val ask: Double? = null,
+    val provider_timestamp: String? = null,
+    val error_code: String? = null,
+    val is_real_market_quote: Boolean = true,
+    val live_routed: Boolean = false
+)
+
+data class PaperFeedSyncResponseDto(
+    val items: List<PaperFeedSyncItemDto> = emptyList(),
+    val count: Int = 0,
+    val success_count: Int = 0,
+    val failure_count: Int = 0,
     val live_execution_enabled: Boolean = false
 )
 

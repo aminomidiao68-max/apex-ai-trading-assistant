@@ -178,3 +178,18 @@
 - automatic daily-drawdown kill switch
 - PostgreSQL schema v6
 - Android Equity/Position dashboard
+
+## ⏳ GA Paper Alpha 3 — Automated Real Quote Feed
+
+- Opt-in per-user Crypto subscription
+- real public OKX best bid/ask with explicit source label
+- conservative available-liquidity size
+- stale/future/crossed quote rejection
+- deterministic Tick Event ID and payload conflict detection
+- retry-safe duplicate Tick processing without duplicate fills
+- PostgreSQL schema v7 market-tick ledger
+- database lease for multi-worker polling
+- sanitized error backoff
+- Android Feed status/subscribe/sync controls
+- Forex automated feed intentionally excluded until equivalent real bid/ask source exists
+- live_routed=false و Live Execution خاموش

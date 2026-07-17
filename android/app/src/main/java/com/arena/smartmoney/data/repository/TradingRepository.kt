@@ -24,6 +24,8 @@ import com.arena.smartmoney.data.model.ExecutionPreviewRequestDto
 import com.arena.smartmoney.data.model.Mt5OrderRequestDto
 import com.arena.smartmoney.data.model.OandaOrderRequestDto
 import com.arena.smartmoney.data.model.PaperExecutionControlUpdateDto
+import com.arena.smartmoney.data.model.PaperFeedSubscriptionUpsertDto
+import com.arena.smartmoney.data.model.PaperFeedSyncRequestDto
 import com.arena.smartmoney.data.model.PaperOrderCreateRequestDto
 import com.arena.smartmoney.data.model.LiveSignalScanRequestDto
 import com.arena.smartmoney.data.model.NotificationTestRequestDto
@@ -108,6 +110,19 @@ class TradingRepository(
 
     suspend fun updatePaperControl(request: PaperExecutionControlUpdateDto) =
         api.updatePaperControl(request)
+
+    suspend fun getPaperFeedStatus() = api.getPaperFeedStatus()
+
+    suspend fun getPaperFeedSubscriptions() = api.getPaperFeedSubscriptions()
+
+    suspend fun upsertPaperFeedSubscription(request: PaperFeedSubscriptionUpsertDto) =
+        api.upsertPaperFeedSubscription(request)
+
+    suspend fun disablePaperFeedSubscription(symbol: String) =
+        api.disablePaperFeedSubscription(symbol)
+
+    suspend fun syncPaperFeed(symbols: List<String> = emptyList()) =
+        api.syncPaperFeed(PaperFeedSyncRequestDto(symbols))
 
     suspend fun getPaperPortfolio() = api.getPaperPortfolio()
 

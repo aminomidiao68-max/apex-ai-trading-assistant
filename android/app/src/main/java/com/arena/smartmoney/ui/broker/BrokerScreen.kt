@@ -202,6 +202,71 @@ fun BrokerScreen(viewModel: BrokerViewModel = viewModel()) {
                             Modifier.weight(1f)
                         )
                     }
+                    state.paperFeedStatus?.let { feed ->
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            BrokerChip(
+                                t("Auto Feed", "خوراک خودکار"),
+                                if (feed.automated_feed_enabled) t("Enabled", "فعال") else t("Disabled", "خاموش"),
+                                Modifier.weight(1f)
+                            )
+                            BrokerChip(t("Provider", "منبع"), feed.providers.firstOrNull() ?: "OKX", Modifier.weight(1f))
+                            BrokerChip(t("Real Quote", "قیمت واقعی"), feed.is_real_market_quote.toString(), Modifier.weight(1f))
+                        }
+                        Text(
+                            t("Subscriptions / Due", "اشتراک / آماده پردازش") +
+                                ": ${feed.subscription_count} / ${feed.due_subscription_count}",
+                            color = Color(0xFFBCEEFF)
+                        )
+                        feed.latest_error_code?.let { code ->
+                            Text(t("Feed error", "خطای خوراک") + ": $code", color = Color(0xFFFFD27A))
+                        }
+                    }
+                    state.paperFeedSubscriptions.firstOrNull { it.symbol == state.symbol.uppercase() }?.let { subscription ->
+                        Text(
+                            "${subscription.symbol} • ${subscription.provider} • ${if (subscription.enabled) "ACTIVE" else "DISABLED"} • failures ${subscription.consecutive_failures}",
+                            color = Color.White
+                        )
+                        Text(
+                            t("Last real quote", "آخرین قیمت واقعی") + ": ${subscription.last_success_at ?: "-"}",
+                            color = Color(0xFFBCEEFF)
+                        )
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = viewModel::subscribeCurrentSymbolToPaperFeed,
+                            enabled = state.paperControl?.paper_trading_enabled == true &&
+                                state.paperControl?.kill_switch_engaged == false,
+                            modifier = Modifier.weight(1f)
+                        ) { Text(t("Subscribe", "اشتراک قیمت")) }
+                        Button(
+                            onClick = viewModel::enableAutomatedFeed,
+                            enabled = state.paperControl?.paper_trading_enabled == true &&
+                                state.paperControl?.kill_switch_engaged == false,
+                            modifier = Modifier.weight(1f)
+                        ) { Text(t("Auto ON", "خودکار روشن")) }
+                        OutlinedButton(
+                            onClick = viewModel::syncPaperFeedNow,
+                            enabled = state.paperControl?.automated_feed_enabled == true,
+                            modifier = Modifier.weight(1f)
+                        ) { Text(t("Sync", "همگام‌سازی")) }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = viewModel::disableAutomatedFeed,
+                            modifier = Modifier.weight(1f)
+                        ) { Text(t("Auto OFF", "خودکار خاموش")) }
+                        OutlinedButton(
+                            onClick = viewModel::disableCurrentPaperFeedSubscription,
+                            modifier = Modifier.weight(1f)
+                        ) { Text(t("Unsubscribe", "لغو اشتراک")) }
+                    }
+                    Text(
+                        t(
+                            "Automated feed uses real public OKX best bid/ask for Crypto only; it never routes live orders.",
+                            "خوراک خودکار فقط برای کریپتو از بهترین Bid/Ask عمومی و واقعی OKX استفاده می‌کند و هیچ سفارش زنده‌ای ارسال نمی‌کند."
+                        ),
+                        color = Color(0xFFFFD27A)
+                    )
                     state.paperPortfolio?.let { portfolio ->
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             BrokerChip(t("Equity", "اکوئیتی"), String.format(Locale.US, "%.2f", portfolio.equity), Modifier.weight(1f))

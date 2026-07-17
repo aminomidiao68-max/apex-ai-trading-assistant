@@ -36,6 +36,12 @@ import com.arena.smartmoney.data.model.NotificationTestRequestDto
 import com.arena.smartmoney.data.model.OandaOrderRequestDto
 import com.arena.smartmoney.data.model.PaperExecutionControlDto
 import com.arena.smartmoney.data.model.PaperExecutionControlUpdateDto
+import com.arena.smartmoney.data.model.PaperFeedStatusDto
+import com.arena.smartmoney.data.model.PaperFeedSubscriptionDto
+import com.arena.smartmoney.data.model.PaperFeedSubscriptionListDto
+import com.arena.smartmoney.data.model.PaperFeedSubscriptionUpsertDto
+import com.arena.smartmoney.data.model.PaperFeedSyncRequestDto
+import com.arena.smartmoney.data.model.PaperFeedSyncResponseDto
 import com.arena.smartmoney.data.model.PaperOrderCreateRequestDto
 import com.arena.smartmoney.data.model.PaperOrderDto
 import com.arena.smartmoney.data.model.PaperOrderListResponseDto
@@ -147,6 +153,27 @@ interface TradingApiService {
     suspend fun updatePaperControl(
         @Body request: PaperExecutionControlUpdateDto
     ): PaperExecutionControlDto
+
+    @GET("api/v1/paper/feed/status")
+    suspend fun getPaperFeedStatus(): PaperFeedStatusDto
+
+    @GET("api/v1/paper/feed/subscriptions")
+    suspend fun getPaperFeedSubscriptions(): PaperFeedSubscriptionListDto
+
+    @POST("api/v1/paper/feed/subscriptions")
+    suspend fun upsertPaperFeedSubscription(
+        @Body request: PaperFeedSubscriptionUpsertDto
+    ): PaperFeedSubscriptionDto
+
+    @DELETE("api/v1/paper/feed/subscriptions/{symbol}")
+    suspend fun disablePaperFeedSubscription(
+        @Path("symbol") symbol: String
+    ): PaperFeedSubscriptionDto
+
+    @POST("api/v1/paper/feed/sync")
+    suspend fun syncPaperFeed(
+        @Body request: PaperFeedSyncRequestDto
+    ): PaperFeedSyncResponseDto
 
     @GET("api/v1/paper/portfolio")
     suspend fun getPaperPortfolio(): PaperPortfolioDto

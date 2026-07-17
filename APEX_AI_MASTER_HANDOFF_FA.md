@@ -2,7 +2,7 @@
 
 > **سند مرجع جامع برای بازیابی کامل Context پروژه و ادامه کار بدون نیاز به این گفتگو**  
 > نسخه سند: `1.0`  
-> وضعیت Baseline زنده در زمان ثبت اولیه: `3.0.0-rc1`؛ Candidate فعلی: `3.4.0-paper-alpha2`  
+> وضعیت Baseline زنده در زمان ثبت اولیه: `3.0.0-rc1`؛ Candidate فعلی: `3.4.0-paper-alpha3`  
 > تاریخ Snapshot: `2026-07-14`  
 > زبان مرجع: فارسی؛ نام فیلدها، مسیرها و قراردادهای کد انگلیسی باقی مانده‌اند.
 
@@ -1353,7 +1353,7 @@ Candidate `3.4.0-paper-alpha1`:
 
 ## 10.12) Post-RC Paper Alpha 2 — Portfolio Ledger
 
-Candidate `3.4.0-paper-alpha2`:
+Candidate `3.4.0-paper-alpha3`:
 
 - PostgreSQL schema v6 با paper_accounts و paper_positions
 - Cash/Equity/Peak Equity و Daily Start
@@ -2105,3 +2105,20 @@ Live Execution: false
 ```
 
 این سند Context پروژه را حفظ می‌کند، اما Secret Store، Database backup و Git repository همچنان باید جداگانه نگهداری شوند.
+
+---
+
+## Addendum — Paper Alpha 3 Automated Market Feed
+
+```text
+Version: 3.4.0-paper-alpha3
+Schema: v7
+Feed: opt-in, per-user, Crypto only
+Provider: OKX public real best bid/ask
+Tick processing: payload-hashed, idempotent and stale-quote guarded
+Worker: database lease + sanitized exponential backoff
+Android: feed status/subscription/manual sync controls
+Live Execution: false
+```
+
+Paper Alpha 3 adds real public quote ingestion to the isolated Paper OMS. It does not turn simulated fills into broker fills and makes no performance claim. Forex remains excluded from automated feed until an equivalent real bid/ask source is available.

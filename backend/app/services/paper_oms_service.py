@@ -52,6 +52,13 @@ class PaperOmsService:
         raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
+    def _tick_identity(self, tick: PaperMarketTickRequest) -> tuple[str, str]:
+        payload = tick.model_dump(mode="json", exclude={"event_id"})
+        payload["symbol"] = tick.symbol.upper()
+        payload_hash = self._payload_hash(payload)
+        event_id = tick.event_id or f"tick_{payload_hash[:48]}"
+        return event_id, payload_hash
+
     def _ensure_control(self, conn, user_id: int) -> None:
         row = conn.execute(
             "SELECT user_id FROM paper_execution_controls WHERE user_id = ?",
@@ -101,11 +108,13 @@ class PaperOmsService:
         return PaperExecutionControl(
             paper_trading_enabled=bool(row["paper_trading_enabled"]),
             kill_switch_engaged=bool(row["kill_switch_engaged"]),
+            automated_feed_enabled=bool(row["automated_feed_enabled"]),
             max_open_orders=int(row["max_open_orders"]),
             max_order_notional=float(row["max_order_notional"]),
             default_fee_bps=float(row["default_fee_bps"]),
             default_slippage_bps=float(row["default_slippage_bps"]),
             max_daily_drawdown_pct=float(row["max_daily_drawdown_pct"]),
+            max_tick_age_seconds=int(row["max_tick_age_seconds"]),
             updated_at=row["updated_at"],
             live_execution_enabled=settings.enable_live_execution,
         )
@@ -115,6 +124,10 @@ class PaperOmsService:
         user_id: int,
         request: PaperExecutionControlUpdateRequest,
     ) -> PaperExecutionControl:
+        if request.automated_feed_enabled and (
+            not request.paper_trading_enabled or request.kill_switch_engaged
+        ):
+            raise PaperOmsError("automated_feed_requires_armed_paper_mode")
         now = self._now()
         with self.database.connection() as conn:
             self._ensure_control(conn, user_id)
@@ -122,19 +135,21 @@ class PaperOmsService:
                 """
                 UPDATE paper_execution_controls
                 SET paper_trading_enabled = ?, kill_switch_engaged = ?,
-                    max_open_orders = ?, max_order_notional = ?,
+                    automated_feed_enabled = ?, max_open_orders = ?, max_order_notional = ?,
                     default_fee_bps = ?, default_slippage_bps = ?,
-                    max_daily_drawdown_pct = ?, updated_at = ?
+                    max_daily_drawdown_pct = ?, max_tick_age_seconds = ?, updated_at = ?
                 WHERE user_id = ?
                 """,
                 (
                     1 if request.paper_trading_enabled else 0,
                     1 if request.kill_switch_engaged else 0,
+                    1 if request.automated_feed_enabled else 0,
                     request.max_open_orders,
                     request.max_order_notional,
                     request.default_fee_bps,
                     request.default_slippage_bps,
                     request.max_daily_drawdown_pct,
+                    request.max_tick_age_seconds,
                     now,
                     user_id,
                 ),
@@ -518,25 +533,103 @@ class PaperOmsService:
             self._cancel_with_conn(conn, user_id, order_id, "ioc_remainder_canceled")
 
     def process_tick(self, user_id: int, tick: PaperMarketTickRequest) -> PaperOrderListResponse:
+        event_id, payload_hash = self._tick_identity(tick)
+        duplicate = False
         with self.database.connection() as conn:
             self._ensure_control(conn, user_id)
             control_sql = "SELECT * FROM paper_execution_controls WHERE user_id = ?"
             if self.database.backend == "postgresql":
                 control_sql += " FOR UPDATE"
             control = conn.execute(control_sql, (user_id,)).fetchone()
-            if not bool(control["paper_trading_enabled"]) or bool(control["kill_switch_engaged"]):
-                raise PaperOmsError("paper_execution_not_armed")
-            rows = conn.execute(
-                "SELECT order_id FROM paper_orders WHERE user_id = ? AND symbol = ? AND status IN (?, ?, ?)",
-                (user_id, tick.symbol.upper(), "accepted", "working", "partially_filled"),
-            ).fetchall()
-            for row in rows:
-                self._process_order_tick(conn, user_id, row["order_id"], tick)
-            conn.commit()
-            order_ids = [row["order_id"] for row in rows]
-        self.mark_portfolio(user_id, tick)
+
+            existing = conn.execute(
+                "SELECT payload_hash, affected_order_ids_json FROM paper_market_ticks "
+                "WHERE user_id = ? AND event_id = ?",
+                (user_id, event_id),
+            ).fetchone()
+            if existing is not None:
+                if existing["payload_hash"] != payload_hash:
+                    raise PaperOmsError("tick_event_id_payload_conflict")
+                order_ids = list(json.loads(existing["affected_order_ids_json"]))
+                duplicate = True
+            else:
+                if not bool(control["paper_trading_enabled"]) or bool(control["kill_switch_engaged"]):
+                    raise PaperOmsError("paper_execution_not_armed")
+                now_dt = datetime.now(timezone.utc)
+                tick_dt = tick.timestamp.astimezone(timezone.utc)
+                age_seconds = (now_dt - tick_dt).total_seconds()
+                if age_seconds > float(control["max_tick_age_seconds"]):
+                    raise PaperOmsError("paper_tick_stale")
+                if age_seconds < -5.0:
+                    raise PaperOmsError("paper_tick_from_future")
+                rows = conn.execute(
+                    "SELECT order_id FROM paper_orders WHERE user_id = ? AND symbol = ? AND status IN (?, ?, ?)",
+                    (user_id, tick.symbol.upper(), "accepted", "working", "partially_filled"),
+                ).fetchall()
+                order_ids = [row["order_id"] for row in rows]
+                for order_id in order_ids:
+                    self._process_order_tick(conn, user_id, order_id, tick)
+                now = self._now()
+                conn.execute(
+                    "UPDATE paper_positions SET mark_price = ?, updated_at = ? "
+                    "WHERE user_id = ? AND symbol = ?",
+                    ((tick.bid + tick.ask) / 2.0, now, user_id, tick.symbol.upper()),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO paper_market_ticks (
+                        tick_id, user_id, event_id, symbol, source, bid, ask,
+                        available_quantity, provider_timestamp, payload_hash,
+                        affected_order_ids_json, received_at, processed_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        uuid4().hex,
+                        user_id,
+                        event_id,
+                        tick.symbol.upper(),
+                        tick.source,
+                        tick.bid,
+                        tick.ask,
+                        tick.available_quantity,
+                        tick_dt.isoformat(),
+                        payload_hash,
+                        json.dumps(order_ids, separators=(",", ":")),
+                        now,
+                        now,
+                    ),
+                )
+                conn.commit()
+
+        portfolio = self.get_portfolio(user_id)
+        control_state = self.get_control(user_id)
+        if (
+            control_state.paper_trading_enabled
+            and not control_state.kill_switch_engaged
+            and portfolio.daily_drawdown_pct >= control_state.max_daily_drawdown_pct
+        ):
+            self.update_control(
+                user_id,
+                PaperExecutionControlUpdateRequest(
+                    paper_trading_enabled=True,
+                    kill_switch_engaged=True,
+                    automated_feed_enabled=False,
+                    max_open_orders=control_state.max_open_orders,
+                    max_order_notional=control_state.max_order_notional,
+                    default_fee_bps=control_state.default_fee_bps,
+                    default_slippage_bps=control_state.default_slippage_bps,
+                    max_daily_drawdown_pct=control_state.max_daily_drawdown_pct,
+                    max_tick_age_seconds=control_state.max_tick_age_seconds,
+                    acknowledgement="I_UNDERSTAND_PAPER_ONLY",
+                ),
+            )
         items = [self.get(user_id, order_id) for order_id in order_ids]
-        return PaperOrderListResponse(items=items, count=len(items))
+        return PaperOrderListResponse(
+            items=items,
+            count=len(items),
+            tick_event_id=event_id,
+            duplicate_tick=duplicate,
+        )
 
     def get_portfolio(self, user_id: int) -> PaperPortfolio:
         with self.database.connection() as conn:
@@ -632,11 +725,13 @@ class PaperOmsService:
                 PaperExecutionControlUpdateRequest(
                     paper_trading_enabled=True,
                     kill_switch_engaged=True,
+                    automated_feed_enabled=False,
                     max_open_orders=control.max_open_orders,
                     max_order_notional=control.max_order_notional,
                     default_fee_bps=control.default_fee_bps,
                     default_slippage_bps=control.default_slippage_bps,
                     max_daily_drawdown_pct=control.max_daily_drawdown_pct,
+                    max_tick_age_seconds=control.max_tick_age_seconds,
                     acknowledgement="I_UNDERSTAND_PAPER_ONLY",
                 ),
             )

@@ -35,7 +35,7 @@ def test_postgresql_migration_auth_and_user_scoped_journal_roundtrip():
     health = database.health()
     assert health["connected"] is True
     assert health["persistent"] is True
-    assert health["schema_version"] == LATEST_SCHEMA_VERSION == 6
+    assert health["schema_version"] == LATEST_SCHEMA_VERSION == 7
     assert health["migration_current"] is True
     with database.connection() as conn:
         assert conn.execute("SELECT COUNT(*) AS count FROM quant_datasets").fetchone()["count"] >= 0
@@ -43,6 +43,14 @@ def test_postgresql_migration_auth_and_user_scoped_journal_roundtrip():
         assert conn.execute("SELECT COUNT(*) AS count FROM user_provider_secrets").fetchone()["count"] >= 0
         assert conn.execute("SELECT COUNT(*) AS count FROM paper_accounts").fetchone()["count"] >= 0
         assert conn.execute("SELECT COUNT(*) AS count FROM paper_positions").fetchone()["count"] >= 0
+        assert conn.execute("SELECT COUNT(*) AS count FROM paper_feed_subscriptions").fetchone()["count"] >= 0
+        assert conn.execute("SELECT COUNT(*) AS count FROM paper_market_ticks").fetchone()["count"] >= 0
+        control_columns = conn.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'paper_execution_controls'"
+        ).fetchall()
+        names = {row["column_name"] for row in control_columns}
+        assert {"automated_feed_enabled", "max_tick_age_seconds"}.issubset(names)
 
     auth = AuthService(seed_demo_user=False)
     storage = StorageService()

@@ -1062,3 +1062,77 @@ def test_paper_oms_api_is_user_scoped_idempotent_and_never_live_routed():
     assert reconciled.status_code == 200
     assert reconciled.json()["consistent"] is True
     assert reconciled.json()["live_execution_enabled"] is False
+
+
+def test_paper_automated_feed_api_is_opt_in_idempotent_and_never_live(monkeypatch):
+    from app.services.paper_market_feed_service import PaperProviderQuote
+
+    assert client.get("/api/v1/paper/feed/status").status_code == 401
+    auth = _register()
+    armed = client.post(
+        "/api/v1/paper/control",
+        headers=auth,
+        json={
+            "paper_trading_enabled": True,
+            "kill_switch_engaged": False,
+            "automated_feed_enabled": True,
+            "max_tick_age_seconds": 30,
+            "acknowledgement": "I_UNDERSTAND_PAPER_ONLY",
+        },
+    )
+    assert armed.status_code == 200, armed.text
+    assert armed.json()["automated_feed_enabled"] is True
+
+    subscribed = client.post(
+        "/api/v1/paper/feed/subscriptions",
+        headers=auth,
+        json={
+            "symbol": "BTCUSDT",
+            "market": "crypto",
+            "poll_interval_seconds": 15,
+            "acknowledgement": "I_UNDERSTAND_PAPER_ONLY",
+        },
+    )
+    assert subscribed.status_code == 200, subscribed.text
+    assert subscribed.json()["provider"] == "okx_public"
+    assert subscribed.json()["is_real_market_quote"] is True
+    assert subscribed.json()["live_routed"] is False
+
+    class ApiFixtureProvider:
+        provider_name = "okx_public"
+        timestamp = datetime.now(timezone.utc)
+
+        async def fetch(self, symbol):
+            return PaperProviderQuote(
+                symbol=symbol,
+                bid=100.0,
+                ask=100.1,
+                available_quantity=5.0,
+                timestamp=self.timestamp,
+                provider="okx_public",
+                source="okx_public_real_best_bid_ask",
+                event_id=f"okx_{'a' * 48}",
+            )
+
+    monkeypatch.setattr(main.paper_market_feed_service, "provider", ApiFixtureProvider())
+    first = client.post(
+        "/api/v1/paper/feed/sync",
+        headers=auth,
+        json={"symbols": ["BTCUSDT"]},
+    )
+    second = client.post(
+        "/api/v1/paper/feed/sync",
+        headers=auth,
+        json={"symbols": ["BTCUSDT"]},
+    )
+    assert first.status_code == 200, first.text
+    assert first.json()["success_count"] == 1
+    assert first.json()["items"][0]["duplicate_tick"] is False
+    assert first.json()["items"][0]["live_routed"] is False
+    assert second.status_code == 200
+    assert second.json()["items"][0]["duplicate_tick"] is True
+
+    status = client.get("/api/v1/paper/feed/status", headers=auth)
+    assert status.status_code == 200
+    assert status.json()["live_execution_enabled"] is False
+    assert status.json()["subscription_count"] == 1
