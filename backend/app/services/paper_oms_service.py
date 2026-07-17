@@ -11,6 +11,10 @@ from app.models import (
     PaperExecutionControl,
     PaperExecutionControlUpdateRequest,
     PaperFill,
+    PaperFundingSettlementRequest,
+    PaperFundingSettlementResponse,
+    PaperMarginEvent,
+    PaperMarginEventListResponse,
     PaperMarketTickRequest,
     PaperOrder,
     PaperOrderCreateRequest,
@@ -115,6 +119,10 @@ class PaperOmsService:
             default_slippage_bps=float(row["default_slippage_bps"]),
             max_daily_drawdown_pct=float(row["max_daily_drawdown_pct"]),
             max_tick_age_seconds=int(row["max_tick_age_seconds"]),
+            max_leverage=float(row["max_leverage"]),
+            default_maintenance_margin_rate=float(row["default_maintenance_margin_rate"]),
+            liquidation_fee_bps=float(row["liquidation_fee_bps"]),
+            max_margin_utilization_pct=float(row["max_margin_utilization_pct"]),
             updated_at=row["updated_at"],
             live_execution_enabled=settings.enable_live_execution,
         )
@@ -137,7 +145,9 @@ class PaperOmsService:
                 SET paper_trading_enabled = ?, kill_switch_engaged = ?,
                     automated_feed_enabled = ?, max_open_orders = ?, max_order_notional = ?,
                     default_fee_bps = ?, default_slippage_bps = ?,
-                    max_daily_drawdown_pct = ?, max_tick_age_seconds = ?, updated_at = ?
+                    max_daily_drawdown_pct = ?, max_tick_age_seconds = ?,
+                    max_leverage = ?, default_maintenance_margin_rate = ?,
+                    liquidation_fee_bps = ?, max_margin_utilization_pct = ?, updated_at = ?
                 WHERE user_id = ?
                 """,
                 (
@@ -150,6 +160,10 @@ class PaperOmsService:
                     request.default_slippage_bps,
                     request.max_daily_drawdown_pct,
                     request.max_tick_age_seconds,
+                    request.max_leverage,
+                    request.default_maintenance_margin_rate,
+                    request.liquidation_fee_bps,
+                    request.max_margin_utilization_pct,
                     now,
                     user_id,
                 ),
@@ -214,6 +228,214 @@ class PaperOmsService:
             ),
         )
 
+    @staticmethod
+    def _liquidation_price(
+        quantity: float,
+        average_entry: float | None,
+        initial_margin: float,
+        maintenance_margin_rate: float,
+        accumulated_funding: float,
+        liquidation_fee_bps: float,
+    ) -> float | None:
+        if abs(quantity) <= 1e-12 or not average_entry or average_entry <= 0:
+            return None
+        collateral_per_unit = max(0.0, initial_margin - accumulated_funding) / abs(quantity)
+        maintenance_per_unit = average_entry * maintenance_margin_rate
+        liquidation_fee_per_unit = average_entry * liquidation_fee_bps / 10_000.0
+        if quantity > 0:
+            return max(
+                0.0,
+                average_entry - collateral_per_unit + maintenance_per_unit + liquidation_fee_per_unit,
+            )
+        return max(
+            0.0,
+            average_entry + collateral_per_unit - maintenance_per_unit - liquidation_fee_per_unit,
+        )
+
+    def _append_margin_event(
+        self,
+        conn,
+        user_id: int,
+        event_id: str,
+        event_type: str,
+        symbol: str,
+        amount: float,
+        funding_rate: float | None,
+        mark_price: float | None,
+        realized_pnl: float,
+        source: str,
+        is_real_rate: bool,
+        payload_hash: str,
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO paper_margin_events (
+                event_id, user_id, event_type, symbol, amount, funding_rate,
+                mark_price, realized_pnl, source, is_real_rate, payload_hash, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_id,
+                user_id,
+                event_type,
+                symbol,
+                amount,
+                funding_rate,
+                mark_price,
+                realized_pnl,
+                source,
+                1 if is_real_rate else 0,
+                payload_hash,
+                self._now(),
+            ),
+        )
+
+    def _engage_kill_switch_with_conn(self, conn, user_id: int, reason: str) -> None:
+        now = self._now()
+        conn.execute(
+            """
+            UPDATE paper_execution_controls
+            SET kill_switch_engaged = 1, automated_feed_enabled = 0, updated_at = ?
+            WHERE user_id = ?
+            """,
+            (now, user_id),
+        )
+        rows = conn.execute(
+            "SELECT order_id, status FROM paper_orders "
+            "WHERE user_id = ? AND status IN (?, ?, ?)",
+            (user_id, "accepted", "working", "partially_filled"),
+        ).fetchall()
+        for row in rows:
+            conn.execute(
+                "UPDATE paper_orders SET status = ?, updated_at = ?, terminal_at = ? "
+                "WHERE order_id = ?",
+                ("canceled", now, now, row["order_id"]),
+            )
+            self._append_event(
+                conn,
+                user_id,
+                row["order_id"],
+                "kill_switch_cancel",
+                row["status"],
+                "canceled",
+                reason,
+                {"kill_switch": True},
+            )
+
+    def _evaluate_liquidations_with_conn(
+        self,
+        conn,
+        user_id: int,
+        tick: PaperMarketTickRequest,
+        control,
+    ) -> list[str]:
+        rows = conn.execute(
+            "SELECT * FROM paper_positions WHERE user_id = ? AND ABS(quantity) > 0.000000000001",
+            (user_id,),
+        ).fetchall()
+        if not rows:
+            return []
+        account = conn.execute(
+            "SELECT * FROM paper_accounts WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        total_unrealized = 0.0
+        isolated_reserved = 0.0
+        cross_requirement = 0.0
+        cross_symbols: list[str] = []
+        liquidate: set[str] = set()
+        fee_rate = float(control["liquidation_fee_bps"]) / 10_000.0
+        for row in rows:
+            quantity = float(row["quantity"])
+            average = float(row["average_entry_price"] or 0.0)
+            mark = float(row["mark_price"] or average)
+            unrealized = quantity * (mark - average)
+            notional = abs(quantity * mark)
+            maintenance = notional * float(row["maintenance_margin_rate"])
+            close_fee = notional * fee_rate
+            total_unrealized += unrealized
+            if row["margin_mode"] == "isolated":
+                isolated_equity = (
+                    float(row["initial_margin"]) + unrealized - float(row["accumulated_funding"])
+                )
+                isolated_reserved += max(0.0, float(row["initial_margin"]))
+                if isolated_equity <= maintenance + close_fee:
+                    liquidate.add(str(row["symbol"]))
+            else:
+                cross_symbols.append(str(row["symbol"]))
+                cross_requirement += maintenance + close_fee
+        equity = float(account["cash_balance"]) + total_unrealized
+        cross_collateral = equity - isolated_reserved
+        if cross_symbols and cross_collateral <= cross_requirement:
+            liquidate.update(cross_symbols)
+        if not liquidate:
+            return []
+
+        liquidated = []
+        for row in rows:
+            symbol = str(row["symbol"])
+            if symbol not in liquidate:
+                continue
+            quantity = float(row["quantity"])
+            average = float(row["average_entry_price"] or 0.0)
+            mark = float(row["mark_price"] or average)
+            slippage = float(control["default_slippage_bps"]) / 10_000.0
+            if symbol == tick.symbol.upper():
+                exit_price = tick.bid * (1.0 - slippage) if quantity > 0 else tick.ask * (1.0 + slippage)
+            else:
+                exit_price = mark * (1.0 - slippage) if quantity > 0 else mark * (1.0 + slippage)
+            realized = abs(quantity) * (exit_price - average) * (1.0 if quantity > 0 else -1.0)
+            liquidation_fee = abs(quantity * exit_price) * fee_rate
+            now = self._now()
+            conn.execute(
+                """
+                UPDATE paper_positions
+                SET quantity = 0.0, average_entry_price = NULL, mark_price = ?,
+                    initial_margin = 0.0, position_status = 'liquidated',
+                    liquidated_at = ?, realized_pnl = realized_pnl + ?,
+                    total_fees = total_fees + ?, updated_at = ?
+                WHERE user_id = ? AND symbol = ?
+                """,
+                (exit_price, now, realized, liquidation_fee, now, user_id, symbol),
+            )
+            conn.execute(
+                """
+                UPDATE paper_accounts
+                SET cash_balance = cash_balance + ? - ?,
+                    realized_pnl = realized_pnl + ?, total_fees = total_fees + ?,
+                    liquidation_count = liquidation_count + 1, updated_at = ?
+                WHERE user_id = ?
+                """,
+                (realized, liquidation_fee, realized, liquidation_fee, now, user_id),
+            )
+            liquidation_event_id = uuid4().hex
+            payload = {
+                "event_id": liquidation_event_id,
+                "symbol": symbol,
+                "quantity": quantity,
+                "average_entry": average,
+                "exit_price": exit_price,
+                "margin_mode": row["margin_mode"],
+                "source": tick.source,
+            }
+            self._append_margin_event(
+                conn,
+                user_id,
+                liquidation_event_id,
+                "liquidation",
+                symbol,
+                liquidation_fee,
+                None,
+                exit_price,
+                realized,
+                f"paper_liquidation:{tick.source}",
+                False,
+                self._payload_hash(payload),
+            )
+            liquidated.append(symbol)
+        self._engage_kill_switch_with_conn(conn, user_id, "paper_margin_liquidation")
+        return liquidated
+
     def submit(self, user_id: int, request: PaperOrderCreateRequest) -> PaperOrder:
         request_hash = self._request_hash(request)
         now = self._now()
@@ -250,6 +472,50 @@ class PaperOmsService:
             notional = request.quantity * reference
             if notional > float(control["max_order_notional"]):
                 raise PaperOmsError("paper_order_notional_limit_exceeded")
+            self._ensure_account(conn, user_id)
+            position = conn.execute(
+                "SELECT * FROM paper_positions WHERE user_id = ? AND symbol = ?",
+                (user_id, request.symbol.upper()),
+            ).fetchone()
+            old_quantity = float(position["quantity"] if position else 0.0)
+            signed_request = request.quantity if request.side == "buy" else -request.quantity
+            if old_quantity * signed_request > 0 and position is not None:
+                if (
+                    abs(float(position["leverage"]) - request.leverage) > 1e-9
+                    or position["margin_mode"] != request.margin_mode
+                ):
+                    raise PaperOmsError("position_margin_configuration_conflict")
+            if old_quantity == 0.0 or old_quantity * signed_request > 0:
+                opening_quantity = request.quantity
+            else:
+                opening_quantity = max(0.0, request.quantity - abs(old_quantity))
+            if opening_quantity > 0.0:
+                if request.leverage > float(control["max_leverage"]):
+                    raise PaperOmsError("paper_leverage_limit_exceeded")
+                account = conn.execute(
+                    "SELECT cash_balance FROM paper_accounts WHERE user_id = ?",
+                    (user_id,),
+                ).fetchone()
+                position_rows = conn.execute(
+                    "SELECT quantity, average_entry_price, mark_price, initial_margin "
+                    "FROM paper_positions WHERE user_id = ?",
+                    (user_id,),
+                ).fetchall()
+                current_used_margin = sum(float(item["initial_margin"] or 0.0) for item in position_rows)
+                current_unrealized = sum(
+                    float(item["quantity"])
+                    * (
+                        float(item["mark_price"] or item["average_entry_price"] or 0.0)
+                        - float(item["average_entry_price"] or 0.0)
+                    )
+                    for item in position_rows
+                )
+                equity = float(account["cash_balance"]) + current_unrealized
+                required_margin = opening_quantity * reference / request.leverage
+                projected_margin = current_used_margin + required_margin
+                allowed_margin = max(0.0, equity) * float(control["max_margin_utilization_pct"]) / 100.0
+                if equity <= 0.0 or projected_margin > allowed_margin + 1e-9:
+                    raise PaperOmsError("paper_margin_utilization_limit_exceeded")
 
             order_id = uuid4().hex
             fee_bps = request.fee_bps if request.fee_bps is not None else float(control["default_fee_bps"])
@@ -260,9 +526,10 @@ class PaperOmsService:
                     side, order_type, quantity, limit_price, time_in_force, status,
                     filled_quantity, average_fill_price, total_fees,
                     reference_bid, reference_ask, max_slippage_bps, fee_bps,
+                    leverage, margin_mode, maintenance_margin_rate,
                     signal_score, risk_approved, strategy_id, setup_id,
                     created_at, updated_at, terminal_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     order_id,
@@ -284,6 +551,9 @@ class PaperOmsService:
                     request.reference_ask,
                     request.max_slippage_bps,
                     fee_bps,
+                    request.leverage,
+                    request.margin_mode,
+                    float(control["default_maintenance_margin_rate"]),
                     request.signal_score,
                     1,
                     request.strategy_id,
@@ -339,6 +609,10 @@ class PaperOmsService:
         quantity: float,
         price: float,
         fee: float,
+        leverage: float,
+        margin_mode: str,
+        maintenance_margin_rate: float,
+        liquidation_fee_bps: float,
     ) -> None:
         self._ensure_account(conn, user_id)
         row = conn.execute(
@@ -347,16 +621,32 @@ class PaperOmsService:
         ).fetchone()
         old_quantity = float(row["quantity"] if row else 0.0)
         old_average = float(row["average_entry_price"] or 0.0) if row else 0.0
+        old_initial_margin = float(row["initial_margin"] if row else 0.0)
+        old_funding = float(row["accumulated_funding"] if row else 0.0)
         signed_fill = quantity if side == "buy" else -quantity
         new_quantity = old_quantity + signed_fill
         realized = 0.0
         if old_quantity == 0.0 or old_quantity * signed_fill > 0:
+            if row is not None and old_quantity != 0.0 and (
+                abs(float(row["leverage"]) - leverage) > 1e-9
+                or row["margin_mode"] != margin_mode
+            ):
+                raise PaperOmsError("position_margin_configuration_conflict")
             total_abs = abs(old_quantity) + abs(signed_fill)
             new_average = (
                 (old_average * abs(old_quantity) + price * abs(signed_fill)) / total_abs
                 if total_abs > 0
                 else None
             )
+            new_leverage = float(row["leverage"]) if row and old_quantity != 0.0 else leverage
+            new_margin_mode = row["margin_mode"] if row and old_quantity != 0.0 else margin_mode
+            new_maintenance_rate = (
+                float(row["maintenance_margin_rate"])
+                if row and old_quantity != 0.0
+                else maintenance_margin_rate
+            )
+            new_initial_margin = old_initial_margin + abs(signed_fill * price) / new_leverage
+            new_funding = old_funding
         else:
             closed_quantity = min(abs(old_quantity), abs(signed_fill))
             direction = 1.0 if old_quantity > 0 else -1.0
@@ -364,20 +654,47 @@ class PaperOmsService:
             if abs(new_quantity) <= 1e-12:
                 new_quantity = 0.0
                 new_average = None
+                new_initial_margin = 0.0
+                new_funding = 0.0
+                new_leverage = leverage
+                new_margin_mode = margin_mode
+                new_maintenance_rate = maintenance_margin_rate
             elif old_quantity * new_quantity > 0:
+                remaining_ratio = abs(new_quantity) / abs(old_quantity)
                 new_average = old_average
+                new_initial_margin = old_initial_margin * remaining_ratio
+                new_funding = old_funding * remaining_ratio
+                new_leverage = float(row["leverage"])
+                new_margin_mode = row["margin_mode"]
+                new_maintenance_rate = float(row["maintenance_margin_rate"])
             else:
                 new_average = price
+                new_initial_margin = abs(new_quantity * price) / leverage
+                new_funding = 0.0
+                new_leverage = leverage
+                new_margin_mode = margin_mode
+                new_maintenance_rate = maintenance_margin_rate
+        liquidation_price = self._liquidation_price(
+            new_quantity,
+            new_average,
+            new_initial_margin,
+            new_maintenance_rate,
+            new_funding,
+            liquidation_fee_bps,
+        )
         now = self._now()
         old_realized = float(row["realized_pnl"] if row else 0.0)
         old_fees = float(row["total_fees"] if row else 0.0)
+        status = "open" if abs(new_quantity) > 1e-12 else "flat"
         if row is None:
             conn.execute(
                 """
                 INSERT INTO paper_positions (
                     user_id, symbol, market, quantity, average_entry_price,
-                    mark_price, realized_pnl, total_fees, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    mark_price, leverage, margin_mode, initial_margin,
+                    maintenance_margin_rate, liquidation_price, accumulated_funding,
+                    position_status, liquidated_at, realized_pnl, total_fees, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -386,6 +703,14 @@ class PaperOmsService:
                     new_quantity,
                     new_average,
                     price,
+                    new_leverage,
+                    new_margin_mode,
+                    new_initial_margin,
+                    new_maintenance_rate,
+                    liquidation_price,
+                    new_funding,
+                    status,
+                    None,
                     realized,
                     fee,
                     now,
@@ -396,6 +721,9 @@ class PaperOmsService:
                 """
                 UPDATE paper_positions
                 SET quantity = ?, average_entry_price = ?, mark_price = ?,
+                    leverage = ?, margin_mode = ?, initial_margin = ?,
+                    maintenance_margin_rate = ?, liquidation_price = ?,
+                    accumulated_funding = ?, position_status = ?, liquidated_at = NULL,
                     realized_pnl = ?, total_fees = ?, updated_at = ?
                 WHERE user_id = ? AND symbol = ?
                 """,
@@ -403,6 +731,13 @@ class PaperOmsService:
                     new_quantity,
                     new_average,
                     price,
+                    new_leverage,
+                    new_margin_mode,
+                    new_initial_margin,
+                    new_maintenance_rate,
+                    liquidation_price,
+                    new_funding,
+                    status,
                     old_realized + realized,
                     old_fees + fee,
                     now,
@@ -421,16 +756,69 @@ class PaperOmsService:
             (realized, fee, realized, fee, now, user_id),
         )
 
-    def _process_order_tick(self, conn, user_id: int, order_id: str, tick: PaperMarketTickRequest) -> None:
+    def _fill_margin_rejection_reason(
+        self,
+        conn,
+        user_id: int,
+        order_row,
+        fill_quantity: float,
+        fill_price: float,
+        control,
+    ) -> str | None:
+        position = conn.execute(
+            "SELECT * FROM paper_positions WHERE user_id = ? AND symbol = ?",
+            (user_id, order_row["symbol"]),
+        ).fetchone()
+        old_quantity = float(position["quantity"] if position else 0.0)
+        signed_fill = fill_quantity if order_row["side"] == "buy" else -fill_quantity
+        if old_quantity * signed_fill > 0 and position is not None and (
+            abs(float(position["leverage"]) - float(order_row["leverage"])) > 1e-9
+            or position["margin_mode"] != order_row["margin_mode"]
+        ):
+            return "margin_configuration_changed_before_fill"
+        if old_quantity == 0.0 or old_quantity * signed_fill > 0:
+            opening_quantity = fill_quantity
+        else:
+            opening_quantity = max(0.0, fill_quantity - abs(old_quantity))
+        if opening_quantity <= 0.0:
+            return None
+        if float(order_row["leverage"]) > float(control["max_leverage"]):
+            return "leverage_limit_changed_before_fill"
+        account = conn.execute(
+            "SELECT cash_balance FROM paper_accounts WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        rows = conn.execute(
+            "SELECT quantity, average_entry_price, mark_price, initial_margin "
+            "FROM paper_positions WHERE user_id = ?",
+            (user_id,),
+        ).fetchall()
+        used_margin = sum(float(item["initial_margin"] or 0.0) for item in rows)
+        unrealized = sum(
+            float(item["quantity"])
+            * (
+                float(item["mark_price"] or item["average_entry_price"] or 0.0)
+                - float(item["average_entry_price"] or 0.0)
+            )
+            for item in rows
+        )
+        equity = float(account["cash_balance"]) + unrealized
+        required = opening_quantity * fill_price / float(order_row["leverage"])
+        allowed = max(0.0, equity) * float(control["max_margin_utilization_pct"]) / 100.0
+        if equity <= 0.0 or used_margin + required > allowed + 1e-9:
+            return "margin_utilization_changed_before_fill"
+        return None
+
+    def _process_order_tick(self, conn, user_id: int, order_id: str, tick: PaperMarketTickRequest) -> float:
         order_sql = "SELECT * FROM paper_orders WHERE user_id = ? AND order_id = ?"
         if self.database.backend == "postgresql":
             order_sql += " FOR UPDATE"
         row = conn.execute(order_sql, (user_id, order_id)).fetchone()
         if row is None or row["status"] not in _OPEN_STATUSES:
-            return
+            return 0.0
         remaining = float(row["quantity"]) - float(row["filled_quantity"])
         if remaining <= 1e-12:
-            return
+            return 0.0
         side = row["side"]
         order_type = row["order_type"]
         limit_price = row["limit_price"]
@@ -442,10 +830,10 @@ class PaperOmsService:
         if not marketable:
             if row["time_in_force"] in {"IOC", "FOK"}:
                 self._cancel_with_conn(conn, user_id, order_id, "time_in_force_not_marketable")
-            return
+            return 0.0
         if row["time_in_force"] == "FOK" and tick.available_quantity + 1e-12 < remaining:
             self._cancel_with_conn(conn, user_id, order_id, "fok_liquidity_insufficient")
-            return
+            return 0.0
         fill_quantity = min(remaining, tick.available_quantity)
         slippage = float(row["max_slippage_bps"]) / 10_000.0
         if side == "buy":
@@ -456,6 +844,21 @@ class PaperOmsService:
             price = tick.bid * (1.0 - slippage)
             if order_type == "limit":
                 price = max(price, float(limit_price))
+        control = conn.execute(
+            "SELECT * FROM paper_execution_controls WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()
+        margin_rejection = self._fill_margin_rejection_reason(
+            conn,
+            user_id,
+            row,
+            fill_quantity,
+            price,
+            control,
+        )
+        if margin_rejection:
+            self._cancel_with_conn(conn, user_id, order_id, margin_rejection)
+            return 0.0
         fee = fill_quantity * price * float(row["fee_bps"]) / 10_000.0
         old_filled = float(row["filled_quantity"])
         new_filled = old_filled + fill_quantity
@@ -496,6 +899,10 @@ class PaperOmsService:
             fill_quantity,
             price,
             fee,
+            float(row["leverage"]),
+            row["margin_mode"],
+            float(row["maintenance_margin_rate"]),
+            float(control["liquidation_fee_bps"]),
         )
         conn.execute(
             """
@@ -531,6 +938,7 @@ class PaperOmsService:
         )
         if not filled and row["time_in_force"] == "IOC":
             self._cancel_with_conn(conn, user_id, order_id, "ioc_remainder_canceled")
+        return fill_quantity
 
     def process_tick(self, user_id: int, tick: PaperMarketTickRequest) -> PaperOrderListResponse:
         event_id, payload_hash = self._tick_identity(tick)
@@ -563,18 +971,28 @@ class PaperOmsService:
                 if age_seconds < -5.0:
                     raise PaperOmsError("paper_tick_from_future")
                 rows = conn.execute(
-                    "SELECT order_id FROM paper_orders WHERE user_id = ? AND symbol = ? AND status IN (?, ?, ?)",
+                    "SELECT order_id FROM paper_orders "
+                    "WHERE user_id = ? AND symbol = ? AND status IN (?, ?, ?) "
+                    "ORDER BY created_at, order_id",
                     (user_id, tick.symbol.upper(), "accepted", "working", "partially_filled"),
                 ).fetchall()
                 order_ids = [row["order_id"] for row in rows]
+                remaining_liquidity = tick.available_quantity
                 for order_id in order_ids:
-                    self._process_order_tick(conn, user_id, order_id, tick)
+                    if remaining_liquidity <= 1e-12:
+                        break
+                    order_tick = tick.model_copy(
+                        update={"available_quantity": remaining_liquidity}
+                    )
+                    consumed = self._process_order_tick(conn, user_id, order_id, order_tick)
+                    remaining_liquidity = max(0.0, remaining_liquidity - consumed)
                 now = self._now()
                 conn.execute(
                     "UPDATE paper_positions SET mark_price = ?, updated_at = ? "
                     "WHERE user_id = ? AND symbol = ?",
                     ((tick.bid + tick.ask) / 2.0, now, user_id, tick.symbol.upper()),
                 )
+                self._evaluate_liquidations_with_conn(conn, user_id, tick, control)
                 conn.execute(
                     """
                     INSERT INTO paper_market_ticks (
@@ -620,6 +1038,10 @@ class PaperOmsService:
                     default_slippage_bps=control_state.default_slippage_bps,
                     max_daily_drawdown_pct=control_state.max_daily_drawdown_pct,
                     max_tick_age_seconds=control_state.max_tick_age_seconds,
+                    max_leverage=control_state.max_leverage,
+                    default_maintenance_margin_rate=control_state.default_maintenance_margin_rate,
+                    liquidation_fee_bps=control_state.liquidation_fee_bps,
+                    max_margin_utilization_pct=control_state.max_margin_utilization_pct,
                     acknowledgement="I_UNDERSTAND_PAPER_ONLY",
                 ),
             )
@@ -639,18 +1061,44 @@ class PaperOmsService:
                 "SELECT * FROM paper_accounts WHERE user_id = ?",
                 (user_id,),
             ).fetchone()
+            control = conn.execute(
+                "SELECT * FROM paper_execution_controls WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
             rows = conn.execute(
                 "SELECT * FROM paper_positions WHERE user_id = ? ORDER BY symbol",
                 (user_id,),
             ).fetchall()
             positions = []
             unrealized_total = 0.0
+            used_margin = 0.0
+            maintenance_total = 0.0
             for row in rows:
                 quantity = float(row["quantity"])
                 average = float(row["average_entry_price"] or 0.0)
                 mark = float(row["mark_price"] or average)
                 unrealized = quantity * (mark - average) if quantity else 0.0
+                notional = abs(quantity * mark)
+                initial_margin = float(row["initial_margin"] or 0.0) if quantity else 0.0
+                maintenance = notional * float(row["maintenance_margin_rate"])
+                funding = float(row["accumulated_funding"] or 0.0)
                 unrealized_total += unrealized
+                used_margin += initial_margin
+                maintenance_total += maintenance
+                if maintenance > 0 and row["margin_mode"] == "isolated":
+                    margin_ratio = (initial_margin + unrealized - funding) / maintenance * 100.0
+                else:
+                    margin_ratio = None
+                liquidation_price = row["liquidation_price"]
+                if quantity and liquidation_price is None:
+                    liquidation_price = self._liquidation_price(
+                        quantity,
+                        average,
+                        initial_margin,
+                        float(row["maintenance_margin_rate"]),
+                        funding,
+                        float(control["liquidation_fee_bps"]),
+                    )
                 positions.append(
                     PaperPosition(
                         symbol=row["symbol"],
@@ -658,14 +1106,34 @@ class PaperOmsService:
                         quantity=quantity,
                         average_entry_price=row["average_entry_price"],
                         mark_price=row["mark_price"],
+                        leverage=float(row["leverage"]),
+                        margin_mode=row["margin_mode"],
+                        initial_margin=initial_margin,
+                        maintenance_margin=maintenance,
+                        maintenance_margin_rate=float(row["maintenance_margin_rate"]),
+                        margin_ratio_pct=margin_ratio,
+                        liquidation_price=liquidation_price,
+                        accumulated_funding=funding,
+                        position_status=row["position_status"],
+                        liquidated_at=row["liquidated_at"],
                         realized_pnl=float(row["realized_pnl"]),
                         unrealized_pnl=unrealized,
                         total_fees=float(row["total_fees"]),
-                        notional=abs(quantity * mark),
+                        notional=notional,
                         updated_at=row["updated_at"],
                     )
                 )
             equity = float(account["cash_balance"]) + unrealized_total
+            free_margin = equity - used_margin
+            margin_utilization = (
+                used_margin / equity * 100.0
+                if equity > 0.0
+                else (100.0 if used_margin > 0.0 else 0.0)
+            )
+            margin_level = equity / maintenance_total * 100.0 if maintenance_total > 0.0 else None
+            for position in positions:
+                if position.margin_mode == "cross" and position.quantity != 0.0:
+                    position.margin_ratio_pct = margin_level
             today = datetime.now(timezone.utc).date().isoformat()
             daily_start = float(account["daily_start_equity"])
             if account["trading_day"] != today:
@@ -680,10 +1148,6 @@ class PaperOmsService:
                 (peak, self._now(), user_id),
             )
             conn.commit()
-            control = conn.execute(
-                "SELECT kill_switch_engaged FROM paper_execution_controls WHERE user_id = ?",
-                (user_id,),
-            ).fetchone()
         daily_drawdown = (
             max(0.0, (daily_start - equity) / daily_start * 100.0)
             if daily_start > 0
@@ -697,6 +1161,13 @@ class PaperOmsService:
             realized_pnl=float(account["realized_pnl"]),
             unrealized_pnl=unrealized_total,
             total_fees=float(account["total_fees"]),
+            total_funding=float(account["total_funding"]),
+            used_margin=used_margin,
+            maintenance_margin=maintenance_total,
+            free_margin=free_margin,
+            margin_utilization_pct=margin_utilization,
+            margin_level_pct=margin_level,
+            liquidation_count=int(account["liquidation_count"]),
             daily_drawdown_pct=daily_drawdown,
             kill_switch_engaged=bool(control["kill_switch_engaged"]),
             live_execution_enabled=settings.enable_live_execution,
@@ -707,11 +1178,23 @@ class PaperOmsService:
     def mark_portfolio(self, user_id: int, tick: PaperMarketTickRequest) -> PaperPortfolio:
         mark = (tick.bid + tick.ask) / 2.0
         with self.database.connection() as conn:
+            self._ensure_control(conn, user_id)
             self._ensure_account(conn, user_id)
+            control_row = conn.execute(
+                "SELECT * FROM paper_execution_controls WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            tick_dt = tick.timestamp.astimezone(timezone.utc)
+            age_seconds = (datetime.now(timezone.utc) - tick_dt).total_seconds()
+            if age_seconds > float(control_row["max_tick_age_seconds"]):
+                raise PaperOmsError("paper_tick_stale")
+            if age_seconds < -5.0:
+                raise PaperOmsError("paper_tick_from_future")
             conn.execute(
                 "UPDATE paper_positions SET mark_price = ?, updated_at = ? WHERE user_id = ? AND symbol = ?",
                 (mark, self._now(), user_id, tick.symbol.upper()),
             )
+            self._evaluate_liquidations_with_conn(conn, user_id, tick, control_row)
             conn.commit()
         portfolio = self.get_portfolio(user_id)
         control = self.get_control(user_id)
@@ -732,11 +1215,168 @@ class PaperOmsService:
                     default_slippage_bps=control.default_slippage_bps,
                     max_daily_drawdown_pct=control.max_daily_drawdown_pct,
                     max_tick_age_seconds=control.max_tick_age_seconds,
+                    max_leverage=control.max_leverage,
+                    default_maintenance_margin_rate=control.default_maintenance_margin_rate,
+                    liquidation_fee_bps=control.liquidation_fee_bps,
+                    max_margin_utilization_pct=control.max_margin_utilization_pct,
                     acknowledgement="I_UNDERSTAND_PAPER_ONLY",
                 ),
             )
             portfolio = self.get_portfolio(user_id)
         return portfolio
+
+    def _margin_event_from_row(self, row) -> PaperMarginEvent:
+        return PaperMarginEvent(
+            event_id=row["event_id"],
+            event_type=row["event_type"],
+            symbol=row["symbol"],
+            amount=float(row["amount"]),
+            funding_rate=float(row["funding_rate"]) if row["funding_rate"] is not None else None,
+            mark_price=float(row["mark_price"]) if row["mark_price"] is not None else None,
+            realized_pnl=float(row["realized_pnl"]),
+            source=row["source"],
+            is_real_rate=bool(row["is_real_rate"]),
+            payload_hash=row["payload_hash"],
+            created_at=row["created_at"],
+            live_routed=False,
+        )
+
+    def settle_funding(
+        self,
+        user_id: int,
+        request: PaperFundingSettlementRequest,
+    ) -> PaperFundingSettlementResponse:
+        payload = request.model_dump(mode="json", exclude={"event_id"})
+        payload["symbol"] = request.symbol.upper()
+        payload_hash = self._payload_hash(payload)
+        with self.database.connection() as conn:
+            self._ensure_control(conn, user_id)
+            self._ensure_account(conn, user_id)
+            account_sql = "SELECT * FROM paper_accounts WHERE user_id = ?"
+            if self.database.backend == "postgresql":
+                account_sql += " FOR UPDATE"
+            account = conn.execute(account_sql, (user_id,)).fetchone()
+            existing = conn.execute(
+                "SELECT * FROM paper_margin_events WHERE user_id = ? AND event_id = ?",
+                (user_id, request.event_id),
+            ).fetchone()
+            if existing is not None:
+                if existing["payload_hash"] != payload_hash:
+                    raise PaperOmsError("funding_event_id_payload_conflict")
+                return PaperFundingSettlementResponse(
+                    event=self._margin_event_from_row(existing),
+                    duplicate=True,
+                    cash_balance=float(account["cash_balance"]),
+                    total_funding=float(account["total_funding"]),
+                    live_execution_enabled=settings.enable_live_execution,
+                )
+            economic_duplicate = conn.execute(
+                "SELECT * FROM paper_margin_events "
+                "WHERE user_id = ? AND event_type = 'funding' AND payload_hash = ?",
+                (user_id, payload_hash),
+            ).fetchone()
+            if economic_duplicate is not None:
+                return PaperFundingSettlementResponse(
+                    event=self._margin_event_from_row(economic_duplicate),
+                    duplicate=True,
+                    cash_balance=float(account["cash_balance"]),
+                    total_funding=float(account["total_funding"]),
+                    live_execution_enabled=settings.enable_live_execution,
+                )
+            funding_time = request.timestamp.astimezone(timezone.utc)
+            age_seconds = (datetime.now(timezone.utc) - funding_time).total_seconds()
+            if age_seconds > 86_400:
+                raise PaperOmsError("paper_funding_event_stale")
+            if age_seconds < -300:
+                raise PaperOmsError("paper_funding_event_from_future")
+            position_sql = "SELECT * FROM paper_positions WHERE user_id = ? AND symbol = ?"
+            if self.database.backend == "postgresql":
+                position_sql += " FOR UPDATE"
+            position = conn.execute(
+                position_sql,
+                (user_id, request.symbol.upper()),
+            ).fetchone()
+            if position is None or abs(float(position["quantity"])) <= 1e-12:
+                raise PaperOmsError("paper_funding_position_not_open")
+            quantity = float(position["quantity"])
+            mark = float(position["mark_price"] or position["average_entry_price"] or 0.0)
+            if mark <= 0.0:
+                raise PaperOmsError("paper_funding_mark_unavailable")
+            funding_amount = quantity * mark * request.funding_rate
+            new_funding = float(position["accumulated_funding"]) + funding_amount
+            control = conn.execute(
+                "SELECT liquidation_fee_bps FROM paper_execution_controls WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            liquidation_price = self._liquidation_price(
+                quantity,
+                float(position["average_entry_price"] or 0.0),
+                float(position["initial_margin"]),
+                float(position["maintenance_margin_rate"]),
+                new_funding,
+                float(control["liquidation_fee_bps"]),
+            )
+            now = self._now()
+            conn.execute(
+                """
+                UPDATE paper_positions
+                SET accumulated_funding = ?, liquidation_price = ?, updated_at = ?
+                WHERE user_id = ? AND symbol = ?
+                """,
+                (new_funding, liquidation_price, now, user_id, request.symbol.upper()),
+            )
+            conn.execute(
+                """
+                UPDATE paper_accounts
+                SET cash_balance = cash_balance - ?, total_funding = total_funding + ?,
+                    updated_at = ? WHERE user_id = ?
+                """,
+                (funding_amount, funding_amount, now, user_id),
+            )
+            self._append_margin_event(
+                conn,
+                user_id,
+                request.event_id,
+                "funding",
+                request.symbol.upper(),
+                funding_amount,
+                request.funding_rate,
+                mark,
+                0.0,
+                request.source,
+                False,
+                payload_hash,
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM paper_margin_events WHERE user_id = ? AND event_id = ?",
+                (user_id, request.event_id),
+            ).fetchone()
+            updated_account = conn.execute(
+                "SELECT cash_balance, total_funding FROM paper_accounts WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+        return PaperFundingSettlementResponse(
+            event=self._margin_event_from_row(row),
+            duplicate=False,
+            cash_balance=float(updated_account["cash_balance"]),
+            total_funding=float(updated_account["total_funding"]),
+            live_execution_enabled=settings.enable_live_execution,
+        )
+
+    def list_margin_events(self, user_id: int, limit: int = 100) -> PaperMarginEventListResponse:
+        with self.database.connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM paper_margin_events WHERE user_id = ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (user_id, max(1, min(limit, 500))),
+            ).fetchall()
+        items = [self._margin_event_from_row(row) for row in rows]
+        return PaperMarginEventListResponse(
+            items=items,
+            count=len(items),
+            live_execution_enabled=settings.enable_live_execution,
+        )
 
     def _cancel_with_conn(self, conn, user_id: int, order_id: str, reason: str) -> None:
         row = conn.execute(
@@ -817,6 +1457,9 @@ class PaperOmsService:
             reference_bid=float(row["reference_bid"]),
             reference_ask=float(row["reference_ask"]),
             max_slippage_bps=float(row["max_slippage_bps"]),
+            leverage=float(row["leverage"]),
+            margin_mode=row["margin_mode"],
+            maintenance_margin_rate=float(row["maintenance_margin_rate"]),
             signal_score=float(row["signal_score"]),
             risk_approved=bool(row["risk_approved"]),
             strategy_id=row["strategy_id"],

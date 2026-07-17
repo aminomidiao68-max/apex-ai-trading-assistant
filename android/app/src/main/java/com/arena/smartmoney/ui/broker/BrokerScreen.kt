@@ -273,6 +273,11 @@ fun BrokerScreen(viewModel: BrokerViewModel = viewModel()) {
                             BrokerChip(t("Unrealized", "تحقق‌نیافته"), String.format(Locale.US, "%.2f", portfolio.unrealized_pnl), Modifier.weight(1f))
                             BrokerChip(t("Daily DD", "افت روزانه"), String.format(Locale.US, "%.2f%%", portfolio.daily_drawdown_pct), Modifier.weight(1f))
                         }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            BrokerChip(t("Used Margin", "مارجین مصرفی"), String.format(Locale.US, "%.2f", portfolio.used_margin), Modifier.weight(1f))
+                            BrokerChip(t("Free Margin", "مارجین آزاد"), String.format(Locale.US, "%.2f", portfolio.free_margin), Modifier.weight(1f))
+                            BrokerChip(t("Utilization", "مصرف") , String.format(Locale.US, "%.2f%%", portfolio.margin_utilization_pct), Modifier.weight(1f))
+                        }
                         Text(
                             t("Cash / Realized / Fees", "نقد / تحقق‌یافته / کارمزد") + ": " +
                                 "${String.format(Locale.US, "%.2f", portfolio.cash_balance)} / " +
@@ -280,10 +285,22 @@ fun BrokerScreen(viewModel: BrokerViewModel = viewModel()) {
                                 String.format(Locale.US, "%.2f", portfolio.total_fees),
                             color = Color(0xFFBCEEFF)
                         )
-                        portfolio.positions.filter { it.quantity != 0.0 }.take(5).forEach { position ->
+                        Text(
+                            t("Funding / Liquidations / Margin level", "فاندینگ / لیکویید / سطح مارجین") + ": " +
+                                "${String.format(Locale.US, "%.4f", portfolio.total_funding)} / ${portfolio.liquidation_count} / " +
+                                (portfolio.margin_level_pct?.let { String.format(Locale.US, "%.2f%%", it) } ?: "-") ,
+                            color = Color(0xFFFFD27A)
+                        )
+                        portfolio.positions.filter { it.quantity != 0.0 || it.position_status == "liquidated" }.take(5).forEach { position ->
                             Text(
-                                "${position.symbol} • qty ${position.quantity} • mark ${position.mark_price ?: "-"} • uPnL ${String.format(Locale.US, "%.2f", position.unrealized_pnl)}",
+                                "${position.symbol} • ${position.margin_mode.uppercase()} ${position.leverage}x • qty ${position.quantity} • uPnL ${String.format(Locale.US, "%.2f", position.unrealized_pnl)}",
                                 color = Color.White
+                            )
+                            Text(
+                                t("Initial / Maintenance / Liq", "اولیه / نگهداری / لیکویید") + ": " +
+                                    "${String.format(Locale.US, "%.2f", position.initial_margin)} / " +
+                                    "${String.format(Locale.US, "%.2f", position.maintenance_margin)} / ${position.liquidation_price ?: "-"}",
+                                color = if (position.position_status == "liquidated") Color(0xFFFF8A8A) else Color(0xFFBCEEFF)
                             )
                         }
                     }
@@ -308,6 +325,26 @@ fun BrokerScreen(viewModel: BrokerViewModel = viewModel()) {
                         textStyle = premiumTextFieldStyle(),
                         colors = premiumTextFieldColors()
                     )
+                    OutlinedTextField(
+                        value = state.paperLeverage,
+                        onValueChange = viewModel::updatePaperLeverage,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(t("Paper leverage (1-${state.paperControl?.max_leverage?.toInt() ?: 10}x)", "اهرم شبیه‌سازی")) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(18.dp),
+                        textStyle = premiumTextFieldStyle(),
+                        colors = premiumTextFieldColors()
+                    )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ConnectorPickButton(
+                            "isolated", t("Isolated", "ایزوله"), state.paperMarginMode,
+                            Modifier.weight(1f)
+                        ) { viewModel.selectPaperMarginMode("isolated") }
+                        ConnectorPickButton(
+                            "cross", t("Cross", "کراس"), state.paperMarginMode,
+                            Modifier.weight(1f)
+                        ) { viewModel.selectPaperMarginMode("cross") }
+                    }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ConnectorPickButton(
                             "market", t("Market", "مارکت"), state.paperOrderType,
@@ -374,6 +411,10 @@ fun BrokerScreen(viewModel: BrokerViewModel = viewModel()) {
                         Text(
                             t("Average / Fees", "میانگین / کارمزد") + ": ${order.average_fill_price ?: "-"} / ${order.total_fees}",
                             color = Color(0xFFBCEEFF)
+                        )
+                        Text(
+                            t("Margin", "مارجین") + ": ${order.margin_mode.uppercase()} ${order.leverage}x • MMR ${order.maintenance_margin_rate}",
+                            color = Color(0xFFFFD27A)
                         )
                         Text("Live routed: ${order.live_routed}", color = Color(0xFFFFD27A))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

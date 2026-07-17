@@ -53,6 +53,9 @@ from app.models import (
     PaperFeedSubscriptionUpsertRequest,
     PaperFeedSyncRequest,
     PaperFeedSyncResponse,
+    PaperFundingSettlementRequest,
+    PaperFundingSettlementResponse,
+    PaperMarginEventListResponse,
     PaperMarketTickRequest,
     PaperOrder,
     PaperOrderCreateRequest,
@@ -1466,7 +1469,11 @@ def _raise_paper_oms_error(exc: PaperOmsError):
     status = 400
     if exc.code == "paper_order_not_found":
         status = 404
-    elif exc.code in {"idempotency_key_payload_conflict", "tick_event_id_payload_conflict"}:
+    elif exc.code in {
+        "idempotency_key_payload_conflict",
+        "tick_event_id_payload_conflict",
+        "funding_event_id_payload_conflict",
+    }:
         status = 409
     raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
 
@@ -1576,6 +1583,42 @@ def cancel_paper_order(order_id: str, user=Depends(current_user)):
 @app.get("/api/v1/paper/portfolio", response_model=PaperPortfolio)
 def get_paper_portfolio(user=Depends(current_user)):
     return paper_oms_service.get_portfolio(user.id)
+
+
+@app.post("/api/v1/paper/mark", response_model=PaperPortfolio)
+def mark_paper_portfolio(
+    request: PaperMarketTickRequest,
+    user=Depends(current_user),
+):
+    try:
+        return paper_oms_service.mark_portfolio(user.id, request)
+    except PaperOmsError as exc:
+        _raise_paper_oms_error(exc)
+
+
+@app.post(
+    "/api/v1/paper/funding/settle",
+    response_model=PaperFundingSettlementResponse,
+)
+def settle_paper_funding(
+    request: PaperFundingSettlementRequest,
+    user=Depends(current_user),
+):
+    try:
+        return paper_oms_service.settle_funding(user.id, request)
+    except PaperOmsError as exc:
+        _raise_paper_oms_error(exc)
+
+
+@app.get(
+    "/api/v1/paper/margin/events",
+    response_model=PaperMarginEventListResponse,
+)
+def list_paper_margin_events(
+    limit: int = Query(default=100, ge=1, le=500),
+    user=Depends(current_user),
+):
+    return paper_oms_service.list_margin_events(user.id, limit)
 
 
 @app.post("/api/v1/paper/ticks", response_model=PaperOrderListResponse)

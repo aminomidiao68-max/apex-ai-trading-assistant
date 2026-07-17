@@ -1211,6 +1211,10 @@ class PaperExecutionControlUpdateRequest(BaseModel):
     default_slippage_bps: float = Field(default=1.0, ge=0.0, le=100.0)
     max_daily_drawdown_pct: float = Field(default=3.0, gt=0.0, le=20.0)
     max_tick_age_seconds: int = Field(default=30, ge=5, le=300)
+    max_leverage: float = Field(default=10.0, ge=1.0, le=50.0)
+    default_maintenance_margin_rate: float = Field(default=0.005, gt=0.0, le=0.20)
+    liquidation_fee_bps: float = Field(default=20.0, ge=0.0, le=200.0)
+    max_margin_utilization_pct: float = Field(default=70.0, gt=0.0, le=95.0)
     acknowledgement: Optional[str] = Field(default=None, max_length=80)
 
     @model_validator(mode="after")
@@ -1230,6 +1234,10 @@ class PaperExecutionControl(BaseModel):
     default_slippage_bps: float = 1.0
     max_daily_drawdown_pct: float = 3.0
     max_tick_age_seconds: int = 30
+    max_leverage: float = 10.0
+    default_maintenance_margin_rate: float = 0.005
+    liquidation_fee_bps: float = 20.0
+    max_margin_utilization_pct: float = 70.0
     updated_at: Optional[str] = None
     live_execution_enabled: bool = False
 
@@ -1248,6 +1256,8 @@ class PaperOrderCreateRequest(BaseModel):
     time_in_force: Literal["GTC", "IOC", "FOK"] = "GTC"
     max_slippage_bps: float = Field(default=5.0, ge=0.0, le=100.0)
     fee_bps: Optional[float] = Field(default=None, ge=0.0, le=100.0)
+    leverage: float = Field(default=1.0, ge=1.0, le=50.0)
+    margin_mode: Literal["isolated", "cross"] = "isolated"
     signal_score: float = Field(default=0.0, ge=0.0, le=100.0)
     risk_approved: bool = False
     strategy_id: Optional[str] = Field(default=None, max_length=120)
@@ -1321,6 +1331,9 @@ class PaperOrder(BaseModel):
     reference_bid: float
     reference_ask: float
     max_slippage_bps: float
+    leverage: float = 1.0
+    margin_mode: Literal["isolated", "cross"] = "isolated"
+    maintenance_margin_rate: float = 0.005
     signal_score: float
     risk_approved: bool
     strategy_id: Optional[str] = None
@@ -1436,6 +1449,16 @@ class PaperPosition(BaseModel):
     quantity: float
     average_entry_price: Optional[float] = None
     mark_price: Optional[float] = None
+    leverage: float = 1.0
+    margin_mode: Literal["isolated", "cross"] = "isolated"
+    initial_margin: float = 0.0
+    maintenance_margin: float = 0.0
+    maintenance_margin_rate: float = 0.005
+    margin_ratio_pct: Optional[float] = None
+    liquidation_price: Optional[float] = None
+    accumulated_funding: float = 0.0
+    position_status: Literal["open", "flat", "liquidated"] = "flat"
+    liquidated_at: Optional[str] = None
     realized_pnl: float = 0.0
     unrealized_pnl: float = 0.0
     total_fees: float = 0.0
@@ -1451,11 +1474,61 @@ class PaperPortfolio(BaseModel):
     realized_pnl: float
     unrealized_pnl: float
     total_fees: float
+    total_funding: float = 0.0
+    used_margin: float = 0.0
+    maintenance_margin: float = 0.0
+    free_margin: float = 0.0
+    margin_utilization_pct: float = 0.0
+    margin_level_pct: Optional[float] = None
+    liquidation_count: int = 0
     daily_drawdown_pct: float
     kill_switch_engaged: bool
     live_execution_enabled: bool = False
     positions: List[PaperPosition] = Field(default_factory=list)
     updated_at: str
+
+
+class PaperFundingSettlementRequest(BaseModel):
+    event_id: str = Field(pattern=r"^[A-Za-z0-9_-]{12,100}$")
+    symbol: str = Field(min_length=2, max_length=24, pattern=r"^[A-Za-z0-9_-]+$")
+    funding_rate: float = Field(ge=-0.05, le=0.05)
+    timestamp: datetime
+    source: str = Field(default="user_supplied_paper_funding", min_length=2, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_funding_timestamp(self):
+        if self.timestamp.tzinfo is None:
+            raise ValueError("funding timestamp must be timezone-aware")
+        return self
+
+
+class PaperMarginEvent(BaseModel):
+    event_id: str
+    event_type: Literal["funding", "liquidation"]
+    symbol: str
+    amount: float
+    funding_rate: Optional[float] = None
+    mark_price: Optional[float] = None
+    realized_pnl: float = 0.0
+    source: str
+    is_real_rate: bool = False
+    payload_hash: str
+    created_at: str
+    live_routed: bool = False
+
+
+class PaperFundingSettlementResponse(BaseModel):
+    event: PaperMarginEvent
+    duplicate: bool = False
+    cash_balance: float
+    total_funding: float
+    live_execution_enabled: bool = False
+
+
+class PaperMarginEventListResponse(BaseModel):
+    items: List[PaperMarginEvent] = Field(default_factory=list)
+    count: int
+    live_execution_enabled: bool = False
 
 
 class PaperReconciliationResponse(BaseModel):

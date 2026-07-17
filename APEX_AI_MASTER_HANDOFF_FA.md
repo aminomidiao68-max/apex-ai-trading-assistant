@@ -2122,3 +2122,19 @@ Live Execution: false
 ```
 
 Paper Alpha 3 adds real public quote ingestion to the isolated Paper OMS. It does not turn simulated fills into broker fills and makes no performance claim. Forex remains excluded from automated feed until an equivalent real bid/ask source is available.
+
+---
+
+## Addendum — Paper Alpha 4 Margin/Funding/Liquidation
+
+```text
+Version: 3.4.0-paper-alpha4
+Schema: v8
+Margin modes: isolated / conservative cross
+Funding: signed, event-idempotent, user-supplied rates labeled is_real_rate=false
+Liquidation: conservative bid/ask + slippage + liquidation fee
+Post-liquidation action: kill switch engaged and automated feed disabled
+Live Execution: false
+```
+
+Paper Alpha 4 is an exchange-agnostic simulation. It does not implement complete exchange risk tiers, ADL, insurance funds or portfolio-margin rules and makes no profitability claim.

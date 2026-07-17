@@ -1136,3 +1136,82 @@ def test_paper_automated_feed_api_is_opt_in_idempotent_and_never_live(monkeypatc
     assert status.status_code == 200
     assert status.json()["live_execution_enabled"] is False
     assert status.json()["subscription_count"] == 1
+
+
+def test_paper_margin_funding_api_is_authenticated_idempotent_and_never_live():
+    assert client.get("/api/v1/paper/margin/events").status_code == 401
+    auth = _register()
+    armed = client.post(
+        "/api/v1/paper/control",
+        headers=auth,
+        json={
+            "paper_trading_enabled": True,
+            "kill_switch_engaged": False,
+            "max_leverage": 10,
+            "default_maintenance_margin_rate": 0.005,
+            "liquidation_fee_bps": 20,
+            "max_margin_utilization_pct": 70,
+            "acknowledgement": "I_UNDERSTAND_PAPER_ONLY",
+        },
+    )
+    assert armed.status_code == 200, armed.text
+    order_key = f"margin-api-{uuid4().hex}"
+    order = client.post(
+        "/api/v1/paper/orders",
+        headers=auth,
+        json={
+            "idempotency_key": order_key,
+            "symbol": "BTCUSDT",
+            "market": "crypto",
+            "side": "buy",
+            "order_type": "market",
+            "quantity": 10,
+            "reference_bid": 99.9,
+            "reference_ask": 100,
+            "leverage": 5,
+            "margin_mode": "isolated",
+            "signal_score": 85,
+            "risk_approved": True,
+        },
+    )
+    assert order.status_code == 200, order.text
+    assert order.json()["leverage"] == 5
+    assert order.json()["margin_mode"] == "isolated"
+
+    portfolio = client.get("/api/v1/paper/portfolio", headers=auth)
+    assert portfolio.status_code == 200
+    assert portfolio.json()["used_margin"] > 0
+    assert portfolio.json()["free_margin"] < portfolio.json()["equity"]
+    assert portfolio.json()["liquidation_count"] == 0
+    assert portfolio.json()["live_execution_enabled"] is False
+
+    event_id = f"funding-api-{uuid4().hex}"
+    funding_payload = {
+        "event_id": event_id,
+        "symbol": "BTCUSDT",
+        "funding_rate": 0.001,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "source": "api_user_supplied_fixture",
+    }
+    first = client.post(
+        "/api/v1/paper/funding/settle",
+        headers=auth,
+        json=funding_payload,
+    )
+    second = client.post(
+        "/api/v1/paper/funding/settle",
+        headers=auth,
+        json=funding_payload,
+    )
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200
+    assert first.json()["duplicate"] is False
+    assert second.json()["duplicate"] is True
+    assert first.json()["event"]["is_real_rate"] is False
+    assert first.json()["event"]["live_routed"] is False
+    assert first.json()["live_execution_enabled"] is False
+
+    events = client.get("/api/v1/paper/margin/events", headers=auth)
+    assert events.status_code == 200
+    assert events.json()["count"] == 1
+    assert events.json()["items"][0]["event_type"] == "funding"

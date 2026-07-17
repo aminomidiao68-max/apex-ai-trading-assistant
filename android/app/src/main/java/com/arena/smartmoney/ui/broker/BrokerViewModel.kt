@@ -45,6 +45,8 @@ data class BrokerUiState(
     val paperFeedSubscriptions: List<PaperFeedSubscriptionDto> = emptyList(),
     val paperPrice: String = "100.0",
     val paperLimitPrice: String = "",
+    val paperLeverage: String = "5",
+    val paperMarginMode: String = "isolated",
     val paperOrderType: String = "market",
     val paperMessage: String = "",
     val paperReconciliation: PaperReconciliationResponseDto? = null,
@@ -259,6 +261,14 @@ class BrokerViewModel(
         _uiState.value = _uiState.value.copy(paperOrderType = value)
     }
 
+    fun updatePaperLeverage(value: String) {
+        _uiState.value = _uiState.value.copy(paperLeverage = value)
+    }
+
+    fun selectPaperMarginMode(value: String) {
+        _uiState.value = _uiState.value.copy(paperMarginMode = value)
+    }
+
     fun armPaperMode() {
         updatePaperControl(enabled = true, killSwitch = false, automatedFeed = false)
     }
@@ -304,6 +314,10 @@ class BrokerViewModel(
                         default_slippage_bps = current?.default_slippage_bps ?: 1.0,
                         max_daily_drawdown_pct = current?.max_daily_drawdown_pct ?: 3.0,
                         max_tick_age_seconds = current?.max_tick_age_seconds ?: 30,
+                        max_leverage = current?.max_leverage ?: 10.0,
+                        default_maintenance_margin_rate = current?.default_maintenance_margin_rate ?: 0.005,
+                        liquidation_fee_bps = current?.liquidation_fee_bps ?: 20.0,
+                        max_margin_utilization_pct = current?.max_margin_utilization_pct ?: 70.0,
                         acknowledgement = if (enabled) "I_UNDERSTAND_PAPER_ONLY" else null,
                     )
                 )
@@ -407,8 +421,16 @@ class BrokerViewModel(
         val quantity = state.quantity.toDoubleOrNull()
         val price = state.paperPrice.toDoubleOrNull()
         val limitPrice = state.paperLimitPrice.toDoubleOrNull()
+        val leverage = state.paperLeverage.toDoubleOrNull()
+        val maxLeverage = state.paperControl?.max_leverage ?: 10.0
         if (quantity == null || quantity <= 0 || price == null || price <= 0) {
             _uiState.value = state.copy(paperMessage = "Paper quantity and price must be positive")
+            return
+        }
+        if (leverage == null || leverage < 1.0 || leverage > maxLeverage) {
+            _uiState.value = state.copy(
+                paperMessage = "Leverage must be between 1 and ${maxLeverage.toInt()}"
+            )
             return
         }
         if (state.paperOrderType == "limit" && (limitPrice == null || limitPrice <= 0)) {
@@ -431,6 +453,8 @@ class BrokerViewModel(
                         reference_ask = price + spreadHalf,
                         available_quantity = quantity,
                         limit_price = if (state.paperOrderType == "limit") limitPrice else null,
+                        leverage = leverage,
+                        margin_mode = state.paperMarginMode,
                         signal_score = 82.0,
                         risk_approved = true,
                         strategy_id = "android-paper-manual",

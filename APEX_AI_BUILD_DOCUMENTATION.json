@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.4.0-paper-alpha3",
-    "status": "APEX GA Program - Automated Paper Market Feed Alpha 3"
+    "current_version": "3.4.0-paper-alpha4",
+    "status": "APEX GA Program - Paper Margin, Funding and Liquidation Alpha 4"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -1311,6 +1311,43 @@
       "No full order-book queue simulation",
       "No funding, margin, or liquidation simulation",
       "No performance or profit guarantee"
+    ]
+  },
+  "paper_alpha4": {
+    "scope": "Conservative paper margin, funding and liquidation simulation",
+    "schema_version": 8,
+    "margin_modes": [
+      "isolated",
+      "cross"
+    ],
+    "features": [
+      "initial_margin",
+      "maintenance_margin",
+      "free_margin",
+      "margin_utilization_gate",
+      "signed_funding",
+      "liquidation_event_ledger",
+      "automatic_kill_switch"
+    ],
+    "safety": {
+      "default_max_leverage": 10,
+      "default_max_margin_utilization_pct": 70,
+      "funding_api_is_real_rate": false,
+      "live_routed": false,
+      "live_execution_enabled": false
+    },
+    "limitations": [
+      "Simplified exchange-agnostic maintenance margin",
+      "No exchange risk tiers",
+      "No ADL or insurance fund",
+      "No portfolio margin",
+      "No performance guarantee"
+    ],
+    "api_paths": [
+      "/api/v1/paper/mark",
+      "/api/v1/paper/funding/settle",
+      "/api/v1/paper/margin/events",
+      "/api/v1/paper/portfolio"
     ]
   }
 }

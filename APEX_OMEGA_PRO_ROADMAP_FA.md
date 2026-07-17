@@ -193,3 +193,18 @@
 - Android Feed status/subscribe/sync controls
 - Forex automated feed intentionally excluded until equivalent real bid/ask source exists
 - live_routed=false و Live Execution خاموش
+
+## ⏳ GA Paper Alpha 4 — Margin, Funding & Liquidation
+
+- controlled leverage and margin-utilization gate
+- isolated and conservative cross margin
+- initial/maintenance/free margin metrics
+- partial-close margin release and direction-flip reallocation
+- signed idempotent funding ledger
+- estimated liquidation price
+- conservative bid/ask liquidation with fee/slippage
+- automatic kill switch after liquidation
+- PostgreSQL schema v8 margin event ledger
+- Android leverage/margin dashboard
+- exchange-specific tiers, ADL and insurance fund remain future work
+- live_routed=false و Live Execution خاموش

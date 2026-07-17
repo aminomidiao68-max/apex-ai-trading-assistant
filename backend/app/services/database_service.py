@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 7
+LATEST_SCHEMA_VERSION = 8
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -251,6 +251,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (7, "paper_automated_market_feed", datetime.now(timezone.utc).isoformat()),
+                )
+            if 8 not in applied:
+                self._apply_schema_v8(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (8, "paper_margin_funding_liquidation_ledger", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -673,6 +683,88 @@ class DatabaseManager:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_paper_ticks_user_symbol "
             "ON paper_market_ticks(user_id, symbol, processed_at DESC)"
+        )
+
+    def _apply_schema_v8(self, conn: ConnectionAdapter) -> None:
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        self._ensure_columns(
+            conn,
+            "paper_execution_controls",
+            [
+                "max_leverage REAL NOT NULL DEFAULT 10.0",
+                "default_maintenance_margin_rate REAL NOT NULL DEFAULT 0.005",
+                "liquidation_fee_bps REAL NOT NULL DEFAULT 20.0",
+                "max_margin_utilization_pct REAL NOT NULL DEFAULT 70.0",
+            ],
+        )
+        self._ensure_columns(
+            conn,
+            "paper_orders",
+            [
+                "leverage REAL NOT NULL DEFAULT 1.0",
+                "margin_mode TEXT NOT NULL DEFAULT 'isolated'",
+                "maintenance_margin_rate REAL NOT NULL DEFAULT 0.005",
+            ],
+        )
+        self._ensure_columns(
+            conn,
+            "paper_accounts",
+            [
+                "total_funding REAL NOT NULL DEFAULT 0.0",
+                "liquidation_count INTEGER NOT NULL DEFAULT 0",
+            ],
+        )
+        self._ensure_columns(
+            conn,
+            "paper_positions",
+            [
+                "leverage REAL NOT NULL DEFAULT 1.0",
+                "margin_mode TEXT NOT NULL DEFAULT 'isolated'",
+                "initial_margin REAL NOT NULL DEFAULT 0.0",
+                "maintenance_margin_rate REAL NOT NULL DEFAULT 0.005",
+                "liquidation_price REAL",
+                "accumulated_funding REAL NOT NULL DEFAULT 0.0",
+                "position_status TEXT NOT NULL DEFAULT 'flat'",
+                "liquidated_at TEXT",
+            ],
+        )
+        conn.execute(
+            """
+            UPDATE paper_positions
+            SET initial_margin = ABS(quantity * COALESCE(average_entry_price, mark_price, 0.0))
+            WHERE ABS(quantity) > 0.0 AND initial_margin <= 0.0
+            """
+        )
+        conn.execute(
+            """
+            UPDATE paper_positions
+            SET position_status = CASE WHEN ABS(quantity) > 0.0 THEN 'open' ELSE 'flat' END
+            WHERE position_status IS NULL OR position_status = 'flat'
+            """
+        )
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_margin_events (
+                event_id TEXT NOT NULL,
+                user_id {user_id_type} NOT NULL,
+                event_type TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                amount REAL NOT NULL,
+                funding_rate REAL,
+                mark_price REAL,
+                realized_pnl REAL NOT NULL DEFAULT 0.0,
+                source TEXT NOT NULL,
+                is_real_rate INTEGER NOT NULL DEFAULT 0,
+                payload_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, event_id),
+                UNIQUE(user_id, event_type, payload_hash)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_margin_events_user_created "
+            "ON paper_margin_events(user_id, created_at DESC)"
         )
 
     def _ensure_columns(
