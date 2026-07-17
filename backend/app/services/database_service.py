@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 9
+LATEST_SCHEMA_VERSION = 10
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -274,6 +274,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (9, "paper_recovery_concentration_shadow_reconciliation", datetime.now(timezone.utc).isoformat()),
+                )
+            if 10 not in applied:
+                self._apply_schema_v10(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (10, "paper_statistical_correlation_snapshots", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -865,6 +875,41 @@ class DatabaseManager:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_paper_shadow_reconcile_created "
             "ON paper_shadow_reconciliations(user_id, created_at DESC)"
+        )
+
+    def _apply_schema_v10(self, conn: ConnectionAdapter) -> None:
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        for table in ("paper_orders", "paper_positions"):
+            self._ensure_columns(
+                conn,
+                table,
+                [
+                    "correlation_source TEXT NOT NULL DEFAULT 'structural_proxy'",
+                    "correlation_snapshot_id TEXT",
+                ],
+            )
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_correlation_snapshots (
+                user_id {user_id_type} NOT NULL,
+                snapshot_id TEXT NOT NULL,
+                request_hash TEXT NOT NULL,
+                dataset_refs_json TEXT NOT NULL,
+                symbols_json TEXT NOT NULL,
+                observations INTEGER NOT NULL,
+                matrix_json TEXT NOT NULL,
+                clusters_json TEXT NOT NULL,
+                cluster_threshold REAL NOT NULL,
+                shrinkage_weight REAL NOT NULL,
+                canonical_sha256 TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, snapshot_id)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_correlation_created "
+            "ON paper_correlation_snapshots(user_id, created_at DESC)"
         )
 
     def _ensure_columns(

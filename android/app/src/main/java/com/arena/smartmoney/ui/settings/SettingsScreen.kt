@@ -56,6 +56,7 @@ fun SettingsScreen(onOpenReadiness: () -> Unit) {
     var vaultConfigured by remember { mutableStateOf(false) }
     var selectedProvider by remember { mutableStateOf("groq") }
     var providerApiKey by remember { mutableStateOf("") }
+    var providerApiSecret by remember { mutableStateOf("") }
     var providerAccountId by remember { mutableStateOf("") }
     var providerModel by remember { mutableStateOf("") }
     var providerEnabled by remember { mutableStateOf(true) }
@@ -263,6 +264,7 @@ fun SettingsScreen(onOpenReadiness: () -> Unit) {
                                     ) {
                                         selectedProvider = definition.id
                                         providerApiKey = ""
+                                        providerApiSecret = ""
                                         providerAccountId = ""
                                         providerModel = providerStatuses.firstOrNull {
                                             it.provider == definition.id
@@ -307,6 +309,20 @@ fun SettingsScreen(onOpenReadiness: () -> Unit) {
                                 Text(t("The value is cleared after save.", "مقدار پس از ذخیره پاک می‌شود."))
                             }
                         )
+                        if (selectedProviderDefinition.requiresApiSecret) {
+                            OutlinedTextField(
+                                value = providerApiSecret,
+                                onValueChange = { providerApiSecret = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text(t("New API secret", "API Secret جدید")) },
+                                singleLine = true,
+                                visualTransformation = PasswordVisualTransformation(),
+                                shape = RoundedCornerShape(16.dp),
+                                supportingText = {
+                                    Text(t("The value is encrypted and cleared after save.", "مقدار رمزنگاری و پس از ذخیره پاک می‌شود."))
+                                }
+                            )
+                        }
                         if (selectedProviderDefinition.requiresAccountId) {
                             OutlinedTextField(
                                 value = providerAccountId,
@@ -344,6 +360,7 @@ fun SettingsScreen(onOpenReadiness: () -> Unit) {
                             Button(
                                 enabled = !providerLoading && vaultConfigured &&
                                     providerApiKey.trim().length >= 8 &&
+                                    (!selectedProviderDefinition.requiresApiSecret || providerApiSecret.trim().length >= 8) &&
                                     (!selectedProviderDefinition.requiresAccountId || providerAccountId.isNotBlank()),
                                 onClick = {
                                     providerLoading = true
@@ -353,18 +370,21 @@ fun SettingsScreen(onOpenReadiness: () -> Unit) {
                                             repository.saveProviderSecret(
                                                 provider = selectedProvider,
                                                 apiKey = providerApiKey.trim(),
+                                                apiSecret = providerApiSecret.trim().ifBlank { null },
                                                 accountId = providerAccountId.trim().ifBlank { null },
                                                 model = providerModel.trim().ifBlank { null },
                                                 enabled = providerEnabled,
                                             )
                                         }.onSuccess {
                                             providerApiKey = ""
+                                            providerApiSecret = ""
                                             providerAccountId = ""
                                             providerLoading = false
                                             providerMessage = t("Encrypted provider secret saved.", "کلید ارائه‌دهنده به‌صورت رمزنگاری‌شده ذخیره شد.")
                                             refreshProviderStatus()
                                         }.onFailure {
                                             providerApiKey = ""
+                                            providerApiSecret = ""
                                             providerAccountId = ""
                                             providerLoading = false
                                             providerMessage = t("Secure save failed.", "ذخیره امن ناموفق بود.")
@@ -401,6 +421,7 @@ fun SettingsScreen(onOpenReadiness: () -> Unit) {
                                         runCatching { repository.deleteProviderSecret(selectedProvider) }
                                             .onSuccess {
                                                 providerApiKey = ""
+                                                providerApiSecret = ""
                                                 providerAccountId = ""
                                                 providerLoading = false
                                                 providerMessage = t("Provider secret deleted.", "کلید ارائه‌دهنده حذف شد.")
@@ -462,6 +483,7 @@ private data class ProviderDefinition(
     val descriptionFa: String,
     val defaultModel: String? = null,
     val requiresAccountId: Boolean = false,
+    val requiresApiSecret: Boolean = false,
 )
 
 private val providerDefinitions = listOf(
@@ -471,6 +493,8 @@ private val providerDefinitions = listOf(
     ProviderDefinition("finnhub", "Finnhub", "خبر و داده عمومی مالی برای حساب شما."),
     ProviderDefinition("newsapi", "NewsAPI", "منبع جایگزین خبرهای Business؛ جای Economic Calendar نیست."),
     ProviderDefinition("oanda", "OANDA", "توکن Practice به‌همراه Account ID؛ اجرای Live خاموش باقی می‌ماند.", requiresAccountId = true),
+    ProviderDefinition("binance_testnet", "Binance T", "کلید و Secret تست‌نت فقط برای اتصال خصوصی خواندنی؛ ارسال سفارش خاموش است.", requiresApiSecret = true),
+    ProviderDefinition("bybit_testnet", "Bybit T", "کلید و Secret تست‌نت فقط برای اتصال خصوصی خواندنی؛ ارسال سفارش خاموش است.", requiresApiSecret = true),
 )
 
 @Composable

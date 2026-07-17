@@ -332,7 +332,7 @@ fun BrokerScreen(viewModel: BrokerViewModel = viewModel()) {
                         )
                         portfolio.positions.filter { it.quantity != 0.0 || it.position_status == "liquidated" }.take(5).forEach { position ->
                             Text(
-                                "${position.symbol} • ${position.margin_mode.uppercase()} ${position.leverage}x • ${position.risk_group} • qty ${position.quantity} • uPnL ${String.format(Locale.US, "%.2f", position.unrealized_pnl)}",
+                                "${position.symbol} • ${position.margin_mode.uppercase()} ${position.leverage}x • ${position.correlation_source} • ${position.risk_group} • qty ${position.quantity} • uPnL ${String.format(Locale.US, "%.2f", position.unrealized_pnl)}",
                                 color = Color.White
                             )
                             Text(

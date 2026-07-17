@@ -2156,3 +2156,20 @@ Live Execution: false
 ```
 
 Paper Alpha 5 adds durable public connectivity checkpoints, sanitized backoff, shadow-only reconciliation and deterministic concentration controls. Private authenticated Testnet order/fill reconciliation is still not implemented and no profitability claim is made.
+
+---
+
+## Addendum — Paper Alpha 6 Statistical Correlation / Private Testnet Read-Only
+
+```text
+Version: 3.4.0-paper-alpha6
+Schema: v10
+Correlation source: immutable stored datasets / aligned log returns
+Stabilization: deterministic winsorization + n/(n+20) shrinkage
+Private Testnet providers: Binance / Bybit
+Private operations: signed GET only
+Testnet order routing: false
+Live Execution: false
+```
+
+Correlation snapshots are sample-dependent research/risk inputs, not proof of causality or future performance. Private Testnet Order/Fill reconciliation and any Place/Cancel operation remain outside this phase.

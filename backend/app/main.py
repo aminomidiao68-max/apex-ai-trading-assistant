@@ -59,6 +59,8 @@ from app.models import (
     PaperConnectorCheckpoint,
     PaperConnectorCheckpointListResponse,
     PaperConnectorProbeRequest,
+    PaperCorrelationSnapshotRequest,
+    PaperCorrelationSnapshotResponse,
     PaperMarginEventListResponse,
     PaperShadowReconciliationRequest,
     PaperShadowReconciliationResponse,
@@ -107,6 +109,7 @@ from app.services.market_data_service import MarketDataService
 from app.services.news_engine import mock_news
 from app.services.notification_service import NotificationService
 from app.services.orderflow_service import OrderFlowService
+from app.services.paper_correlation_service import PaperCorrelationError, PaperCorrelationService
 from app.services.paper_market_feed_service import PaperFeedError, PaperMarketFeedService
 from app.services.paper_oms_service import PaperOmsError, PaperOmsService
 from app.services.paper_recovery_service import PaperRecoveryError, PaperRecoveryService
@@ -174,6 +177,10 @@ paper_recovery_service = PaperRecoveryService(storage.database)
 paper_market_feed_service = PaperMarketFeedService(storage.database, paper_oms_service)
 paper_feed_worker_task: asyncio.Task | None = None
 historical_data_service = HistoricalDataService(storage.database)
+paper_correlation_service = PaperCorrelationService(
+    storage.database,
+    historical_data_service.store,
+)
 stored_research_service = StoredResearchService(
     historical_data_service.store,
     backtest_service,
@@ -1496,6 +1503,13 @@ def _raise_paper_recovery_error(exc: PaperRecoveryError):
     raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
 
 
+def _raise_paper_correlation_error(exc: PaperCorrelationError):
+    status = 409 if "payload_conflict" in exc.code else 400
+    if exc.code == "historical_dataset_not_found":
+        status = 404
+    raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
+
+
 @app.get("/api/v1/paper/control", response_model=PaperExecutionControl)
 def get_paper_control(user=Depends(current_user)):
     return paper_oms_service.get_control(user.id)
@@ -1598,6 +1612,20 @@ def reconcile_paper_testnet_shadow(
 @app.get("/api/v1/paper/audit", response_model=PaperLedgerAuditResponse)
 def audit_paper_ledger(user=Depends(current_user)):
     return paper_recovery_service.audit_ledger(user.id)
+
+
+@app.post(
+    "/api/v1/paper/risk/correlation/snapshots",
+    response_model=PaperCorrelationSnapshotResponse,
+)
+def build_paper_correlation_snapshot(
+    request: PaperCorrelationSnapshotRequest,
+    user=Depends(current_user),
+):
+    try:
+        return paper_correlation_service.build_snapshot(user.id, request)
+    except PaperCorrelationError as exc:
+        _raise_paper_correlation_error(exc)
 
 
 @app.post("/api/v1/paper/orders", response_model=PaperOrder)

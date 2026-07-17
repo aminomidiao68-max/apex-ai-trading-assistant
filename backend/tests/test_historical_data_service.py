@@ -109,7 +109,7 @@ def test_historical_collection_is_fingerprinted_finalized_and_persisted(tmp_path
     assert service.store.list(user_id=2).count == 0
     with pytest.raises(HistoricalDataError, match="historical_dataset_not_found"):
         service.store.get_manifest(2, "btc-real-history", "v1")
-    assert database.schema_version() == LATEST_SCHEMA_VERSION == 9
+    assert database.schema_version() == LATEST_SCHEMA_VERSION == 10
 
 
 def test_dataset_version_is_immutable_and_idempotent(tmp_path):

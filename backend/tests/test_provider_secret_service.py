@@ -49,7 +49,7 @@ def test_provider_secret_is_encrypted_user_scoped_and_never_read_back(tmp_path):
     assert raw_secret not in row[2]
     serialized = service.list_status(1).model_dump_json()
     assert raw_secret not in serialized
-    assert database.schema_version() == LATEST_SCHEMA_VERSION == 9
+    assert database.schema_version() == LATEST_SCHEMA_VERSION == 10
 
     service.delete(1, "groq")
     assert service.get_material(1, "groq") is None
@@ -79,6 +79,81 @@ def test_oanda_requires_account_id_and_disabled_secret_is_not_resolved(tmp_path)
     material = service.get_material(1, "oanda", require_enabled=False)
     assert material is not None and material.account_id == "practice-account-id"
     assert service.status_for(1, "oanda").has_account_id is True
+
+
+def test_testnet_provider_requires_encrypted_api_secret(tmp_path):
+    service = ProviderSecretService(
+        DatabaseManager(db_path=str(tmp_path / "testnet-vault.db")),
+        master_key=_master_key(),
+    )
+    with pytest.raises(ProviderVaultError, match="testnet_api_secret_required"):
+        service.upsert(
+            1,
+            "binance_testnet",
+            ProviderSecretUpsertRequest(api_key="testnet-api-key-value"),
+        )
+    service.upsert(
+        1,
+        "binance_testnet",
+        ProviderSecretUpsertRequest(
+            api_key="testnet-api-key-value",
+            api_secret="testnet-api-secret-value",
+        ),
+    )
+    material = service.get_material(1, "binance_testnet")
+    assert material is not None
+    assert material.api_secret == "testnet-api-secret-value"
+    status = service.status_for(1, "binance_testnet")
+    assert status.has_api_secret is True
+    serialized = service.list_status(1).model_dump_json()
+    assert "testnet-api-key-value" not in serialized
+    assert "testnet-api-secret-value" not in serialized
+
+
+def test_private_testnet_probe_is_read_only_and_sanitized(monkeypatch, tmp_path):
+    import app.services.provider_secret_service as provider_module
+
+    service = ProviderSecretService(
+        DatabaseManager(db_path=str(tmp_path / "testnet-probe.db")),
+        master_key=_master_key(),
+    )
+    service.upsert(
+        1,
+        "binance_testnet",
+        ProviderSecretUpsertRequest(
+            api_key="read-only-testnet-key",
+            api_secret="read-only-testnet-secret",
+        ),
+    )
+    material = service.get_material(1, "binance_testnet")
+    assert material is not None
+    calls = []
+
+    class Response:
+        status_code = 200
+        is_success = True
+
+    class Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, params=None, headers=None):
+            calls.append((url, params, headers))
+            return Response()
+
+    monkeypatch.setattr(provider_module.httpx, "AsyncClient", Client)
+    assert asyncio.run(service._probe(material)) == "connected"
+    assert len(calls) == 1
+    assert calls[0][0].endswith("/fapi/v2/account")
+    assert calls[0][1]["signature"]
+    assert calls[0][2]["X-MBX-APIKEY"] == "read-only-testnet-key"
+    assert not hasattr(Client, "post")
 
 
 def test_vault_fails_closed_without_or_with_wrong_master_key(tmp_path):

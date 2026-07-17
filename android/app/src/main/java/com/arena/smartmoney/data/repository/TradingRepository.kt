@@ -63,6 +63,7 @@ class TradingRepository(
     suspend fun saveProviderSecret(
         provider: String,
         apiKey: String,
+        apiSecret: String? = null,
         accountId: String? = null,
         model: String? = null,
         enabled: Boolean = true,
@@ -70,6 +71,7 @@ class TradingRepository(
         provider,
         ProviderSecretUpsertRequestDto(
             api_key = apiKey,
+            api_secret = apiSecret,
             account_id = accountId,
             model = model,
             enabled = enabled,

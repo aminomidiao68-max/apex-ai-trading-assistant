@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.4.0-paper-alpha5",
-    "status": "APEX GA Program - Paper Recovery, Concentration and Testnet Shadow Alpha 5"
+    "current_version": "3.4.0-paper-alpha6",
+    "status": "APEX GA Program - Statistical Correlation and Private Testnet Read-Only Alpha 6"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -1380,6 +1380,33 @@
       "No private authenticated testnet reconciliation",
       "No testnet order placement/cancel",
       "No live statistical correlation matrix",
+      "No performance guarantee"
+    ]
+  },
+  "paper_alpha6": {
+    "scope": "Immutable stored-dataset statistical correlation snapshots and encrypted private Testnet read-only probes",
+    "schema_version": 10,
+    "correlation": {
+      "aligned_log_returns": true,
+      "winsorization": "1%/99% deterministic",
+      "shrinkage": "n/(n+20)",
+      "source": "stored_dataset_statistical",
+      "actionable_for_live": false
+    },
+    "providers": [
+      "binance_testnet",
+      "bybit_testnet"
+    ],
+    "safety": {
+      "api_secret_encrypted": true,
+      "private_probe_read_only": true,
+      "testnet_order_routing": false,
+      "live_execution_enabled": false
+    },
+    "limitations": [
+      "Correlation is sample-dependent and non-causal",
+      "No private order/fill reconciliation yet",
+      "No Testnet Place/Cancel",
       "No performance guarantee"
     ]
   }

@@ -51,7 +51,7 @@ jobs:
       - name: Generate release provenance manifest
         working-directory: android
         env:
-          APP_VERSION: 3.4.0-paper-alpha5
+          APP_VERSION: 3.4.0-paper-alpha6
         run: |
           APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
           test -n "$APK"

@@ -1171,16 +1171,21 @@ class AutomatedPanelResearchResponse(BaseModel):
 
 class ProviderSecretUpsertRequest(BaseModel):
     api_key: SecretStr = Field(min_length=8, max_length=500)
+    api_secret: Optional[SecretStr] = Field(default=None, min_length=8, max_length=500)
     account_id: Optional[SecretStr] = Field(default=None, max_length=200)
     model: Optional[str] = Field(default=None, max_length=120)
     enabled: bool = True
 
 
 class ProviderSecretStatus(BaseModel):
-    provider: Literal["groq", "openai", "twelvedata", "finnhub", "newsapi", "oanda"]
+    provider: Literal[
+        "groq", "openai", "twelvedata", "finnhub", "newsapi", "oanda",
+        "binance_testnet", "bybit_testnet",
+    ]
     configured: bool
     enabled: bool
     has_account_id: bool = False
+    has_api_secret: bool = False
     model: Optional[str] = None
     last_test_status: Optional[str] = None
     last_tested_at: Optional[str] = None
@@ -1264,6 +1269,10 @@ class PaperOrderCreateRequest(BaseModel):
     fee_bps: Optional[float] = Field(default=None, ge=0.0, le=100.0)
     leverage: float = Field(default=1.0, ge=1.0, le=50.0)
     margin_mode: Literal["isolated", "cross"] = "isolated"
+    correlation_snapshot_id: Optional[str] = Field(
+        default=None,
+        pattern=r"^[A-Za-z0-9_-]{12,100}$",
+    )
     signal_score: float = Field(default=0.0, ge=0.0, le=100.0)
     risk_approved: bool = False
     strategy_id: Optional[str] = Field(default=None, max_length=120)
@@ -1341,7 +1350,8 @@ class PaperOrder(BaseModel):
     margin_mode: Literal["isolated", "cross"] = "isolated"
     maintenance_margin_rate: float = 0.005
     risk_group: str = "unclassified"
-    correlation_source: Literal["structural_proxy"] = "structural_proxy"
+    correlation_source: Literal["structural_proxy", "stored_dataset_statistical"] = "structural_proxy"
+    correlation_snapshot_id: Optional[str] = None
     signal_score: float
     risk_approved: bool
     strategy_id: Optional[str] = None
@@ -1460,7 +1470,8 @@ class PaperPosition(BaseModel):
     leverage: float = 1.0
     margin_mode: Literal["isolated", "cross"] = "isolated"
     risk_group: str = "unclassified"
-    correlation_source: Literal["structural_proxy"] = "structural_proxy"
+    correlation_source: Literal["structural_proxy", "stored_dataset_statistical"] = "structural_proxy"
+    correlation_snapshot_id: Optional[str] = None
     initial_margin: float = 0.0
     maintenance_margin: float = 0.0
     maintenance_margin_rate: float = 0.005
@@ -1638,6 +1649,42 @@ class PaperLedgerAuditResponse(BaseModel):
     actionable_for_live: bool = False
     live_execution_enabled: bool = False
     audited_at: str
+
+
+class PaperCorrelationDatasetRef(BaseModel):
+    dataset_id: str = Field(min_length=3, max_length=120)
+    version: str = Field(min_length=1, max_length=80)
+
+
+class PaperCorrelationSnapshotRequest(BaseModel):
+    snapshot_id: str = Field(pattern=r"^[A-Za-z0-9_-]{12,100}$")
+    datasets: List[PaperCorrelationDatasetRef] = Field(min_length=2, max_length=12)
+    minimum_observations: int = Field(default=60, ge=30, le=100_000)
+    cluster_threshold: float = Field(default=0.70, ge=0.30, le=0.99)
+
+    @model_validator(mode="after")
+    def validate_unique_correlation_datasets(self):
+        refs = [(item.dataset_id, item.version) for item in self.datasets]
+        if len(refs) != len(set(refs)):
+            raise ValueError("correlation dataset references must be unique")
+        return self
+
+
+class PaperCorrelationSnapshotResponse(BaseModel):
+    snapshot_id: str
+    symbols: List[str]
+    dataset_refs: List[str]
+    observations: int
+    matrix: dict[str, dict[str, float]]
+    clusters: List[List[str]]
+    cluster_threshold: float
+    shrinkage_weight: float
+    canonical_sha256: str
+    duplicate: bool = False
+    correlation_source: Literal["stored_dataset_statistical"] = "stored_dataset_statistical"
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+    created_at: str
 
 
 class ConnectorCapability(BaseModel):

@@ -1217,6 +1217,28 @@ def test_paper_margin_funding_api_is_authenticated_idempotent_and_never_live():
     assert events.json()["items"][0]["event_type"] == "funding"
 
 
+def test_paper_correlation_snapshot_endpoint_is_authenticated_and_fail_closed():
+    payload = {
+        "snapshot_id": "missing-correlation-snapshot-1",
+        "datasets": [
+            {"dataset_id": "missing-btc", "version": "v1"},
+            {"dataset_id": "missing-eth", "version": "v1"},
+        ],
+        "minimum_observations": 60,
+        "cluster_threshold": 0.7,
+    }
+    assert client.post(
+        "/api/v1/paper/risk/correlation/snapshots", json=payload
+    ).status_code == 401
+    response = client.post(
+        "/api/v1/paper/risk/correlation/snapshots",
+        json=payload,
+        headers=_register(),
+    )
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "historical_dataset_not_found"
+
+
 def test_paper_recovery_audit_and_shadow_reconciliation_api_are_never_live():
     assert client.get("/api/v1/paper/audit").status_code == 401
     auth = _register()

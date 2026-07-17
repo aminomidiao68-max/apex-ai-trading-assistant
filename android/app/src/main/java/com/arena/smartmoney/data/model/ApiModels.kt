@@ -229,6 +229,7 @@ data class PaperOrderCreateRequestDto(
     val fee_bps: Double? = null,
     val leverage: Double = 1.0,
     val margin_mode: String = "isolated",
+    val correlation_snapshot_id: String? = null,
     val signal_score: Double = 85.0,
     val risk_approved: Boolean = true,
     val strategy_id: String? = null,
@@ -281,6 +282,7 @@ data class PaperOrderDto(
     val maintenance_margin_rate: Double = 0.005,
     val risk_group: String = "unclassified",
     val correlation_source: String = "structural_proxy",
+    val correlation_snapshot_id: String? = null,
     val signal_score: Double,
     val risk_approved: Boolean,
     val strategy_id: String? = null,
@@ -308,6 +310,7 @@ data class PaperPositionDto(
     val margin_mode: String = "isolated",
     val risk_group: String = "unclassified",
     val correlation_source: String = "structural_proxy",
+    val correlation_snapshot_id: String? = null,
     val initial_margin: Double = 0.0,
     val maintenance_margin: Double = 0.0,
     val maintenance_margin_rate: Double = 0.005,
@@ -521,6 +524,7 @@ data class NotificationDispatchResultDto(
 
 data class ProviderSecretUpsertRequestDto(
     val api_key: String,
+    val api_secret: String? = null,
     val account_id: String? = null,
     val model: String? = null,
     val enabled: Boolean = true
@@ -531,6 +535,7 @@ data class ProviderSecretStatusDto(
     val configured: Boolean,
     val enabled: Boolean,
     val has_account_id: Boolean = false,
+    val has_api_secret: Boolean = false,
     val model: String? = null,
     val last_test_status: String? = null,
     val last_tested_at: String? = null,

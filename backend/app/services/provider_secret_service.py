@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import json
 import os
+import time
+from urllib.parse import urlencode
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal
@@ -20,7 +24,10 @@ from app.models import (
 from app.services.database_service import DatabaseManager
 
 
-PROVIDERS = ("groq", "openai", "twelvedata", "finnhub", "newsapi", "oanda")
+PROVIDERS = (
+    "groq", "openai", "twelvedata", "finnhub", "newsapi", "oanda",
+    "binance_testnet", "bybit_testnet",
+)
 _DEFAULT_MODELS = {
     "groq": "llama-3.3-70b-versatile",
     "openai": "gpt-4.1-mini",
@@ -37,6 +44,7 @@ class ProviderVaultError(RuntimeError):
 class ProviderSecretMaterial:
     provider: str
     api_key: str
+    api_secret: str | None
     account_id: str | None
     model: str | None
     enabled: bool
@@ -94,12 +102,16 @@ class ProviderSecretService:
         if not self.configured or self._key is None:
             raise ProviderVaultError("provider_vault_not_configured")
         account_id = request.account_id.get_secret_value().strip() if request.account_id else None
+        api_secret = request.api_secret.get_secret_value().strip() if request.api_secret else None
         if provider == "oanda" and not account_id:
             raise ProviderVaultError("oanda_account_id_required")
+        if provider in {"binance_testnet", "bybit_testnet"} and not api_secret:
+            raise ProviderVaultError("testnet_api_secret_required")
         model = (request.model or _DEFAULT_MODELS.get(provider) or "").strip() or None
         payload = json.dumps(
             {
                 "api_key": request.api_key.get_secret_value().strip(),
+                "api_secret": api_secret,
                 "account_id": account_id,
             },
             sort_keys=True,
@@ -113,7 +125,11 @@ class ProviderSecretService:
         )
         now = datetime.now(timezone.utc).isoformat()
         metadata = json.dumps(
-            {"model": model, "has_account_id": bool(account_id)},
+            {
+                "model": model,
+                "has_account_id": bool(account_id),
+                "has_api_secret": bool(api_secret),
+            },
             separators=(",", ":"),
         )
         with self.database.connection() as conn:
@@ -183,6 +199,7 @@ class ProviderSecretService:
         return ProviderSecretMaterial(
             provider=provider,
             api_key=str(payload.get("api_key") or ""),
+            api_secret=(str(payload["api_secret"]) if payload.get("api_secret") else None),
             account_id=(str(payload["account_id"]) if payload.get("account_id") else None),
             model=(str(metadata["model"]) if metadata.get("model") else None),
             enabled=enabled,
@@ -206,6 +223,7 @@ class ProviderSecretService:
                     configured=row is not None,
                     enabled=bool(row["enabled"]) if row else False,
                     has_account_id=bool(metadata.get("has_account_id")),
+                    has_api_secret=bool(metadata.get("has_api_secret")),
                     model=metadata.get("model"),
                     last_test_status=row["last_test_status"] if row else None,
                     last_tested_at=row["last_tested_at"] if row else None,
@@ -308,6 +326,40 @@ class ProviderSecretService:
                 response = await client.get(
                     "https://newsapi.org/v2/top-headlines",
                     params={"country": "us", "pageSize": 1, "apiKey": material.api_key},
+                )
+            elif material.provider == "binance_testnet":
+                if not material.api_secret:
+                    return "auth_failed"
+                params = {"timestamp": int(time.time() * 1000), "recvWindow": 5000}
+                query = urlencode(params)
+                params["signature"] = hmac.new(
+                    material.api_secret.encode(), query.encode(), hashlib.sha256
+                ).hexdigest()
+                response = await client.get(
+                    "https://testnet.binancefuture.com/fapi/v2/account",
+                    params=params,
+                    headers={"X-MBX-APIKEY": material.api_key},
+                )
+            elif material.provider == "bybit_testnet":
+                if not material.api_secret:
+                    return "auth_failed"
+                timestamp = str(int(time.time() * 1000))
+                recv_window = "5000"
+                query = "accountType=UNIFIED"
+                signature = hmac.new(
+                    material.api_secret.encode(),
+                    f"{timestamp}{material.api_key}{recv_window}{query}".encode(),
+                    hashlib.sha256,
+                ).hexdigest()
+                response = await client.get(
+                    "https://api-testnet.bybit.com/v5/account/wallet-balance",
+                    params={"accountType": "UNIFIED"},
+                    headers={
+                        "X-BAPI-API-KEY": material.api_key,
+                        "X-BAPI-TIMESTAMP": timestamp,
+                        "X-BAPI-RECV-WINDOW": recv_window,
+                        "X-BAPI-SIGN": signature,
+                    },
                 )
             else:
                 if not material.account_id:

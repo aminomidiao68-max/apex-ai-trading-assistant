@@ -81,6 +81,41 @@ class PaperOmsService:
             return "forex_eur_structural_proxy"
         return "other_structural_proxy"
 
+    def _resolve_correlation_group(
+        self,
+        conn,
+        user_id: int,
+        symbol: str,
+        market: MarketType,
+        snapshot_id: str | None,
+    ) -> tuple[str, str, str | None]:
+        if not snapshot_id:
+            return self._risk_group(symbol, market), "structural_proxy", None
+        row = conn.execute(
+            "SELECT symbols_json, clusters_json FROM paper_correlation_snapshots "
+            "WHERE user_id = ? AND snapshot_id = ?",
+            (user_id, snapshot_id),
+        ).fetchone()
+        if row is None:
+            raise PaperOmsError("correlation_snapshot_not_found")
+        upper = symbol.upper()
+        symbols = list(json.loads(row["symbols_json"]))
+        if upper not in symbols:
+            raise PaperOmsError("correlation_snapshot_symbol_not_found")
+        clusters = list(json.loads(row["clusters_json"]))
+        cluster_index = next(
+            (index for index, cluster in enumerate(clusters) if upper in cluster),
+            None,
+        )
+        if cluster_index is None:
+            raise PaperOmsError("correlation_snapshot_cluster_invalid")
+        digest = hashlib.sha256(snapshot_id.encode("utf-8")).hexdigest()[:12]
+        return (
+            f"statistical_cluster_{digest}_{cluster_index}",
+            "stored_dataset_statistical",
+            snapshot_id,
+        )
+
     def _ensure_control(self, conn, user_id: int) -> None:
         row = conn.execute(
             "SELECT user_id FROM paper_execution_controls WHERE user_id = ?",
@@ -495,7 +530,13 @@ class PaperOmsService:
             if int(open_count["count"] or 0) >= int(control["max_open_orders"]):
                 raise PaperOmsError("max_open_paper_orders_reached")
             reference = request.reference_ask if request.side == "buy" else request.reference_bid
-            risk_group = self._risk_group(request.symbol, request.market)
+            risk_group, correlation_source, correlation_snapshot_id = self._resolve_correlation_group(
+                conn,
+                user_id,
+                request.symbol,
+                request.market,
+                request.correlation_snapshot_id,
+            )
             notional = request.quantity * reference
             if notional > float(control["max_order_notional"]):
                 raise PaperOmsError("paper_order_notional_limit_exceeded")
@@ -577,9 +618,10 @@ class PaperOmsService:
                     filled_quantity, average_fill_price, total_fees,
                     reference_bid, reference_ask, max_slippage_bps, fee_bps,
                     leverage, margin_mode, maintenance_margin_rate, risk_group,
+                    correlation_source, correlation_snapshot_id,
                     signal_score, risk_approved, strategy_id, setup_id,
                     created_at, updated_at, terminal_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     order_id,
@@ -605,6 +647,8 @@ class PaperOmsService:
                     request.margin_mode,
                     float(control["default_maintenance_margin_rate"]),
                     risk_group,
+                    correlation_source,
+                    correlation_snapshot_id,
                     request.signal_score,
                     1,
                     request.strategy_id,
@@ -665,6 +709,8 @@ class PaperOmsService:
         maintenance_margin_rate: float,
         liquidation_fee_bps: float,
         risk_group: str,
+        correlation_source: str,
+        correlation_snapshot_id: str | None,
     ) -> None:
         self._ensure_account(conn, user_id)
         row = conn.execute(
@@ -726,10 +772,17 @@ class PaperOmsService:
                 new_leverage = leverage
                 new_margin_mode = margin_mode
                 new_maintenance_rate = maintenance_margin_rate
-        new_risk_group = (
-            row["risk_group"]
-            if row is not None and old_quantity != 0.0 and old_quantity * new_quantity > 0.0
-            else risk_group
+        preserve_existing_correlation = (
+            row is not None and old_quantity != 0.0 and old_quantity * new_quantity > 0.0
+        )
+        new_risk_group = row["risk_group"] if preserve_existing_correlation else risk_group
+        new_correlation_source = (
+            row["correlation_source"] if preserve_existing_correlation else correlation_source
+        )
+        new_correlation_snapshot_id = (
+            row["correlation_snapshot_id"]
+            if preserve_existing_correlation
+            else correlation_snapshot_id
         )
         liquidation_price = self._liquidation_price(
             new_quantity,
@@ -748,10 +801,11 @@ class PaperOmsService:
                 """
                 INSERT INTO paper_positions (
                     user_id, symbol, market, quantity, average_entry_price,
-                    mark_price, leverage, margin_mode, risk_group, initial_margin,
+                    mark_price, leverage, margin_mode, risk_group,
+                    correlation_source, correlation_snapshot_id, initial_margin,
                     maintenance_margin_rate, liquidation_price, accumulated_funding,
                     position_status, liquidated_at, realized_pnl, total_fees, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -763,6 +817,8 @@ class PaperOmsService:
                     new_leverage,
                     new_margin_mode,
                     new_risk_group,
+                    new_correlation_source,
+                    new_correlation_snapshot_id,
                     new_initial_margin,
                     new_maintenance_rate,
                     liquidation_price,
@@ -779,7 +835,8 @@ class PaperOmsService:
                 """
                 UPDATE paper_positions
                 SET quantity = ?, average_entry_price = ?, mark_price = ?,
-                    leverage = ?, margin_mode = ?, risk_group = ?, initial_margin = ?,
+                    leverage = ?, margin_mode = ?, risk_group = ?,
+                    correlation_source = ?, correlation_snapshot_id = ?, initial_margin = ?,
                     maintenance_margin_rate = ?, liquidation_price = ?,
                     accumulated_funding = ?, position_status = ?, liquidated_at = NULL,
                     realized_pnl = ?, total_fees = ?, updated_at = ?
@@ -792,6 +849,8 @@ class PaperOmsService:
                     new_leverage,
                     new_margin_mode,
                     new_risk_group,
+                    new_correlation_source,
+                    new_correlation_snapshot_id,
                     new_initial_margin,
                     new_maintenance_rate,
                     liquidation_price,
@@ -985,6 +1044,8 @@ class PaperOmsService:
             float(row["maintenance_margin_rate"]),
             float(control["liquidation_fee_bps"]),
             row["risk_group"],
+            row["correlation_source"],
+            row["correlation_snapshot_id"],
         )
         conn.execute(
             """
@@ -1194,7 +1255,8 @@ class PaperOmsService:
                         leverage=float(row["leverage"]),
                         margin_mode=row["margin_mode"],
                         risk_group=row["risk_group"],
-                        correlation_source="structural_proxy",
+                        correlation_source=row["correlation_source"],
+                        correlation_snapshot_id=row["correlation_snapshot_id"],
                         initial_margin=initial_margin,
                         maintenance_margin=maintenance,
                         maintenance_margin_rate=float(row["maintenance_margin_rate"]),
@@ -1551,7 +1613,8 @@ class PaperOmsService:
             margin_mode=row["margin_mode"],
             maintenance_margin_rate=float(row["maintenance_margin_rate"]),
             risk_group=row["risk_group"],
-            correlation_source="structural_proxy",
+            correlation_source=row["correlation_source"],
+            correlation_snapshot_id=row["correlation_snapshot_id"],
             signal_score=float(row["signal_score"]),
             risk_approved=bool(row["risk_approved"]),
             strategy_id=row["strategy_id"],

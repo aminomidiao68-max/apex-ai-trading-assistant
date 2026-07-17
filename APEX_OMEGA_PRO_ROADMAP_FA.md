@@ -222,3 +222,16 @@
 - Android checkpoint/audit dashboard
 - authenticated private Testnet reconciliation remains future work
 - live_routed=false و Live Execution خاموش
+
+## ⏳ GA Paper Alpha 6 — Statistical Correlation & Private Testnet Read-Only
+
+- immutable stored-dataset correlation snapshots
+- aligned log returns, deterministic winsorization and shrinkage
+- canonical matrix/cluster SHA-256
+- statistical cluster concentration at submit and fill
+- structural proxy remains explicit fallback
+- encrypted Binance/Bybit Testnet API key + secret slots
+- signed private GET probes only
+- no Place/Cancel and no Testnet/Live order routing
+- PostgreSQL schema v10
+- Android secure Testnet secret entry
