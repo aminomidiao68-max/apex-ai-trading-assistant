@@ -235,3 +235,13 @@
 - no Place/Cancel and no Testnet/Live order routing
 - PostgreSQL schema v10
 - Android secure Testnet secret entry
+
+## ⏳ GA Paper Alpha 7 — Authenticated Testnet Read-Only Reconciliation
+
+- signed private GET for Binance/Bybit Testnet orders and fills
+- provider-authenticated read-only snapshots
+- external client-ID to Paper order-ID reconciliation
+- persistent reconciliation ledger
+- deterministic offline recovery/backoff drill
+- no Place/Cancel and no Testnet/Live routing
+- PostgreSQL schema v11

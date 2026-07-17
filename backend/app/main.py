@@ -62,6 +62,10 @@ from app.models import (
     PaperCorrelationSnapshotRequest,
     PaperCorrelationSnapshotResponse,
     PaperMarginEventListResponse,
+    PaperPrivateTestnetReconciliationResponse,
+    PaperPrivateTestnetSyncRequest,
+    PaperRecoveryDrillRequest,
+    PaperRecoveryDrillResponse,
     PaperShadowReconciliationRequest,
     PaperShadowReconciliationResponse,
     PaperMarketTickRequest,
@@ -112,6 +116,7 @@ from app.services.orderflow_service import OrderFlowService
 from app.services.paper_correlation_service import PaperCorrelationError, PaperCorrelationService
 from app.services.paper_market_feed_service import PaperFeedError, PaperMarketFeedService
 from app.services.paper_oms_service import PaperOmsError, PaperOmsService
+from app.services.paper_private_testnet_service import PaperPrivateTestnetError, PaperPrivateTestnetService
 from app.services.paper_recovery_service import PaperRecoveryError, PaperRecoveryService
 from app.services.provider_secret_service import ProviderSecretService, ProviderVaultError
 from app.services.production_guard_service import (
@@ -174,6 +179,10 @@ storage = StorageService()
 provider_secret_service = ProviderSecretService(storage.database)
 paper_oms_service = PaperOmsService(storage.database)
 paper_recovery_service = PaperRecoveryService(storage.database)
+paper_private_testnet_service = PaperPrivateTestnetService(
+    storage.database,
+    provider_secret_service,
+)
 paper_market_feed_service = PaperMarketFeedService(storage.database, paper_oms_service)
 paper_feed_worker_task: asyncio.Task | None = None
 historical_data_service = HistoricalDataService(storage.database)
@@ -1510,6 +1519,10 @@ def _raise_paper_correlation_error(exc: PaperCorrelationError):
     raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
 
 
+def _raise_private_testnet_error(exc: PaperPrivateTestnetError):
+    raise HTTPException(status_code=400, detail={"code": exc.code}) from exc
+
+
 @app.get("/api/v1/paper/control", response_model=PaperExecutionControl)
 def get_paper_control(user=Depends(current_user)):
     return paper_oms_service.get_control(user.id)
@@ -1593,6 +1606,32 @@ async def probe_paper_testnet_connector(
         return await paper_recovery_service.probe_connector(user.id, connector, request.force)
     except PaperRecoveryError as exc:
         _raise_paper_recovery_error(exc)
+
+
+@app.post(
+    "/api/v1/paper/testnet/connectors/{connector}/private-reconcile",
+    response_model=PaperPrivateTestnetReconciliationResponse,
+)
+async def reconcile_private_paper_testnet(
+    connector: str,
+    request: PaperPrivateTestnetSyncRequest,
+    user=Depends(current_user),
+):
+    try:
+        return await paper_private_testnet_service.reconcile(user.id, connector)
+    except PaperPrivateTestnetError as exc:
+        _raise_private_testnet_error(exc)
+
+
+@app.post(
+    "/api/v1/paper/testnet/recovery-drill",
+    response_model=PaperRecoveryDrillResponse,
+)
+def run_paper_recovery_drill(
+    request: PaperRecoveryDrillRequest,
+    user=Depends(current_user),
+):
+    return paper_private_testnet_service.recovery_drill(request)
 
 
 @app.post(

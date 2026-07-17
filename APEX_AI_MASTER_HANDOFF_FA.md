@@ -2173,3 +2173,17 @@ Live Execution: false
 ```
 
 Correlation snapshots are sample-dependent research/risk inputs, not proof of causality or future performance. Private Testnet Order/Fill reconciliation and any Place/Cancel operation remain outside this phase.
+
+---
+
+## Addendum — Paper Alpha 7 Private Testnet Read-Only
+
+```text
+Version: 3.4.0-paper-alpha7
+Schema: v11
+Private snapshot: provider authenticated / verified
+Methods: signed GET only
+Recovery drill: deterministic / offline
+Testnet order routing: false
+Live Execution: false
+```

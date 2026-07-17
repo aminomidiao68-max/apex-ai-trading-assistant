@@ -1637,6 +1637,45 @@ class PaperShadowReconciliationResponse(BaseModel):
     created_at: str
 
 
+class PaperPrivateTestnetSyncRequest(BaseModel):
+    force: bool = False
+
+
+class PaperPrivateTestnetReconciliationResponse(BaseModel):
+    reconciliation_id: str
+    connector: PaperTestnetConnector
+    status: Literal["CONSISTENT", "MISMATCH", "EMPTY", "UNAVAILABLE"]
+    external_order_count: int = 0
+    external_fill_count: int = 0
+    matched_orders: int = 0
+    mismatched_orders: int = 0
+    issues: List[str] = Field(default_factory=list)
+    provider_authenticated: bool = True
+    provider_snapshot_verified: bool = True
+    read_only: bool = True
+    order_routing_enabled: bool = False
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+    created_at: str
+
+
+class PaperRecoveryDrillRequest(BaseModel):
+    connector: PaperTestnetConnector
+    outcomes: List[bool] = Field(min_length=1, max_length=50)
+
+
+class PaperRecoveryDrillResponse(BaseModel):
+    connector: PaperTestnetConnector
+    transitions: List[str]
+    final_state: Literal["connected", "backoff"]
+    consecutive_failures: int
+    final_backoff_seconds: int
+    deterministic: bool = True
+    network_called: bool = False
+    order_routing_enabled: bool = False
+    live_execution_enabled: bool = False
+
+
 class PaperLedgerAuditResponse(BaseModel):
     consistent: bool
     order_count: int
