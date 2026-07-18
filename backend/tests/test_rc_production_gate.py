@@ -291,6 +291,10 @@ def test_release_manifest_and_production_blueprint_are_traceable(tmp_path):
     manifest = json.loads(manifest_path.read_text())
     assert manifest["source_commit"] == "a" * 40
     assert manifest["artifact"]["sha256"] == hashlib.sha256(apk.read_bytes()).hexdigest()
+    assert manifest["artifact"]["type"] == "debug_apk"
+    assert manifest["artifact"]["production_release_signed"] is False
+    assert "dependency_vulnerability_audit" in manifest["required_gates"]
+    assert "openapi_contract_fingerprint" in manifest["required_gates"]
     assert manifest["safety"]["live_execution_expected"] is False
     assert manifest["safety"]["deterministic_core_override_allowed"] is False
 

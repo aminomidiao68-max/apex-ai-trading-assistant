@@ -51,6 +51,8 @@ def main() -> int:
             "name": apk.name,
             "size_bytes": apk.stat().st_size,
             "sha256": sha256_file(apk),
+            "type": "debug_apk",
+            "production_release_signed": False,
         },
         "safety": {
             "live_execution_expected": False,
@@ -64,6 +66,11 @@ def main() -> int:
             "android_lint",
             "android_debug_apk",
             "render_readiness",
+            "dependency_vulnerability_audit",
+            "static_security_analysis",
+            "python_cyclonedx_sbom",
+            "android_cyclonedx_sbom",
+            "openapi_contract_fingerprint",
         ],
     }
     output = Path(args.output).resolve()

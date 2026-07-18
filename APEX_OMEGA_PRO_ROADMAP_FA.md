@@ -275,3 +275,11 @@
 - within-SLO and database-readiness gates
 - persisted idempotent panel
 - never authorizes Testnet or Live
+
+## ⏳ Release Alpha 12 — Supply Chain Security
+- strict dependency audit with zero known vulnerabilities
+- Bandit static security gate
+- Python/Android CycloneDX SBOM
+- canonical OpenAPI fingerprint
+- honest debug APK provenance
+- no production signing claim

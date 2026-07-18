@@ -2229,3 +2229,13 @@ Schema: v15
 Promotion: 3x STABLE + WITHIN_SLO + DB ready
 Testnet/Live authorization: false
 ```
+
+---
+## Addendum — Release Alpha 12
+```text
+Version: 3.6.0-release-alpha12
+Dependency vulnerabilities: 0
+SBOM: Python + Android CycloneDX
+APK: debug / production_release_signed=false
+Testnet/Live execution: false
+```
