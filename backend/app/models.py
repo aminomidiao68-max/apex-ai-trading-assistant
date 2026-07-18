@@ -1847,6 +1847,52 @@ class PaperCorrelationSnapshotResponse(BaseModel):
     created_at: str
 
 
+class OperationalDriftRequest(BaseModel):
+    run_id: str = Field(pattern=r"^[A-Za-z0-9_-]{12,100}$")
+    baseline: PaperCorrelationDatasetRef
+    candidate: PaperCorrelationDatasetRef
+    minimum_observations: int = Field(default=60, ge=30, le=100_000)
+
+
+class OperationalDriftResponse(BaseModel):
+    run_id: str
+    symbol: str
+    timeframe: str
+    baseline_ref: str
+    candidate_ref: str
+    baseline_observations: int
+    candidate_observations: int
+    psi: float
+    ks_statistic: float
+    volatility_ratio: float
+    mean_return_shift: float
+    status: Literal["STABLE", "WATCH", "BLOCKED"]
+    failed_gates: List[str] = Field(default_factory=list)
+    duplicate: bool = False
+    probability_claimed: bool = False
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+    created_at: str
+
+
+class OperationalSloRequest(BaseModel):
+    minimum_samples: int = Field(default=20, ge=1, le=100_000)
+    max_p95_latency_ms: int = Field(default=2000, ge=50, le=120_000)
+    max_server_error_rate_pct: float = Field(default=1.0, ge=0.0, le=100.0)
+
+
+class OperationalSloResponse(BaseModel):
+    status: Literal["INSUFFICIENT_EVIDENCE", "WITHIN_SLO", "SLO_BREACH"]
+    requests_total: int
+    sample_window: int
+    latency_p95_ms: int
+    server_error_rate_pct: float
+    failed_gates: List[str] = Field(default_factory=list)
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+    evaluated_at: str
+
+
 class ConnectorCapability(BaseModel):
     connector: str
     market_type: str

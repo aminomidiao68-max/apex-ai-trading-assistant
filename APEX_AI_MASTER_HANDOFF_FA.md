@@ -2209,3 +2209,14 @@ Production Testnet flag: false
 Staging Testnet flag: false until credentials/gates
 Live Execution: false
 ```
+
+---
+## Addendum — Operational Alpha 10
+```text
+Version: 3.5.0-operational-alpha10
+Schema: v14
+Drift: PSI / KS / volatility ratio
+SLO: P95 latency / server error rate
+Testnet Execution: false
+Live Execution: false
+```

@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 13
+LATEST_SCHEMA_VERSION = 14
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -314,6 +314,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (13, "paper_testnet_execution_safety", datetime.now(timezone.utc).isoformat()),
+                )
+            if 14 not in applied:
+                self._apply_schema_v14(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (14, "operational_drift_monitoring", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -1044,6 +1054,28 @@ class DatabaseManager:
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_testnet_orders_user_status ON paper_testnet_orders(user_id, status, created_at DESC)")
+
+    def _apply_schema_v14(self, conn: ConnectionAdapter) -> None:
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS operational_drift_runs (
+                user_id {user_id_type} NOT NULL,
+                run_id TEXT NOT NULL,
+                request_hash TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                status TEXT NOT NULL,
+                result_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, run_id)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_operational_drift_created "
+            "ON operational_drift_runs(user_id, created_at DESC)"
+        )
 
     def _ensure_columns(
         self,

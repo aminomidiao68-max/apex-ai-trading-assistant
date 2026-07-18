@@ -48,6 +48,10 @@ from app.models import (
     Mt5OrderRequest,
     NotificationTestRequest,
     OandaOrderRequest,
+    OperationalDriftRequest,
+    OperationalDriftResponse,
+    OperationalSloRequest,
+    OperationalSloResponse,
     PaperExecutionControl,
     PaperExecutionControlUpdateRequest,
     PaperFeedStatus,
@@ -125,6 +129,7 @@ from app.services.market_data_service import MarketDataService
 from app.services.news_engine import mock_news
 from app.services.notification_service import NotificationService
 from app.services.orderflow_service import OrderFlowService
+from app.services.operational_validation_service import OperationalValidationError, OperationalValidationService
 from app.services.paper_correlation_service import PaperCorrelationError, PaperCorrelationService
 from app.services.paper_chaos_service import PaperChaosError, PaperChaosService
 from app.services.paper_market_feed_service import PaperFeedError, PaperMarketFeedService
@@ -223,6 +228,10 @@ paper_market_feed_service = PaperMarketFeedService(storage.database, paper_oms_s
 paper_feed_worker_task: asyncio.Task | None = None
 historical_data_service = HistoricalDataService(storage.database)
 paper_correlation_service = PaperCorrelationService(
+    storage.database,
+    historical_data_service.store,
+)
+operational_validation_service = OperationalValidationService(
     storage.database,
     historical_data_service.store,
 )
@@ -607,6 +616,19 @@ def deep_health(user=Depends(current_user)) -> dict:
 @app.get("/api/v1/system/metrics")
 def production_metrics(user=Depends(current_user)) -> dict:
     return monitoring_service.snapshot()
+
+
+@app.post("/api/v1/operations/drift", response_model=OperationalDriftResponse)
+def run_operational_drift(request: OperationalDriftRequest, user=Depends(current_user)):
+    try:
+        return operational_validation_service.run_drift(user.id, request)
+    except OperationalValidationError as exc:
+        _raise_operational_validation_error(exc)
+
+
+@app.post("/api/v1/operations/slo", response_model=OperationalSloResponse)
+def evaluate_operational_slo(request: OperationalSloRequest, user=Depends(current_user)):
+    return operational_validation_service.evaluate_slo(monitoring_service.snapshot(), request)
 
 
 @app.get("/api/v1/ai/status")
@@ -1545,6 +1567,11 @@ def _raise_paper_feed_error(exc: PaperFeedError):
 
 def _raise_paper_recovery_error(exc: PaperRecoveryError):
     status = 409 if "payload_conflict" in exc.code else 400
+    raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
+
+
+def _raise_operational_validation_error(exc: OperationalValidationError):
+    status = 409 if "conflict" in exc.code else 404 if exc.code == "historical_dataset_not_found" else 400
     raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
 
 

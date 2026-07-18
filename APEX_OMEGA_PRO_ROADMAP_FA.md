@@ -262,3 +262,10 @@
 - idempotency and unknown-state fail closed
 - encrypted user-scoped credentials
 - production and live routing disabled
+
+## ⏳ Operational Alpha 10 — Drift & SLO Gates
+- immutable dataset PSI/KS/volatility drift
+- stable/watch/blocked gates
+- persisted drift runs
+- API latency/error SLO snapshots
+- no probability or live authorization claims
