@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 11
+LATEST_SCHEMA_VERSION = 12
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -294,6 +294,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (11, "paper_private_testnet_readonly_reconciliation", datetime.now(timezone.utc).isoformat()),
+                )
+            if 12 not in applied:
+                self._apply_schema_v12(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (12, "paper_chaos_recovery_snapshots", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -944,6 +954,44 @@ class DatabaseManager:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_private_testnet_reconcile_created "
             "ON paper_private_testnet_reconciliations(user_id, created_at DESC)"
+        )
+
+    def _apply_schema_v12(self, conn: ConnectionAdapter) -> None:
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        binary_type = "BYTEA" if self.backend == "postgresql" else "BLOB"
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_recovery_snapshots (
+                user_id {user_id_type} NOT NULL,
+                snapshot_id TEXT NOT NULL,
+                canonical_sha256 TEXT NOT NULL,
+                payload_gzip {binary_type} NOT NULL,
+                row_counts_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, snapshot_id)
+            )
+            """
+        )
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_chaos_runs (
+                user_id {user_id_type} NOT NULL,
+                run_id TEXT NOT NULL,
+                request_hash TEXT NOT NULL,
+                status TEXT NOT NULL,
+                result_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(user_id, run_id)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_recovery_snapshots_created "
+            "ON paper_recovery_snapshots(user_id, created_at DESC)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_paper_chaos_runs_created "
+            "ON paper_chaos_runs(user_id, created_at DESC)"
         )
 
     def _ensure_columns(

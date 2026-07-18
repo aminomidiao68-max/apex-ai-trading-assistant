@@ -1676,6 +1676,64 @@ class PaperRecoveryDrillResponse(BaseModel):
     live_execution_enabled: bool = False
 
 
+PaperChaosScenario = Literal[
+    "duplicate_delivery", "crash_before_commit", "crash_after_commit_before_ack",
+    "lease_expiry_takeover", "provider_timeout_backoff", "database_reconnect",
+    "restore_checksum",
+]
+
+
+class PaperRecoverySnapshotRequest(BaseModel):
+    snapshot_id: str = Field(pattern=r"^[A-Za-z0-9_-]{12,100}$")
+
+
+class PaperRecoverySnapshotResponse(BaseModel):
+    snapshot_id: str
+    canonical_sha256: str
+    compressed_size_bytes: int
+    row_counts: dict[str, int]
+    duplicate: bool = False
+    restore_verified: bool = False
+    production_mutated: bool = False
+    created_at: str
+
+
+class PaperChaosDrillRunRequest(BaseModel):
+    run_id: str = Field(pattern=r"^[A-Za-z0-9_-]{12,100}$")
+    scenarios: List[PaperChaosScenario] = Field(min_length=1, max_length=7)
+    recovery_snapshot_id: Optional[str] = Field(default=None, pattern=r"^[A-Za-z0-9_-]{12,100}$")
+
+    @model_validator(mode="after")
+    def validate_unique_chaos_scenarios(self):
+        if len(self.scenarios) != len(set(self.scenarios)):
+            raise ValueError("chaos scenarios must be unique")
+        if "restore_checksum" in self.scenarios and not self.recovery_snapshot_id:
+            raise ValueError("recovery_snapshot_id is required for restore_checksum")
+        return self
+
+
+class PaperChaosScenarioResult(BaseModel):
+    scenario: PaperChaosScenario
+    passed: bool
+    invariants: List[str]
+    simulated_rpo_events: int = 0
+    simulated_rto_steps: int = 0
+
+
+class PaperChaosDrillRunResponse(BaseModel):
+    run_id: str
+    status: Literal["PASSED", "FAILED"]
+    items: List[PaperChaosScenarioResult]
+    duplicate: bool = False
+    deterministic: bool = True
+    network_called: bool = False
+    production_mutated: bool = False
+    order_routing_enabled: bool = False
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+    created_at: str
+
+
 class PaperLedgerAuditResponse(BaseModel):
     consistent: bool
     order_count: int

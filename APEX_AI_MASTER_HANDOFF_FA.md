@@ -2187,3 +2187,15 @@ Recovery drill: deterministic / offline
 Testnet order routing: false
 Live Execution: false
 ```
+
+---
+## Addendum — Paper Alpha 8 Chaos/DR
+```text
+Version: 3.4.0-paper-alpha8
+Schema: v12
+Production chaos: false
+Staging: separate service/database blueprint
+Production mutated: false
+Order routing: false
+Live Execution: false
+```

@@ -245,3 +245,12 @@
 - deterministic offline recovery/backoff drill
 - no Place/Cancel and no Testnet/Live routing
 - PostgreSQL schema v11
+
+## ⏳ GA Paper Alpha 8 — Deterministic Chaos & Recovery
+- immutable gzip/SHA paper-ledger snapshots
+- isolated restore verification
+- seven deterministic crash/retry/lease/backoff scenarios
+- simulated event-RPO and step-RTO
+- production chaos disabled
+- separate Render staging blueprint
+- no order routing and Live disabled

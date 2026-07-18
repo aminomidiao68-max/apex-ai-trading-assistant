@@ -20,7 +20,7 @@ def _csv(value: str | None) -> list[str]:
 class Settings(BaseModel):
     app_name: str = os.getenv("APP_NAME", "Arena Smart Money AI Trader API")
     app_env: str = os.getenv("APP_ENV", "development")
-    app_version: str = os.getenv("APP_VERSION", "3.4.0-paper-alpha7")
+    app_version: str = os.getenv("APP_VERSION", "3.4.0-paper-alpha8")
     default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "UTC")
 
     # Browser CORS is disabled by default in production. Native Android clients
@@ -48,6 +48,7 @@ class Settings(BaseModel):
     ai_circuit_cooldown_seconds: int = int(os.getenv("AI_CIRCUIT_COOLDOWN_SECONDS", "120"))
 
     enable_live_execution: bool = _to_bool(os.getenv("ENABLE_LIVE_EXECUTION"), False)
+    paper_chaos_enabled: bool = _to_bool(os.getenv("PAPER_CHAOS_ENABLED"), False)
     paper_feed_worker_enabled: bool = _to_bool(os.getenv("PAPER_FEED_WORKER_ENABLED"), True)
     paper_feed_worker_sweep_seconds: float = float(
         os.getenv("PAPER_FEED_WORKER_SWEEP_SECONDS", "2")

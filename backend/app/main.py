@@ -61,6 +61,10 @@ from app.models import (
     PaperConnectorProbeRequest,
     PaperCorrelationSnapshotRequest,
     PaperCorrelationSnapshotResponse,
+    PaperChaosDrillRunRequest,
+    PaperChaosDrillRunResponse,
+    PaperRecoverySnapshotRequest,
+    PaperRecoverySnapshotResponse,
     PaperMarginEventListResponse,
     PaperPrivateTestnetReconciliationResponse,
     PaperPrivateTestnetSyncRequest,
@@ -114,6 +118,7 @@ from app.services.news_engine import mock_news
 from app.services.notification_service import NotificationService
 from app.services.orderflow_service import OrderFlowService
 from app.services.paper_correlation_service import PaperCorrelationError, PaperCorrelationService
+from app.services.paper_chaos_service import PaperChaosError, PaperChaosService
 from app.services.paper_market_feed_service import PaperFeedError, PaperMarketFeedService
 from app.services.paper_oms_service import PaperOmsError, PaperOmsService
 from app.services.paper_private_testnet_service import PaperPrivateTestnetError, PaperPrivateTestnetService
@@ -178,6 +183,7 @@ auth_service = AuthService()
 storage = StorageService()
 provider_secret_service = ProviderSecretService(storage.database)
 paper_oms_service = PaperOmsService(storage.database)
+paper_chaos_service = PaperChaosService(storage.database)
 paper_recovery_service = PaperRecoveryService(storage.database)
 paper_private_testnet_service = PaperPrivateTestnetService(
     storage.database,
@@ -1523,6 +1529,11 @@ def _raise_private_testnet_error(exc: PaperPrivateTestnetError):
     raise HTTPException(status_code=400, detail={"code": exc.code}) from exc
 
 
+def _raise_paper_chaos_error(exc: PaperChaosError):
+    status = 409 if "conflict" in exc.code else 404 if "not_found" in exc.code else 400
+    raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
+
+
 @app.get("/api/v1/paper/control", response_model=PaperExecutionControl)
 def get_paper_control(user=Depends(current_user)):
     return paper_oms_service.get_control(user.id)
@@ -1651,6 +1662,32 @@ def reconcile_paper_testnet_shadow(
 @app.get("/api/v1/paper/audit", response_model=PaperLedgerAuditResponse)
 def audit_paper_ledger(user=Depends(current_user)):
     return paper_recovery_service.audit_ledger(user.id)
+
+
+@app.post("/api/v1/paper/recovery/snapshots", response_model=PaperRecoverySnapshotResponse)
+def create_paper_recovery_snapshot(request: PaperRecoverySnapshotRequest, user=Depends(current_user)):
+    try:
+        return paper_chaos_service.create_snapshot(user.id, request.snapshot_id)
+    except PaperChaosError as exc:
+        _raise_paper_chaos_error(exc)
+
+
+@app.get("/api/v1/paper/recovery/snapshots/{snapshot_id}/verify", response_model=PaperRecoverySnapshotResponse)
+def verify_paper_recovery_snapshot(snapshot_id: str, user=Depends(current_user)):
+    try:
+        return paper_chaos_service.verify_snapshot(user.id, snapshot_id)
+    except PaperChaosError as exc:
+        _raise_paper_chaos_error(exc)
+
+
+@app.post("/api/v1/paper/chaos/run", response_model=PaperChaosDrillRunResponse)
+def run_paper_chaos_drill(request: PaperChaosDrillRunRequest, user=Depends(current_user)):
+    if not settings.paper_chaos_enabled:
+        raise HTTPException(status_code=403, detail={"code": "paper_chaos_disabled"})
+    try:
+        return paper_chaos_service.run(user.id, request)
+    except PaperChaosError as exc:
+        _raise_paper_chaos_error(exc)
 
 
 @app.post(

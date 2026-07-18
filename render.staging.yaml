@@ -1,0 +1,41 @@
+services:
+  - type: web
+    name: apex-ai-chaos-staging
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers
+    healthCheckPath: /ready
+    autoDeploy: false
+    envVars:
+      - key: APP_NAME
+        value: Apex AI Trading API Chaos Staging
+      - key: APP_ENV
+        value: staging
+      - key: APP_VERSION
+        value: 3.4.0-paper-alpha8
+      - key: DATABASE_URL
+        fromDatabase:
+          name: apex-ai-chaos-staging-postgres
+          property: connectionString
+      - key: SEED_DEMO_USER
+        value: false
+      - key: PAPER_CHAOS_ENABLED
+        value: true
+      - key: PAPER_FEED_WORKER_ENABLED
+        value: false
+      - key: AI_EXTERNAL_ENABLED
+        value: false
+      - key: ENABLE_LIVE_EXECUTION
+        value: false
+      - key: USER_SECRET_MASTER_KEY
+        sync: false
+
+databases:
+  - name: apex-ai-chaos-staging-postgres
+    databaseName: apex_ai_chaos_staging
+    user: apex_ai_chaos_staging
+    plan: free
+    postgresMajorVersion: "16"
+    ipAllowList: []
