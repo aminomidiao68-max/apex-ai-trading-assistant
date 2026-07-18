@@ -100,7 +100,7 @@ def test_public_testnet_probe_records_latency_clock_and_never_routes(monkeypatch
             return False
 
         async def get(self, url, headers=None):
-            assert url == "https://testnet.binancefuture.com/fapi/v1/time"
+            assert url == "https://demo-fapi.binance.com/fapi/v1/time"
             return Response()
 
     monkeypatch.setattr(recovery_module.httpx, "AsyncClient", Client)

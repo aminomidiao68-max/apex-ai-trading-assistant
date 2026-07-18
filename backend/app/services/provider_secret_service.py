@@ -336,7 +336,7 @@ class ProviderSecretService:
                     material.api_secret.encode(), query.encode(), hashlib.sha256
                 ).hexdigest()
                 response = await client.get(
-                    "https://testnet.binancefuture.com/fapi/v2/account",
+                    "https://demo-fapi.binance.com/fapi/v2/account",
                     params=params,
                     headers={"X-MBX-APIKEY": material.api_key},
                 )

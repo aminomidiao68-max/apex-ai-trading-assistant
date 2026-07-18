@@ -50,7 +50,7 @@ class PaperPrivateTestnetService:
                 query = urlencode(params)
                 params["signature"] = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
                 response = await client.get(
-                    "https://testnet.binancefuture.com" + path,
+                    "https://demo-fapi.binance.com" + path,
                     params=params,
                     headers={"X-MBX-APIKEY": api_key},
                 )

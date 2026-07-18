@@ -96,7 +96,7 @@ class PaperTestnetExecutionService:
         params={"symbol":request.symbol.upper(),"side":request.side.upper(),"type":"MARKET","quantity":request.quantity,"reduceOnly":str(request.reduce_only).lower(),"newClientOrderId":client_id,"timestamp":int(time.time()*1000),"recvWindow":5000}
         query=urlencode(params);params["signature"]=hmac.new(material.api_secret.encode(),query.encode(),hashlib.sha256).hexdigest()
         async with httpx.AsyncClient(timeout=15) as client:
-            response=await client.post("https://testnet.binancefuture.com/fapi/v1/order",params=params,headers={"X-MBX-APIKEY":material.api_key})
+            response=await client.post("https://demo-fapi.binance.com/fapi/v1/order",params=params,headers={"X-MBX-APIKEY":material.api_key})
         if not response.is_success: raise PaperTestnetExecutionError("testnet_provider_rejected")
         data=response.json();return str(data.get("orderId") or ""), "accepted"
 
@@ -145,7 +145,7 @@ class PaperTestnetExecutionService:
             params={"symbol":row["symbol"],"origClientOrderId":row["client_order_id"],"timestamp":int(time.time()*1000),"recvWindow":5000}
             query=urlencode(params);params["signature"]=hmac.new(material.api_secret.encode(),query.encode(),hashlib.sha256).hexdigest()
             async with httpx.AsyncClient(timeout=15) as client:
-                response=await client.delete("https://testnet.binancefuture.com/fapi/v1/order",params=params,headers={"X-MBX-APIKEY":material.api_key})
+                response=await client.delete("https://demo-fapi.binance.com/fapi/v1/order",params=params,headers={"X-MBX-APIKEY":material.api_key})
             if not response.is_success: raise PaperTestnetExecutionError("testnet_cancel_rejected")
         else:
             body={"category":"linear","symbol":row["symbol"],"orderLinkId":row["client_order_id"]};raw=json.dumps(body,separators=(",",":"));ts=str(int(time.time()*1000));window="5000";sig=hmac.new(material.api_secret.encode(),f"{ts}{material.api_key}{window}{raw}".encode(),hashlib.sha256).hexdigest()

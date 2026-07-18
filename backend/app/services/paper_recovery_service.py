@@ -19,7 +19,7 @@ from app.services.database_service import DatabaseManager
 
 
 _CONNECTORS = {
-    "binance_futures_testnet": "https://testnet.binancefuture.com/fapi/v1/time",
+    "binance_futures_testnet": "https://demo-fapi.binance.com/fapi/v1/time",
     "bybit_testnet": "https://api-testnet.bybit.com/v5/market/time",
 }
 _TERMINAL = {"filled", "canceled", "rejected", "expired"}

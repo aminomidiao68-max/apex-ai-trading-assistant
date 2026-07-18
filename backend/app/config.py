@@ -85,7 +85,7 @@ class Settings(BaseModel):
     binance_api_key: str = os.getenv("BINANCE_API_KEY", "")
     binance_api_secret: str = os.getenv("BINANCE_API_SECRET", "")
     binance_futures_base_url: str = os.getenv(
-        "BINANCE_FUTURES_BASE_URL", "https://testnet.binancefuture.com"
+        "BINANCE_FUTURES_BASE_URL", "https://demo-fapi.binance.com"
     )
 
     bybit_api_key: str = os.getenv("BYBIT_API_KEY", "")
