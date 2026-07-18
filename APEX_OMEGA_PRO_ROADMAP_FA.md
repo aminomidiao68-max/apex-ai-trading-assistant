@@ -269,3 +269,9 @@
 - persisted drift runs
 - API latency/error SLO snapshots
 - no probability or live authorization claims
+
+## ⏳ Operational Alpha 11 — Promotion Panel
+- three consecutive stable drift windows
+- within-SLO and database-readiness gates
+- persisted idempotent panel
+- never authorizes Testnet or Live

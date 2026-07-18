@@ -50,6 +50,8 @@ from app.models import (
     OandaOrderRequest,
     OperationalDriftRequest,
     OperationalDriftResponse,
+    OperationalPromotionPanelRequest,
+    OperationalPromotionPanelResponse,
     OperationalSloRequest,
     OperationalSloResponse,
     PaperExecutionControl,
@@ -629,6 +631,19 @@ def run_operational_drift(request: OperationalDriftRequest, user=Depends(current
 @app.post("/api/v1/operations/slo", response_model=OperationalSloResponse)
 def evaluate_operational_slo(request: OperationalSloRequest, user=Depends(current_user)):
     return operational_validation_service.evaluate_slo(monitoring_service.snapshot(), request)
+
+
+@app.post("/api/v1/operations/promotion-panel", response_model=OperationalPromotionPanelResponse)
+def evaluate_operational_promotion_panel(
+    request: OperationalPromotionPanelRequest,
+    user=Depends(current_user),
+):
+    try:
+        return operational_validation_service.evaluate_promotion_panel(
+            user.id, request, monitoring_service.snapshot()
+        )
+    except OperationalValidationError as exc:
+        _raise_operational_validation_error(exc)
 
 
 @app.get("/api/v1/ai/status")

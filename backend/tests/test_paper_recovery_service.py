@@ -77,7 +77,7 @@ def test_schema_checkpoint_defaults_and_user_isolation(tmp_path):
     assert all(not item.authenticated for item in first.items)
     assert all(not item.order_routing_enabled for item in first.items)
     assert all(not item.live_execution_enabled for item in first.items)
-    assert database.schema_version() == LATEST_SCHEMA_VERSION == 14
+    assert database.schema_version() == LATEST_SCHEMA_VERSION == 15
 
 
 def test_public_testnet_probe_records_latency_clock_and_never_routes(monkeypatch, tmp_path):

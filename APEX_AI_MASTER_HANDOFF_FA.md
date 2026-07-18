@@ -2220,3 +2220,12 @@ SLO: P95 latency / server error rate
 Testnet Execution: false
 Live Execution: false
 ```
+
+---
+## Addendum — Operational Alpha 11
+```text
+Version: 3.5.0-operational-alpha11
+Schema: v15
+Promotion: 3x STABLE + WITHIN_SLO + DB ready
+Testnet/Live authorization: false
+```

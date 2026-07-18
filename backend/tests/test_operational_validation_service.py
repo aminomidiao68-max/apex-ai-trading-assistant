@@ -2,7 +2,7 @@ from __future__ import annotations
 import math
 from datetime import datetime,timedelta,timezone
 import pytest
-from app.models import Candle,MarketType,OperationalDriftRequest,OperationalSloRequest,PaperCorrelationDatasetRef,QuantDatasetManifest
+from app.models import Candle,MarketType,OperationalDriftRequest,OperationalPromotionPanelRequest,OperationalSloRequest,PaperCorrelationDatasetRef,QuantDatasetManifest
 from app.services.database_service import DatabaseManager,LATEST_SCHEMA_VERSION
 from app.services.historical_data_service import HistoricalDatasetStore
 from app.services.operational_validation_service import OperationalValidationService,OperationalValidationError
@@ -20,7 +20,7 @@ def test_drift_stable_blocked_idempotent_and_non_actionable(tmp_path):
  req=OperationalDriftRequest(run_id='operational-drift-0001',baseline=PaperCorrelationDatasetRef(dataset_id='base',version='v1'),candidate=PaperCorrelationDatasetRef(dataset_id='candidate',version='v1'),minimum_observations=60)
  first=svc.run_drift(1,req);second=svc.run_drift(1,req)
  assert first.status=='STABLE';assert first.probability_claimed is False;assert first.actionable_for_live is False;assert second.duplicate is True
- assert db.schema_version()==LATEST_SCHEMA_VERSION==14
+ assert db.schema_version()==LATEST_SCHEMA_VERSION==15
 
 def test_slo_insufficient_within_and_breach():
  insufficient=OperationalValidationService.evaluate_slo({'requests_total':5,'sample_window':5,'server_errors_total':0,'latency_p95_ms':100},OperationalSloRequest(minimum_samples=20))
@@ -29,3 +29,20 @@ def test_slo_insufficient_within_and_breach():
  assert good.status=='WITHIN_SLO'
  bad=OperationalValidationService.evaluate_slo({'requests_total':100,'sample_window':100,'server_errors_total':5,'latency_p95_ms':3000},OperationalSloRequest())
  assert bad.status=='SLO_BREACH';assert set(bad.failed_gates)=={'p95_latency_slo','server_error_rate_slo'}
+
+def test_promotion_panel_requires_three_stable_and_never_authorizes_live(tmp_path):
+ db=DatabaseManager(db_path=str(tmp_path/'panel.db'));store=HistoricalDatasetStore(db);svc=OperationalValidationService(db,store)
+ with db.connection() as conn:
+  for i,status in enumerate(['STABLE','STABLE','STABLE']):
+   conn.execute("INSERT INTO operational_drift_runs (user_id,run_id,request_hash,symbol,timeframe,status,result_json,created_at) VALUES (?,?,?,?,?,?,?,?)",(1,f'run-{i}','h','BTCUSDT','1h',status,'{}',f'2026-07-{10+i:02d}T00:00:00+00:00'))
+  conn.commit()
+ req=OperationalPromotionPanelRequest(panel_id='promotion-panel-0001')
+ snapshot={'requests_total':100,'sample_window':100,'server_errors_total':0,'latency_p95_ms':100}
+ first=svc.evaluate_promotion_panel(1,req,snapshot);second=svc.evaluate_promotion_panel(1,req,snapshot)
+ assert first.status=='OPERATIONAL_CANDIDATE';assert first.consecutive_stable==3
+ assert first.testnet_authorized is False and first.live_authorized is False and first.actionable_for_live is False
+ assert second.duplicate is True
+ with db.connection() as conn:
+  conn.execute("UPDATE operational_drift_runs SET status='WATCH' WHERE run_id='run-2'");conn.commit()
+ watch=svc.evaluate_promotion_panel(1,req.model_copy(update={'panel_id':'promotion-panel-0002'}),snapshot)
+ assert watch.status=='WATCH';assert 'consecutive_stable_gate' in watch.failed_gates

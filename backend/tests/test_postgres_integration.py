@@ -35,7 +35,7 @@ def test_postgresql_migration_auth_and_user_scoped_journal_roundtrip():
     health = database.health()
     assert health["connected"] is True
     assert health["persistent"] is True
-    assert health["schema_version"] == LATEST_SCHEMA_VERSION == 14
+    assert health["schema_version"] == LATEST_SCHEMA_VERSION == 15
     assert health["migration_current"] is True
     with database.connection() as conn:
         assert conn.execute("SELECT COUNT(*) AS count FROM quant_datasets").fetchone()["count"] >= 0
@@ -55,6 +55,7 @@ def test_postgresql_migration_auth_and_user_scoped_journal_roundtrip():
         assert conn.execute("SELECT COUNT(*) AS count FROM paper_testnet_execution_controls").fetchone()["count"] >= 0
         assert conn.execute("SELECT COUNT(*) AS count FROM paper_testnet_orders").fetchone()["count"] >= 0
         assert conn.execute("SELECT COUNT(*) AS count FROM operational_drift_runs").fetchone()["count"] >= 0
+        assert conn.execute("SELECT COUNT(*) AS count FROM operational_promotion_panels").fetchone()["count"] >= 0
         control_columns = conn.execute(
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_name = 'paper_execution_controls'"

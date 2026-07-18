@@ -1893,6 +1893,31 @@ class OperationalSloResponse(BaseModel):
     evaluated_at: str
 
 
+class OperationalPromotionPanelRequest(BaseModel):
+    panel_id: str = Field(pattern=r"^[A-Za-z0-9_-]{12,100}$")
+    required_consecutive_stable: int = Field(default=3, ge=2, le=12)
+    minimum_slo_samples: int = Field(default=20, ge=1, le=100_000)
+    max_p95_latency_ms: int = Field(default=2000, ge=50, le=120_000)
+    max_server_error_rate_pct: float = Field(default=1.0, ge=0.0, le=100.0)
+
+
+class OperationalPromotionPanelResponse(BaseModel):
+    panel_id: str
+    status: Literal["BLOCKED", "WATCH", "OPERATIONAL_CANDIDATE"]
+    recent_drift_statuses: List[str]
+    consecutive_stable: int
+    required_consecutive_stable: int
+    slo_status: str
+    database_ready: bool
+    failed_gates: List[str] = Field(default_factory=list)
+    duplicate: bool = False
+    operational_candidate: bool = False
+    testnet_authorized: bool = False
+    live_authorized: bool = False
+    actionable_for_live: bool = False
+    evaluated_at: str
+
+
 class ConnectorCapability(BaseModel):
     connector: str
     market_type: str

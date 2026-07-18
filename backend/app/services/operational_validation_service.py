@@ -7,7 +7,14 @@ from bisect import bisect_right
 from datetime import datetime, timezone
 
 from app.config import settings
-from app.models import OperationalDriftRequest, OperationalDriftResponse, OperationalSloRequest, OperationalSloResponse
+from app.models import (
+    OperationalDriftRequest,
+    OperationalDriftResponse,
+    OperationalPromotionPanelRequest,
+    OperationalPromotionPanelResponse,
+    OperationalSloRequest,
+    OperationalSloResponse,
+)
 from app.services.database_service import DatabaseManager
 from app.services.historical_data_service import HistoricalDataError, HistoricalDatasetStore
 
@@ -127,3 +134,86 @@ class OperationalValidationService:
         return OperationalSloResponse(status=status, requests_total=requests, sample_window=samples, latency_p95_ms=p95,
             server_error_rate_pct=round(error_rate, 6), failed_gates=failed, actionable_for_live=False,
             live_execution_enabled=settings.enable_live_execution, evaluated_at=datetime.now(timezone.utc).isoformat())
+
+    def evaluate_promotion_panel(
+        self,
+        user_id: int,
+        request: OperationalPromotionPanelRequest,
+        monitoring_snapshot: dict,
+    ) -> OperationalPromotionPanelResponse:
+        request_hash = self._hash(request.model_dump(mode="json", exclude={"panel_id"}))
+        with self.database.connection() as conn:
+            existing = conn.execute(
+                "SELECT * FROM operational_promotion_panels WHERE user_id=? AND panel_id=?",
+                (user_id, request.panel_id),
+            ).fetchone()
+            rows = conn.execute(
+                "SELECT status FROM operational_drift_runs WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+                (user_id, request.required_consecutive_stable),
+            ).fetchall()
+        if existing:
+            if existing["request_hash"] != request_hash:
+                raise OperationalValidationError("promotion_panel_id_payload_conflict")
+            payload = json.loads(existing["result_json"])
+            payload["duplicate"] = True
+            return OperationalPromotionPanelResponse(**payload)
+        statuses = [str(row["status"]) for row in reversed(rows)]
+        consecutive = 0
+        for status in reversed(statuses):
+            if status != "STABLE":
+                break
+            consecutive += 1
+        slo = self.evaluate_slo(
+            monitoring_snapshot,
+            OperationalSloRequest(
+                minimum_samples=request.minimum_slo_samples,
+                max_p95_latency_ms=request.max_p95_latency_ms,
+                max_server_error_rate_pct=request.max_server_error_rate_pct,
+            ),
+        )
+        db_ready = bool(
+            (health := self.database.health()).get("connected")
+            and health.get("persistent")
+            and health.get("migration_current")
+        )
+        failed = []
+        if len(statuses) < request.required_consecutive_stable:
+            failed.append("insufficient_drift_windows")
+        if "BLOCKED" in statuses:
+            failed.append("blocked_drift_window")
+        if consecutive < request.required_consecutive_stable:
+            failed.append("consecutive_stable_gate")
+        if slo.status != "WITHIN_SLO":
+            failed.append("slo_gate")
+        if not db_ready:
+            failed.append("database_readiness_gate")
+        candidate = not failed
+        if candidate:
+            status = "OPERATIONAL_CANDIDATE"
+        elif statuses and "BLOCKED" not in statuses and slo.status != "SLO_BREACH" and db_ready:
+            status = "WATCH"
+        else:
+            status = "BLOCKED"
+        now = datetime.now(timezone.utc).isoformat()
+        response = OperationalPromotionPanelResponse(
+            panel_id=request.panel_id,
+            status=status,
+            recent_drift_statuses=statuses,
+            consecutive_stable=consecutive,
+            required_consecutive_stable=request.required_consecutive_stable,
+            slo_status=slo.status,
+            database_ready=db_ready,
+            failed_gates=failed,
+            operational_candidate=candidate,
+            testnet_authorized=False,
+            live_authorized=False,
+            actionable_for_live=False,
+            evaluated_at=now,
+        )
+        with self.database.connection() as conn:
+            conn.execute(
+                "INSERT INTO operational_promotion_panels (user_id,panel_id,request_hash,status,result_json,evaluated_at) VALUES (?,?,?,?,?,?)",
+                (user_id, request.panel_id, request_hash, status, response.model_dump_json(), now),
+            )
+            conn.commit()
+        return response
