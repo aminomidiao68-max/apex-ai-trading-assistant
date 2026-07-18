@@ -2199,3 +2199,13 @@ Production mutated: false
 Order routing: false
 Live Execution: false
 ```
+
+---
+## Addendum — Paper Alpha 9 Testnet Place/Cancel
+```text
+Version: 3.4.0-paper-alpha9
+Schema: v13
+Production Testnet flag: false
+Staging Testnet flag: false until credentials/gates
+Live Execution: false
+```

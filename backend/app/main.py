@@ -65,6 +65,11 @@ from app.models import (
     PaperChaosDrillRunResponse,
     PaperRecoverySnapshotRequest,
     PaperRecoverySnapshotResponse,
+    PaperTestnetExecutionControl,
+    PaperTestnetExecutionControlUpdate,
+    PaperTestnetOrder,
+    PaperTestnetOrderListResponse,
+    PaperTestnetOrderRequest,
     PaperMarginEventListResponse,
     PaperPrivateTestnetReconciliationResponse,
     PaperPrivateTestnetSyncRequest,
@@ -122,6 +127,7 @@ from app.services.paper_chaos_service import PaperChaosError, PaperChaosService
 from app.services.paper_market_feed_service import PaperFeedError, PaperMarketFeedService
 from app.services.paper_oms_service import PaperOmsError, PaperOmsService
 from app.services.paper_private_testnet_service import PaperPrivateTestnetError, PaperPrivateTestnetService
+from app.services.paper_testnet_execution_service import PaperTestnetExecutionError, PaperTestnetExecutionService
 from app.services.paper_recovery_service import PaperRecoveryError, PaperRecoveryService
 from app.services.provider_secret_service import ProviderSecretService, ProviderVaultError
 from app.services.production_guard_service import (
@@ -186,6 +192,10 @@ paper_oms_service = PaperOmsService(storage.database)
 paper_chaos_service = PaperChaosService(storage.database)
 paper_recovery_service = PaperRecoveryService(storage.database)
 paper_private_testnet_service = PaperPrivateTestnetService(
+    storage.database,
+    provider_secret_service,
+)
+paper_testnet_execution_service = PaperTestnetExecutionService(
     storage.database,
     provider_secret_service,
 )
@@ -1534,6 +1544,11 @@ def _raise_paper_chaos_error(exc: PaperChaosError):
     raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
 
 
+def _raise_testnet_execution_error(exc: PaperTestnetExecutionError):
+    status = 409 if "conflict" in exc.code else 400
+    raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
+
+
 @app.get("/api/v1/paper/control", response_model=PaperExecutionControl)
 def get_paper_control(user=Depends(current_user)):
     return paper_oms_service.get_control(user.id)
@@ -1594,6 +1609,40 @@ async def sync_paper_market_feed(
     user=Depends(current_user),
 ):
     return await paper_market_feed_service.sync_user(user.id, request)
+
+
+@app.get("/api/v1/paper/testnet/execution/control", response_model=PaperTestnetExecutionControl)
+def get_testnet_execution_control(user=Depends(current_user)):
+    return paper_testnet_execution_service.get_control(user.id)
+
+
+@app.post("/api/v1/paper/testnet/execution/control", response_model=PaperTestnetExecutionControl)
+def update_testnet_execution_control(request: PaperTestnetExecutionControlUpdate, user=Depends(current_user)):
+    try:
+        return paper_testnet_execution_service.update_control(user.id, request)
+    except PaperTestnetExecutionError as exc:
+        _raise_testnet_execution_error(exc)
+
+
+@app.post("/api/v1/paper/testnet/execution/orders", response_model=PaperTestnetOrder)
+async def place_testnet_order(request: PaperTestnetOrderRequest, user=Depends(current_user)):
+    try:
+        return await paper_testnet_execution_service.place(user.id, request)
+    except PaperTestnetExecutionError as exc:
+        _raise_testnet_execution_error(exc)
+
+
+@app.get("/api/v1/paper/testnet/execution/orders", response_model=PaperTestnetOrderListResponse)
+def list_testnet_orders(user=Depends(current_user)):
+    return paper_testnet_execution_service.list(user.id)
+
+
+@app.post("/api/v1/paper/testnet/execution/orders/{order_id}/cancel", response_model=PaperTestnetOrder)
+async def cancel_testnet_order(order_id: str, user=Depends(current_user)):
+    try:
+        return await paper_testnet_execution_service.cancel(user.id, order_id)
+    except PaperTestnetExecutionError as exc:
+        _raise_testnet_execution_error(exc)
 
 
 @app.get(

@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 12
+LATEST_SCHEMA_VERSION = 13
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -304,6 +304,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (12, "paper_chaos_recovery_snapshots", datetime.now(timezone.utc).isoformat()),
+                )
+            if 13 not in applied:
+                self._apply_schema_v13(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (13, "paper_testnet_execution_safety", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -993,6 +1003,47 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_paper_chaos_runs_created "
             "ON paper_chaos_runs(user_id, created_at DESC)"
         )
+
+    def _apply_schema_v13(self, conn: ConnectionAdapter) -> None:
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_testnet_execution_controls (
+                user_id {user_id_type} PRIMARY KEY,
+                enabled INTEGER NOT NULL,
+                kill_switch_engaged INTEGER NOT NULL,
+                max_order_notional REAL NOT NULL,
+                max_open_orders INTEGER NOT NULL,
+                allowed_symbols_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS paper_testnet_orders (
+                order_id TEXT PRIMARY KEY,
+                user_id {user_id_type} NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                request_hash TEXT NOT NULL,
+                client_order_id TEXT NOT NULL,
+                connector TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                side TEXT NOT NULL,
+                quantity REAL NOT NULL,
+                reference_price REAL NOT NULL,
+                reduce_only INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                external_order_id TEXT,
+                last_error_code TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(user_id, idempotency_key),
+                UNIQUE(user_id, client_order_id)
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_testnet_orders_user_status ON paper_testnet_orders(user_id, status, created_at DESC)")
 
     def _ensure_columns(
         self,

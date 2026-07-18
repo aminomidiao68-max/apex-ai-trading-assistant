@@ -254,3 +254,11 @@
 - production chaos disabled
 - separate Render staging blueprint
 - no order routing and Live disabled
+
+## ⏳ GA Paper Alpha 9 — Testnet Place/Cancel Safety
+- independent disabled-by-default testnet flag and kill switch
+- staging-only signed Place/Cancel
+- symbol/notional/open-order limits
+- idempotency and unknown-state fail closed
+- encrypted user-scoped credentials
+- production and live routing disabled

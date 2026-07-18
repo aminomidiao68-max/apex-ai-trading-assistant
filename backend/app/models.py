@@ -1734,6 +1734,69 @@ class PaperChaosDrillRunResponse(BaseModel):
     created_at: str
 
 
+class PaperTestnetExecutionControlUpdate(BaseModel):
+    enabled: bool = False
+    kill_switch_engaged: bool = True
+    max_order_notional: float = Field(default=100.0, gt=0.0, le=10_000.0)
+    max_open_orders: int = Field(default=2, ge=1, le=10)
+    allowed_symbols: List[str] = Field(default_factory=lambda: ["BTCUSDT"], min_length=1, max_length=20)
+    acknowledgement: Optional[str] = Field(default=None, max_length=80)
+
+    @model_validator(mode="after")
+    def validate_testnet_control(self):
+        self.allowed_symbols = sorted({item.strip().upper() for item in self.allowed_symbols if item.strip()})
+        if self.enabled and self.acknowledgement != "I_UNDERSTAND_TESTNET_ONLY":
+            raise ValueError("testnet mode requires I_UNDERSTAND_TESTNET_ONLY acknowledgement")
+        return self
+
+
+class PaperTestnetExecutionControl(BaseModel):
+    enabled: bool = False
+    kill_switch_engaged: bool = True
+    max_order_notional: float = 100.0
+    max_open_orders: int = 2
+    allowed_symbols: List[str] = Field(default_factory=lambda: ["BTCUSDT"])
+    environment: str
+    testnet_execution_flag: bool = False
+    live_execution_enabled: bool = False
+    updated_at: Optional[str] = None
+
+
+class PaperTestnetOrderRequest(BaseModel):
+    idempotency_key: str = Field(pattern=r"^[A-Za-z0-9_-]{12,100}$")
+    connector: PaperTestnetConnector
+    symbol: str = Field(pattern=r"^[A-Za-z0-9_-]{2,24}$")
+    side: Literal["buy", "sell"]
+    quantity: float = Field(gt=0.0, le=1_000_000.0)
+    reference_price: float = Field(gt=0.0)
+    reduce_only: bool = False
+
+
+class PaperTestnetOrder(BaseModel):
+    order_id: str
+    client_order_id: str
+    connector: PaperTestnetConnector
+    symbol: str
+    side: Literal["buy", "sell"]
+    quantity: float
+    reference_price: float
+    reduce_only: bool
+    status: Literal["submission_pending", "accepted", "working", "partially_filled", "filled", "cancel_pending", "canceled", "unknown", "rejected"]
+    external_order_id: Optional[str] = None
+    last_error_code: Optional[str] = None
+    idempotent_replay: bool = False
+    testnet_only: bool = True
+    live_routed: bool = False
+    created_at: str
+    updated_at: str
+
+
+class PaperTestnetOrderListResponse(BaseModel):
+    items: List[PaperTestnetOrder] = Field(default_factory=list)
+    count: int
+    live_execution_enabled: bool = False
+
+
 class PaperLedgerAuditResponse(BaseModel):
     consistent: bool
     order_count: int

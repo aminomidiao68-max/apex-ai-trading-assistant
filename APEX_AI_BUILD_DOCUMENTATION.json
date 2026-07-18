@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.4.0-paper-alpha8",
-    "status": "APEX GA Program - Deterministic Chaos and Recovery Alpha 8"
+    "current_version": "3.4.0-paper-alpha9",
+    "status": "APEX GA Program - Testnet Place Cancel Safety Alpha 9"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -1451,5 +1451,22 @@
       "live_execution_enabled": false
     },
     "staging_manifest": "render.staging.yaml"
+  },
+  "paper_alpha9": {
+    "schema_version": 13,
+    "features": [
+      "testnet_control",
+      "symbol_allowlist",
+      "notional_limit",
+      "idempotent_place",
+      "idempotent_cancel",
+      "unknown_state_kill_switch"
+    ],
+    "safety": {
+      "production_testnet_flag": false,
+      "staging_testnet_flag": false,
+      "live_execution_enabled": false,
+      "live_routed": false
+    }
   }
 }

@@ -134,7 +134,7 @@ def test_automated_panel_locks_holdout_selects_on_development_and_reuses_result(
     assert repeated.experiment_reused is True
     assert repeated.experiment_fingerprint == first.experiment_fingerprint
     assert repeated.holdout_backtest.model_dump() == first.holdout_backtest.model_dump()
-    assert database.schema_version() == LATEST_SCHEMA_VERSION == 12
+    assert database.schema_version() == LATEST_SCHEMA_VERSION == 13
 
     with database.connection() as conn:
         row = conn.execute(
