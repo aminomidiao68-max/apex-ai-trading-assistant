@@ -23,6 +23,16 @@ from app.models import Candle
 client = TestClient(main.app, raise_server_exceptions=True)
 
 
+def test_swagger_docs_are_self_hosted_without_external_cdn():
+    docs = client.get("/docs")
+    assert docs.status_code == 200
+    assert "/static/swagger-ui-bundle.js" in docs.text
+    assert "/static/swagger-ui.css" in docs.text
+    assert "cdn.jsdelivr.net" not in docs.text
+    assert client.get("/static/swagger-ui-bundle.js").status_code == 200
+    assert client.get("/static/swagger-ui.css").status_code == 200
+
+
 def _candles(count: int = 190) -> list[Candle]:
     start = datetime(2026, 7, 10, tzinfo=timezone.utc)
     items = []

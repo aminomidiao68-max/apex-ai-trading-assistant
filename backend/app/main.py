@@ -5,11 +5,14 @@ import time
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.models import (
@@ -173,7 +176,24 @@ async def lifespan(_: FastAPI):
             paper_feed_worker_task = None
 
 
-app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.app_version,
+    lifespan=lifespan,
+    docs_url=None,
+)
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+
+@app.get("/docs", include_in_schema=False)
+def self_hosted_swagger_docs():
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{settings.app_name} - API Docs",
+        swagger_js_url="/static/swagger-ui-bundle.js",
+        swagger_css_url="/static/swagger-ui.css",
+    )
 
 
 engine = SignalEngine()
