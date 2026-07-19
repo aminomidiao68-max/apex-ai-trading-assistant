@@ -105,6 +105,7 @@ from app.models import (
     RiskPlanRequest,
     SignalHistoryItem,
     SignalShadowCaptureResponse,
+    SignalShadowDiagnosticsResponse,
     SignalShadowPanelResponse,
     SignalShadowResearchPanelResponse,
     SignalShadowResolutionResponse,
@@ -1043,10 +1044,21 @@ async def get_intraday_fusion(
     return result
 
 
+def _all_fusion_frames_stale(result: dict) -> bool:
+    frames = [item for item in (result.get("frames") or []) if isinstance(item, dict)]
+    return bool(frames) and all(item.get("fresh") is False for item in frames)
+
+
 async def run_signal_shadow_cycle() -> dict:
     if signal_shadow_cycle_lock.locked():
-        return {"status": "skipped_locked", "captured": 0, "resolved": 0, "errors": 0}
-    captured = resolved = errors = 0
+        return {
+            "status": "skipped_locked",
+            "captured": 0,
+            "resolved": 0,
+            "skipped_all_frames_stale": 0,
+            "errors": 0,
+        }
+    captured = resolved = skipped_all_frames_stale = errors = 0
     interval = max(300, settings.signal_shadow_interval_seconds)
     async with signal_shadow_cycle_lock:
         for context in signal_shadow_service.pending_contexts(0, limit=50):
@@ -1071,11 +1083,38 @@ async def run_signal_shadow_cycle() -> dict:
             try:
                 market = _auto_market(symbol, None)
                 result = await get_intraday_fusion(symbol=symbol, market=market, user=None)
+                # A fully stale frame set represents a closed/unavailable market,
+                # not a new OOS observation. Do not inflate NO_TRADE counts.
+                if _all_fusion_frames_stale(result):
+                    skipped_all_frames_stale += 1
+                    continue
                 signal_shadow_service.capture(0, result)
                 captured += 1
             except Exception:
                 errors += 1
-    return {"status": "completed", "captured": captured, "resolved": resolved, "errors": errors}
+    panel = signal_shadow_service.panel(0, minimum_required_resolved=30)
+    research = signal_shadow_service.research_panel(
+        0,
+        minimum_terminal_outcomes=30,
+        minimum_activated_outcomes=30,
+        breakdown_minimum_activated=10,
+    )
+    return {
+        "status": "completed",
+        "captured": captured,
+        "resolved": resolved,
+        "skipped_all_frames_stale": skipped_all_frames_stale,
+        "errors": errors,
+        "total_observations": panel.total_observations,
+        "candidate_count": panel.candidate_count,
+        "pending_outcomes": panel.pending_outcomes,
+        "resolved_outcomes": panel.resolved_outcomes,
+        "activated_resolved_outcomes": panel.activated_resolved_outcomes,
+        "research_status": research.status,
+        "research_ready": research.research_ready,
+        "precision_claimed": research.precision_claimed,
+        "actionable_for_live": False,
+    }
 
 
 async def signal_shadow_worker_loop() -> None:
@@ -1143,6 +1182,22 @@ def get_intraday_fusion_shadow_panel(
     user=Depends(current_user),
 ):
     return signal_shadow_service.panel(user.id, minimum_required_resolved)
+
+
+@app.get(
+    "/api/v1/analysis/intraday-fusion/shadow/system-diagnostics",
+    response_model=SignalShadowDiagnosticsResponse,
+)
+def get_system_intraday_fusion_shadow_diagnostics(user=Depends(current_user)):
+    return signal_shadow_service.diagnostics(0)
+
+
+@app.get(
+    "/api/v1/analysis/intraday-fusion/shadow/diagnostics",
+    response_model=SignalShadowDiagnosticsResponse,
+)
+def get_intraday_fusion_shadow_diagnostics(user=Depends(current_user)):
+    return signal_shadow_service.diagnostics(user.id)
 
 
 @app.get(

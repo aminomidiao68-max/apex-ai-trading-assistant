@@ -24,10 +24,34 @@ jobs:
       - name: Wake staging and run one idempotent cycle
         env:
           SHADOW_CRON_TOKEN: ${{ secrets.SHADOW_CRON_TOKEN }}
+          SHADOW_RESPONSE_FILE: ${{ runner.temp }}/shadow-cycle.json
         run: |
           curl --fail --silent --show-error \
             --retry 4 --retry-all-errors --retry-delay 10 \
             --connect-timeout 30 --max-time 600 \
             -X POST \
             -H "X-Shadow-Cron-Token: $SHADOW_CRON_TOKEN" \
+            --output "$SHADOW_RESPONSE_FILE" \
             https://apex-ai-chaos-staging.onrender.com/internal/signal-shadow-cycle
+          python - <<'PY'
+          import json
+          import os
+
+          allowed = (
+              "status", "captured", "resolved", "skipped_all_frames_stale", "errors",
+              "total_observations", "candidate_count", "pending_outcomes",
+              "resolved_outcomes", "activated_resolved_outcomes", "research_status",
+              "research_ready", "precision_claimed", "actionable_for_live",
+          )
+          with open(os.environ["SHADOW_RESPONSE_FILE"], encoding="utf-8") as handle:
+              payload = json.load(handle)
+          if payload.get("status") not in {"completed", "skipped_locked"}:
+              raise SystemExit("unexpected shadow cycle status")
+          clean = {key: payload.get(key) for key in allowed if key in payload}
+          print(json.dumps(clean, separators=(",", ":"), sort_keys=True))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("## Signal Shadow Cycle\n\n")
+              for key, value in clean.items():
+                  summary.write(f"- `{key}`: `{value}`\n")
+          PY
+          rm -f "$SHADOW_RESPONSE_FILE"

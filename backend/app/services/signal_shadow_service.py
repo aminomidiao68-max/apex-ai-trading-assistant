@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from collections import Counter
 from datetime import datetime, timezone
 from statistics import median
 from uuid import uuid4
@@ -10,6 +11,7 @@ from uuid import uuid4
 from app.config import settings
 from app.models import (
     SignalShadowCaptureResponse,
+    SignalShadowDiagnosticsResponse,
     SignalShadowPanelResponse,
     SignalShadowResearchBreakdown,
     SignalShadowResearchPanelResponse,
@@ -384,6 +386,67 @@ class SignalShadowService:
             status="RESEARCH_READY" if research_ready else "INSUFFICIENT_EVIDENCE",
             # This summary panel never claims precision; only the stricter
             # research panel may expose an empirical estimate after all gates.
+            precision_claimed=False,
+            actionable_for_live=False,
+            live_execution_enabled=settings.enable_live_execution,
+        )
+
+    def diagnostics(self, user_id: int) -> SignalShadowDiagnosticsResponse:
+        """Aggregate immutable evidence without changing any decision threshold."""
+        with self.database.connection() as conn:
+            fetched = conn.execute(
+                "SELECT fusion_status,outcome_status,evidence_sha256,evidence_json "
+                "FROM signal_shadow_observations WHERE user_id=? ORDER BY captured_at",
+                (user_id,),
+            ).fetchall()
+        rows = [dict(row) for row in fetched]
+        statuses = Counter(str(row.get("fusion_status") or "UNKNOWN") for row in rows)
+        outcomes = Counter(str(row.get("outcome_status") or "UNKNOWN") for row in rows)
+        gates: Counter[str] = Counter()
+        regimes: Counter[str] = Counter()
+        analyzed = integrity_failures = stale_observations = all_stale_observations = 0
+        for row in rows:
+            raw = str(row.get("evidence_json") or "")
+            if hashlib.sha256(raw.encode()).hexdigest() != row.get("evidence_sha256"):
+                integrity_failures += 1
+                continue
+            try:
+                evidence = json.loads(raw)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                integrity_failures += 1
+                continue
+            if not isinstance(evidence, dict):
+                integrity_failures += 1
+                continue
+            analyzed += 1
+            failed_gates = evidence.get("failed_gates") or []
+            gates.update(str(item) for item in failed_gates if item)
+            frames = [item for item in (evidence.get("frames") or []) if isinstance(item, dict)]
+            freshness = [item.get("fresh") for item in frames if "fresh" in item]
+            if freshness and any(value is False for value in freshness):
+                stale_observations += 1
+            if frames and len(freshness) == len(frames) and all(value is False for value in freshness):
+                all_stale_observations += 1
+            for frame in frames:
+                if str(frame.get("timeframe")) in {"1h", "4h"}:
+                    regimes[str(frame.get("regime") or "unknown")] += 1
+        leading = [
+            name
+            for name, _ in sorted(gates.items(), key=lambda item: (-item[1], item[0]))[:10]
+        ]
+        return SignalShadowDiagnosticsResponse(
+            total_observations=len(rows),
+            observations_analyzed=analyzed,
+            evidence_integrity_failures=integrity_failures,
+            status_counts=dict(sorted(statuses.items())),
+            outcome_counts=dict(sorted(outcomes.items())),
+            failed_gate_counts=dict(sorted(gates.items())),
+            context_regime_counts=dict(sorted(regimes.items())),
+            stale_frame_observations=stale_observations,
+            all_frames_stale_observations=all_stale_observations,
+            leading_failed_gates=leading,
+            diagnostic_only=True,
+            threshold_relaxation_allowed=False,
             precision_claimed=False,
             actionable_for_live=False,
             live_execution_enabled=settings.enable_live_execution,

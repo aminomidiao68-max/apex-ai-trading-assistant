@@ -60,6 +60,62 @@ def test_intraday_causal_filter_excludes_open_and_stale_bars():
     stale = main._frame_freshness(completed, "5m", now_timestamp=2200)
     assert fresh["fresh"] is True
     assert stale["fresh"] is False
+    assert main._all_fusion_frames_stale(
+        {"frames": [{"fresh": False} for _ in range(4)]}
+    ) is True
+    assert main._all_fusion_frames_stale(
+        {"frames": [{"fresh": False}, {"fresh": True}]}
+    ) is False
+    assert main._all_fusion_frames_stale({"frames": []}) is False
+
+
+def test_system_shadow_cycle_skips_fully_stale_market_without_persisting(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(main.settings, "signal_shadow_symbols", ["XAUUSD"])
+    monkeypatch.setattr(main.settings, "signal_shadow_interval_seconds", 900)
+    monkeypatch.setattr(main.signal_shadow_service, "pending_contexts", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(main.signal_shadow_service, "should_capture", lambda *_args: True)
+
+    async def stale_fusion(**_kwargs):
+        return {
+            "symbol": "XAUUSD",
+            "status": "NO_TRADE",
+            "frames": [{"fresh": False} for _ in range(4)],
+        }
+
+    monkeypatch.setattr(main, "get_intraday_fusion", stale_fusion)
+    monkeypatch.setattr(
+        main.signal_shadow_service,
+        "capture",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("stale result persisted")),
+    )
+    monkeypatch.setattr(
+        main.signal_shadow_service,
+        "panel",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            total_observations=132,
+            candidate_count=0,
+            pending_outcomes=0,
+            resolved_outcomes=0,
+            activated_resolved_outcomes=0,
+        ),
+    )
+    monkeypatch.setattr(
+        main.signal_shadow_service,
+        "research_panel",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            status="INSUFFICIENT_EVIDENCE",
+            research_ready=False,
+            precision_claimed=False,
+        ),
+    )
+    result = asyncio.run(main.run_signal_shadow_cycle())
+    assert result["captured"] == 0
+    assert result["skipped_all_frames_stale"] == 1
+    assert result["total_observations"] == 132
+    assert result["research_ready"] is False
+    assert result["actionable_for_live"] is False
 
 
 def test_swagger_docs_are_self_hosted_without_external_cdn():

@@ -1972,6 +1972,24 @@ class SignalShadowPanelResponse(BaseModel):
     live_execution_enabled: bool = False
 
 
+class SignalShadowDiagnosticsResponse(BaseModel):
+    total_observations: int
+    observations_analyzed: int
+    evidence_integrity_failures: int
+    status_counts: dict[str, int] = Field(default_factory=dict)
+    outcome_counts: dict[str, int] = Field(default_factory=dict)
+    failed_gate_counts: dict[str, int] = Field(default_factory=dict)
+    context_regime_counts: dict[str, int] = Field(default_factory=dict)
+    stale_frame_observations: int
+    all_frames_stale_observations: int
+    leading_failed_gates: List[str] = Field(default_factory=list)
+    diagnostic_only: bool = True
+    threshold_relaxation_allowed: bool = False
+    precision_claimed: bool = False
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+
+
 class SignalShadowResearchBreakdown(BaseModel):
     group_type: Literal["market", "symbol", "context_regime"]
     group_value: str

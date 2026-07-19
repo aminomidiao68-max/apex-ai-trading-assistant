@@ -2312,3 +2312,17 @@ Probability calibration claim: false
 Threshold relaxation: false
 Order routing / Live authorization: false
 ```
+
+---
+## Addendum — Signal Shadow Alpha 20
+```text
+Version: 3.7.0-signal-alpha20
+Schema: v18 (unchanged)
+GitHub schedule: verified automatic success
+Closed/stale market handling: fully stale frame sets are not persisted
+Diagnostics: gate/regime/staleness/evidence-integrity counts
+Cron observability: sanitized cycle + GitHub Job Summary
+Research completion: automatic but requires real future market outcomes
+Threshold relaxation: false
+Order routing / Live authorization: false
+```

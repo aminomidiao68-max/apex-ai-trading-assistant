@@ -334,3 +334,12 @@
 - حداقل ۳۰ Outcome نهایی و ۳۰ Outcome فعال پیش از نمایش Precision تجربی
 - Wilson 95% CI، معیارهای R و تفکیک Market/Symbol/Regime
 - عدم کاهش Threshold، عدم Calibration claim و عدم مجوز Live
+
+## ✅ Signal Shadow Alpha 20 — Research Autopilot Diagnostics
+- تأیید عملی دو اجرای خودکار GitHub Schedule
+- حذف Observation سیستمی در صورت stale بودن تمام Frameها
+- Gate/Regime/Integrity diagnostics روی شواهد immutable
+- خروجی Sanitized چرخه شامل Candidate/Pending/Resolved/Research status
+- GitHub Job Summary بدون نمایش Secret
+- ادامه خودکار Future-only Resolver تا عبور حداقل ۳۰ Outcome فعال
+- بدون تغییر Threshold، بدون Routing و بدون مجوز Live

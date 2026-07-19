@@ -89,6 +89,49 @@ def test_shadow_capture_never_routes_and_panel_is_insufficient(tmp_path):
     assert db.schema_version() == LATEST_SCHEMA_VERSION == 18
 
 
+def test_shadow_diagnostics_verify_evidence_and_report_stale_blockers(tmp_path):
+    db = DatabaseManager(db_path=str(tmp_path / "diagnostics.db"))
+    service = SignalShadowService(db)
+    captured = service.capture(
+        19,
+        {
+            "symbol": "XAUUSD",
+            "market": "forex",
+            "status": "NO_TRADE",
+            "side": "flat",
+            "failed_gates": ["frame_freshness", "context_regime"],
+            "frames": [
+                {"timeframe": "5m", "fresh": False, "regime": "choppy"},
+                {"timeframe": "15m", "fresh": False, "regime": "choppy"},
+                {"timeframe": "1h", "fresh": False, "regime": "choppy"},
+                {"timeframe": "4h", "fresh": False, "regime": "balanced"},
+            ],
+        },
+    )
+    diagnostics = service.diagnostics(19)
+    assert diagnostics.total_observations == 1
+    assert diagnostics.observations_analyzed == 1
+    assert diagnostics.evidence_integrity_failures == 0
+    assert diagnostics.status_counts == {"NO_TRADE": 1}
+    assert diagnostics.failed_gate_counts["frame_freshness"] == 1
+    assert diagnostics.context_regime_counts == {"balanced": 1, "choppy": 1}
+    assert diagnostics.stale_frame_observations == 1
+    assert diagnostics.all_frames_stale_observations == 1
+    assert diagnostics.leading_failed_gates == ["context_regime", "frame_freshness"]
+    assert diagnostics.threshold_relaxation_allowed is False
+    assert diagnostics.actionable_for_live is False
+
+    with db.connection() as conn:
+        conn.execute(
+            "UPDATE signal_shadow_observations SET evidence_json=? WHERE observation_id=?",
+            ("{}", captured.observation_id),
+        )
+        conn.commit()
+    failed = service.diagnostics(19)
+    assert failed.evidence_integrity_failures == 1
+    assert failed.observations_analyzed == 0
+
+
 def test_active_candidate_has_terminal_horizon_expiry(tmp_path):
     db = DatabaseManager(db_path=str(tmp_path / "active-expiry.db"))
     service = SignalShadowService(db)
