@@ -105,6 +105,7 @@ from app.models import (
     SignalHistoryItem,
     SignalShadowCaptureResponse,
     SignalShadowPanelResponse,
+    SignalShadowResolutionResponse,
     SignalRequest,
     SignalResponse,
     StrategyPanelValidationRequest,
@@ -159,7 +160,7 @@ from app.services.risk_engine import build_risk_plan
 from app.services.session_engine import evaluate_session
 from app.services.setup_state_engine import SetupStateEngine
 from app.services.signal_engine import SignalEngine
-from app.services.signal_shadow_service import SignalShadowService
+from app.services.signal_shadow_service import SignalShadowError, SignalShadowService
 from app.services.strict_decision_engine import apply_strict_decision
 from app.services.storage_service import StorageService
 from app.services.stored_research_service import StoredResearchError, StoredResearchService
@@ -1029,6 +1030,22 @@ async def capture_intraday_fusion_shadow(
 ):
     result = await get_intraday_fusion(symbol=symbol, market=market, user=user)
     return signal_shadow_service.capture(user.id, result)
+
+
+@app.post("/api/v1/analysis/intraday-fusion/shadow/{observation_id}/resolve", response_model=SignalShadowResolutionResponse)
+async def resolve_intraday_fusion_shadow(observation_id: str, user=Depends(current_user)):
+    try:
+        context = signal_shadow_service.resolution_context(user.id, observation_id)
+        if not context.get("resolution_timeframe"):
+            raise SignalShadowError("shadow_resolution_timeframe_missing")
+        raw = await fetch_live_candles(
+            symbol=context["symbol"], market=context["market"],
+            timeframe=context["resolution_timeframe"],
+        )
+        return signal_shadow_service.resolve(user.id, observation_id, _norm_candles(raw))
+    except SignalShadowError as exc:
+        status = 404 if "not_found" in exc.code else 400
+        raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
 
 
 @app.get("/api/v1/analysis/intraday-fusion/shadow/panel", response_model=SignalShadowPanelResponse)

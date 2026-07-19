@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 16
+LATEST_SCHEMA_VERSION = 17
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -344,6 +344,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (16, "signal_shadow_observations", datetime.now(timezone.utc).isoformat()),
+                )
+            if 17 not in applied:
+                self._apply_schema_v17(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (17, "signal_shadow_future_outcomes", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -1140,6 +1150,20 @@ class DatabaseManager:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_shadow_user_captured "
             "ON signal_shadow_observations(user_id, captured_at DESC)"
+        )
+
+    def _apply_schema_v17(self, conn: ConnectionAdapter) -> None:
+        self._ensure_columns(
+            conn,
+            "signal_shadow_observations",
+            [
+                "resolution_timeframe TEXT",
+                "entry_price REAL",
+                "stop_price REAL",
+                "target_price REAL",
+                "max_resolution_bars INTEGER NOT NULL DEFAULT 12",
+                "activated INTEGER NOT NULL DEFAULT 0",
+            ],
         )
 
     def _ensure_columns(

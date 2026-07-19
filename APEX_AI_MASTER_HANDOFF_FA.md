@@ -2269,3 +2269,13 @@ Minimum resolved OOS outcomes: 30
 Order routing: false
 Precision claim: false
 ```
+
+---
+## Addendum — Signal Shadow Alpha 16
+```text
+Version: 3.7.0-signal-alpha16
+Schema: v17
+Outcome source: future server candles only
+Intrabar: stop-first
+Live authorization: false
+```

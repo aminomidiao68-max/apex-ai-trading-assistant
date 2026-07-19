@@ -304,3 +304,10 @@
 - pending outcomes only for actionable candidates
 - minimum 30 resolved outcomes before research evaluation
 - no routing or precision claim
+
+## ⏳ Signal Shadow Alpha 16 — Future Outcome Resolver
+- future-only candles
+- real entry activation
+- conservative stop-first outcomes
+- minimum 30 resolved observations
+- no manual labels or routing

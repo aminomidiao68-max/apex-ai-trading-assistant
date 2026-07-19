@@ -53,7 +53,7 @@ def test_authenticated_private_snapshot_is_read_only_verified_and_persisted(monk
     with database.connection() as conn:
         row = conn.execute("SELECT COUNT(*) AS count FROM paper_private_testnet_reconciliations WHERE user_id = ?", (1,)).fetchone()
     assert int(row["count"]) == 1
-    assert database.schema_version() == LATEST_SCHEMA_VERSION == 16
+    assert database.schema_version() == LATEST_SCHEMA_VERSION == 17
 
 
 def test_private_reconcile_fails_closed_without_credentials(tmp_path):

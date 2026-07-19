@@ -82,6 +82,10 @@ class IntradayFusionService:
             key=lambda item: float(item.get("confluence") or 0),
             default=None,
         )
+        best_trigger_tf = next(
+            (tf for tf in ("5m", "15m") if by_tf.get(tf) is best_trigger),
+            None,
+        )
         return {
             "symbol": symbol.upper(),
             "market": market,
@@ -104,6 +108,8 @@ class IntradayFusionService:
             "orderflow_evidence": flow_evidence,
             "invalidation": best_trigger.get("invalidation") if best_trigger else None,
             "levels": best_trigger.get("levels") if best_trigger and status == "ACTIONABLE_CANDIDATE" else None,
+            "resolution_timeframe": best_trigger_tf if status == "ACTIONABLE_CANDIDATE" else None,
+            "max_resolution_bars": 12,
             "probability_is_calibrated": False,
             "probability_label": "model_estimate_not_calibrated",
             "ai_override_allowed": False,

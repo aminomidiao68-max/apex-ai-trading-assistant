@@ -1926,9 +1926,30 @@ class SignalShadowCaptureResponse(BaseModel):
     side: str
     evidence_sha256: str
     outcome_status: Literal["PENDING", "NOT_APPLICABLE"]
+    resolution_timeframe: Optional[str] = None
+    entry_price: Optional[float] = None
+    stop_price: Optional[float] = None
+    target_price: Optional[float] = None
     order_routed: bool = False
     actionable_for_live: bool = False
     captured_at: str
+
+
+class SignalShadowResolutionResponse(BaseModel):
+    observation_id: str
+    outcome_status: Literal["PENDING", "WIN", "LOSS", "EXPIRED_NO_ENTRY"]
+    activated: bool
+    bars_observed: int
+    realized_rr: Optional[float] = None
+    intrabar_policy: Literal["stop_first"] = "stop_first"
+    future_only_enforced: bool = True
+    order_routed: bool = False
+    actionable_for_live: bool = False
+    resolved_at: Optional[str] = None
+
+
+class SignalShadowBatchRequest(BaseModel):
+    symbols: List[str] = Field(default_factory=lambda: ["BTCUSDT", "XAUUSD"], min_length=1, max_length=10)
 
 
 class SignalShadowPanelResponse(BaseModel):
