@@ -1918,6 +1918,33 @@ class OperationalPromotionPanelResponse(BaseModel):
     evaluated_at: str
 
 
+class SignalShadowCaptureResponse(BaseModel):
+    observation_id: str
+    symbol: str
+    market: str
+    fusion_status: str
+    side: str
+    evidence_sha256: str
+    outcome_status: Literal["PENDING", "NOT_APPLICABLE"]
+    order_routed: bool = False
+    actionable_for_live: bool = False
+    captured_at: str
+
+
+class SignalShadowPanelResponse(BaseModel):
+    total_observations: int
+    no_trade_count: int
+    watch_count: int
+    candidate_count: int
+    pending_outcomes: int
+    resolved_outcomes: int
+    minimum_required_resolved: int
+    status: Literal["INSUFFICIENT_EVIDENCE", "RESEARCH_READY"]
+    precision_claimed: bool = False
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+
+
 class ConnectorCapability(BaseModel):
     connector: str
     market_type: str

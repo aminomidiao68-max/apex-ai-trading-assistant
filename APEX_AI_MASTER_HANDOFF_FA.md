@@ -2259,3 +2259,13 @@ Policy: precision-first / default NO_TRADE
 AI override: false
 Live authorization: false
 ```
+
+---
+## Addendum — Signal Shadow Alpha 15
+```text
+Version: 3.7.0-signal-alpha15
+Schema: v16
+Minimum resolved OOS outcomes: 30
+Order routing: false
+Precision claim: false
+```

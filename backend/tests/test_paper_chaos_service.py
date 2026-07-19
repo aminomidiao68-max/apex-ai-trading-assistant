@@ -18,7 +18,7 @@ def test_recovery_snapshot_is_immutable_compressed_and_verified(tmp_path):
     assert second.duplicate is True
     assert verified.restore_verified is True
     assert verified.production_mutated is False
-    assert db.schema_version() == LATEST_SCHEMA_VERSION == 15
+    assert db.schema_version() == LATEST_SCHEMA_VERSION == 16
 
 
 def test_chaos_drill_all_scenarios_is_deterministic_idempotent_and_route_free(tmp_path):

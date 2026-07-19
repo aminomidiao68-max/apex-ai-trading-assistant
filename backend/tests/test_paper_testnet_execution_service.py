@@ -35,7 +35,7 @@ def test_testnet_execution_is_disabled_and_killed_by_default(tmp_path):
     assert control.testnet_execution_flag is False and control.live_execution_enabled is False
     with pytest.raises(PaperTestnetExecutionError,match="environment_gate"):
         service.update_control(1,PaperTestnetExecutionControlUpdate(enabled=True,kill_switch_engaged=False,acknowledgement="I_UNDERSTAND_TESTNET_ONLY"))
-    assert service.database.schema_version()==LATEST_SCHEMA_VERSION==15
+    assert service.database.schema_version()==LATEST_SCHEMA_VERSION==16
 
 
 def test_idempotent_testnet_place_is_allowlisted_and_never_live(monkeypatch,tmp_path):

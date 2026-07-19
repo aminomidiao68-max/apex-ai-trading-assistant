@@ -97,7 +97,7 @@ def test_stored_dataset_correlation_is_aligned_shrunk_idempotent_and_user_scoped
     assert second.duplicate is True
     with pytest.raises(PaperCorrelationError, match="historical_dataset_not_found"):
         service.build_snapshot(2, _request("correlation-snapshot-user2"))
-    assert database.schema_version() == LATEST_SCHEMA_VERSION == 15
+    assert database.schema_version() == LATEST_SCHEMA_VERSION == 16
 
 
 def test_correlation_snapshot_requires_aligned_evidence(tmp_path):

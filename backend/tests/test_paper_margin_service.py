@@ -81,7 +81,7 @@ def test_margin_control_defaults_leverage_and_utilization_gates(tmp_path):
                 leverage=1,
             ),
         )
-    assert service.database.schema_version() == LATEST_SCHEMA_VERSION == 15
+    assert service.database.schema_version() == LATEST_SCHEMA_VERSION == 16
 
 
 def test_isolated_margin_metrics_and_configuration_conflict(tmp_path):

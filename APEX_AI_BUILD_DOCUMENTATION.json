@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.7.0-signal-alpha14",
-    "status": "Signal Intelligence Alpha 14 - Precision Intraday Fusion"
+    "current_version": "3.7.0-signal-alpha15",
+    "status": "Signal Shadow Alpha 15 - OOS Observation Collection"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -1547,6 +1547,17 @@
     "safety": {
       "probability_calibrated": false,
       "ai_override_allowed": false,
+      "actionable_for_live": false,
+      "live_execution_enabled": false
+    }
+  },
+  "signal_alpha15": {
+    "schema_version": 16,
+    "minimum_resolved_outcomes": 30,
+    "evidence_sha256": true,
+    "safety": {
+      "order_routed": false,
+      "precision_claimed": false,
       "actionable_for_live": false,
       "live_execution_enabled": false
     }

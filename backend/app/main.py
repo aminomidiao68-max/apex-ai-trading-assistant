@@ -103,6 +103,8 @@ from app.models import (
     RiskPlan,
     RiskPlanRequest,
     SignalHistoryItem,
+    SignalShadowCaptureResponse,
+    SignalShadowPanelResponse,
     SignalRequest,
     SignalResponse,
     StrategyPanelValidationRequest,
@@ -157,6 +159,7 @@ from app.services.risk_engine import build_risk_plan
 from app.services.session_engine import evaluate_session
 from app.services.setup_state_engine import SetupStateEngine
 from app.services.signal_engine import SignalEngine
+from app.services.signal_shadow_service import SignalShadowService
 from app.services.strict_decision_engine import apply_strict_decision
 from app.services.storage_service import StorageService
 from app.services.stored_research_service import StoredResearchError, StoredResearchService
@@ -255,6 +258,7 @@ notification_service = NotificationService(storage)
 readiness_service = ReadinessService(storage.database)
 orderflow_service = OrderFlowService(ttl_seconds=20)
 intraday_fusion_service = IntradayFusionService()
+signal_shadow_service = SignalShadowService(storage.database)
 setup_state_engine = SetupStateEngine()
 
 
@@ -1015,6 +1019,24 @@ async def get_intraday_fusion(
     result["frame_source"] = "server_generated_completed_candles"
     result["user_scoped_ai_used"] = False
     return result
+
+
+@app.post("/api/v1/analysis/intraday-fusion/shadow", response_model=SignalShadowCaptureResponse)
+async def capture_intraday_fusion_shadow(
+    symbol: str = Query("BTCUSDT", min_length=2, max_length=24),
+    market: str = Query("", pattern="^(|crypto|forex)$"),
+    user=Depends(current_user),
+):
+    result = await get_intraday_fusion(symbol=symbol, market=market, user=user)
+    return signal_shadow_service.capture(user.id, result)
+
+
+@app.get("/api/v1/analysis/intraday-fusion/shadow/panel", response_model=SignalShadowPanelResponse)
+def get_intraday_fusion_shadow_panel(
+    minimum_required_resolved: int = Query(default=30, ge=10, le=1000),
+    user=Depends(current_user),
+):
+    return signal_shadow_service.panel(user.id, minimum_required_resolved)
 
 
 def _norm_candles(raw):

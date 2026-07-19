@@ -297,3 +297,10 @@
 - real crypto flow requirement
 - honest Forex proxy
 - no AI override or live authorization
+
+## ⏳ Signal Shadow Alpha 15 — OOS Collection
+- persistent user-scoped fusion observations
+- canonical evidence SHA-256
+- pending outcomes only for actionable candidates
+- minimum 30 resolved outcomes before research evaluation
+- no routing or precision claim
