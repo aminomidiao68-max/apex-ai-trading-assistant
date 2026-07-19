@@ -39,6 +39,11 @@ class IntradayFusionService:
             tf: float(((by_tf.get(tf, {}).get("data_quality") or {}).get("score") or 0))
             for tf in _REQUIRED
         }
+        freshness = {
+            tf: dict(by_tf.get(tf, {}).get("frame_freshness") or {})
+            for tf in _REQUIRED
+        }
+        freshness_ok = all(item.get("fresh") is True for item in freshness.values())
         opposing_trigger = consensus_side != "flat" and any(
             side not in {"flat", consensus_side} for side in trigger_sides
         )
@@ -63,6 +68,7 @@ class IntradayFusionService:
             _gate("trigger_matches_context", bool(actionable_sides) and all(side == consensus_side for side in actionable_sides), actionable_sides, consensus_side),
             _gate("no_opposing_trigger", not opposing_trigger, trigger_sides, "no opposing 5m/15m evidence"),
             _gate("frame_data_quality", all(qualities[tf] >= 78 for tf in _REQUIRED), qualities, ">=78 each frame"),
+            _gate("frame_freshness", freshness_ok, freshness, "latest completed bar within 2.5x timeframe"),
             _gate("context_regime", regime_ok, context_regimes, "not choppy/volatile/insufficient"),
             _gate("crypto_real_flow", crypto_flow_ok, flow_evidence, "real aligned flow for actionable crypto triggers"),
             _gate("explicit_invalidation", invalidation_ok, invalidations, "every actionable trigger has invalidation"),
@@ -86,6 +92,22 @@ class IntradayFusionService:
             (tf for tf in ("5m", "15m") if by_tf.get(tf) is best_trigger),
             None,
         )
+        resolution_levels = None
+        if best_trigger and status == "ACTIONABLE_CANDIDATE":
+            raw_levels = dict(best_trigger.get("levels") or {})
+            # SMC keeps TP1 at report level while `levels.tp` is a farther
+            # target. Preserve TP1 explicitly for a deterministic resolver.
+            first_target = best_trigger.get("tp1")
+            if first_target is None:
+                first_target = raw_levels.get("tp1")
+            if first_target is None:
+                first_target = raw_levels.get("tp")
+            resolution_levels = {
+                "entry": raw_levels.get("entry"),
+                "sl": raw_levels.get("sl"),
+                "tp1": first_target,
+                "tp": raw_levels.get("tp"),
+            }
         return {
             "symbol": symbol.upper(),
             "market": market,
@@ -101,13 +123,15 @@ class IntradayFusionService:
                     "side": _side(by_tf.get(tf, {})),
                     "status": (by_tf.get(tf, {}).get("decision") or {}).get("status", "missing"),
                     "quality": qualities[tf],
+                    "fresh": freshness[tf].get("fresh") is True,
+                    "age_seconds": freshness[tf].get("age_seconds"),
                     "regime": (by_tf.get(tf, {}).get("market_regime") or {}).get("name"),
                 }
                 for tf in _REQUIRED
             ],
             "orderflow_evidence": flow_evidence,
             "invalidation": best_trigger.get("invalidation") if best_trigger else None,
-            "levels": best_trigger.get("levels") if best_trigger and status == "ACTIONABLE_CANDIDATE" else None,
+            "levels": resolution_levels,
             "resolution_timeframe": best_trigger_tf if status == "ACTIONABLE_CANDIDATE" else None,
             "max_resolution_bars": 12,
             "probability_is_calibrated": False,

@@ -49,7 +49,7 @@ def test_provider_secret_is_encrypted_user_scoped_and_never_read_back(tmp_path):
     assert raw_secret not in row[2]
     serialized = service.list_status(1).model_dump_json()
     assert raw_secret not in serialized
-    assert database.schema_version() == LATEST_SCHEMA_VERSION == 17
+    assert database.schema_version() == LATEST_SCHEMA_VERSION == 18
 
     service.delete(1, "groq")
     assert service.get_material(1, "groq") is None

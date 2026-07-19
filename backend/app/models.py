@@ -1937,12 +1937,16 @@ class SignalShadowCaptureResponse(BaseModel):
 
 class SignalShadowResolutionResponse(BaseModel):
     observation_id: str
-    outcome_status: Literal["PENDING", "WIN", "LOSS", "EXPIRED_NO_ENTRY"]
+    outcome_status: Literal["PENDING", "WIN", "LOSS", "EXPIRED_NO_ENTRY", "EXPIRED_ACTIVE"]
     activated: bool
     bars_observed: int
     realized_rr: Optional[float] = None
+    resolution_reason: Optional[str] = None
+    resolution_close_price: Optional[float] = None
+    resolution_policy: str = "future_only_stop_first_horizon_v2"
     intrabar_policy: Literal["stop_first"] = "stop_first"
     future_only_enforced: bool = True
+    completed_candles_only: bool = True
     order_routed: bool = False
     actionable_for_live: bool = False
     resolved_at: Optional[str] = None
@@ -1959,9 +1963,66 @@ class SignalShadowPanelResponse(BaseModel):
     candidate_count: int
     pending_outcomes: int
     resolved_outcomes: int
+    activated_resolved_outcomes: int = 0
     minimum_required_resolved: int
+    minimum_required_activated: int = 30
     status: Literal["INSUFFICIENT_EVIDENCE", "RESEARCH_READY"]
     precision_claimed: bool = False
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+
+
+class SignalShadowResearchBreakdown(BaseModel):
+    group_type: Literal["market", "symbol", "context_regime"]
+    group_value: str
+    terminal_outcomes: int
+    activated_outcomes: int
+    wins: int
+    losses: int
+    expired_active: int
+    expired_no_entry: int
+    minimum_required_activated: int
+    sample_eligible: bool = False
+    target_hit_rate_pct: Optional[float] = None
+    wilson_95_lower_pct: Optional[float] = None
+    wilson_95_upper_pct: Optional[float] = None
+    average_realized_rr: Optional[float] = None
+
+
+class SignalShadowResearchPanelResponse(BaseModel):
+    status: Literal["INSUFFICIENT_EVIDENCE", "INTEGRITY_FAILED", "RESEARCH_READY"]
+    total_candidates: int
+    terminal_outcomes: int
+    activated_terminal_outcomes: int
+    pending_outcomes: int
+    wins: int
+    losses: int
+    expired_active: int
+    expired_no_entry: int
+    minimum_required_terminal_outcomes: int
+    minimum_required_activated_outcomes: int
+    evidence_integrity_checked: int
+    evidence_integrity_failures: int
+    metric_completeness_failures: int
+    evidence_dataset_sha256: str
+    observed_from: Optional[str] = None
+    observed_to: Optional[str] = None
+    target_hit_rate_pct: Optional[float] = None
+    wilson_95_lower_pct: Optional[float] = None
+    wilson_95_upper_pct: Optional[float] = None
+    average_realized_rr: Optional[float] = None
+    median_realized_rr: Optional[float] = None
+    cumulative_realized_rr: Optional[float] = None
+    max_drawdown_rr: Optional[float] = None
+    breakdown_minimum_activated: int
+    breakdowns: List[SignalShadowResearchBreakdown] = Field(default_factory=list)
+    metric_label: str = "empirical_shadow_target_hit_rate_not_probability"
+    outcome_policy: str = "future_only_completed_candles_stop_first"
+    selection_policy: str = "fixed_panel_precision_first_no_threshold_relaxation"
+    probability_is_calibrated: bool = False
+    precision_claimed: bool = False
+    research_ready: bool = False
+    selection_bias_warning: str = "shadow_observations_are_not_proof_of_future_performance"
     actionable_for_live: bool = False
     live_execution_enabled: bool = False
 

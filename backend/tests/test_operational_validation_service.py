@@ -20,7 +20,7 @@ def test_drift_stable_blocked_idempotent_and_non_actionable(tmp_path):
  req=OperationalDriftRequest(run_id='operational-drift-0001',baseline=PaperCorrelationDatasetRef(dataset_id='base',version='v1'),candidate=PaperCorrelationDatasetRef(dataset_id='candidate',version='v1'),minimum_observations=60)
  first=svc.run_drift(1,req);second=svc.run_drift(1,req)
  assert first.status=='STABLE';assert first.probability_claimed is False;assert first.actionable_for_live is False;assert second.duplicate is True
- assert db.schema_version()==LATEST_SCHEMA_VERSION==17
+ assert db.schema_version()==LATEST_SCHEMA_VERSION == 18
 
 def test_slo_insufficient_within_and_breach():
  insufficient=OperationalValidationService.evaluate_slo({'requests_total':5,'sample_window':5,'server_errors_total':0,'latency_p95_ms':100},OperationalSloRequest(minimum_samples=20))

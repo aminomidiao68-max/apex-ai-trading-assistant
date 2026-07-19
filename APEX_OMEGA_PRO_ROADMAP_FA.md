@@ -318,8 +318,19 @@
 - automatic pending outcome resolution
 - production worker disabled
 
-## ⏳ Signal Shadow Alpha 18 — Scheduled Wake
+## ✅ Signal Shadow Alpha 18 — Scheduled Wake
 - GitHub schedule wakes free Staging every 30 minutes
 - secret-token protected hidden endpoint
 - worker/cron concurrency lock
 - production disabled
+
+## ✅ Signal Research Alpha 19 — Causal Outcome Integrity
+- حذف کامل کندل درحال‌تشکیل از Fusion و Outcome labeling
+- Hard Gate تازگی هر چهار Frame برای جلوگیری از Candidate روی Feed کهنه
+- پشتیبانی صریح از قرارداد واقعی Target با `levels.tp` و `levels.tp1`
+- پایان قطعی Candidate فعال با `EXPIRED_ACTIVE` در انتهای افق
+- Schema v18 برای bars/reason/close/policy حل Outcome
+- کنترل SHA-256 شواهد پیش از محاسبه هر معیار
+- حداقل ۳۰ Outcome نهایی و ۳۰ Outcome فعال پیش از نمایش Precision تجربی
+- Wilson 95% CI، معیارهای R و تفکیک Market/Symbol/Regime
+- عدم کاهش Threshold، عدم Calibration claim و عدم مجوز Live

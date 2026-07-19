@@ -254,7 +254,7 @@ def test_reconciliation_detects_database_inconsistency(tmp_path):
     assert result.consistent is False
     assert result.filled_quantity_matches is False
     assert "filled_quantity_mismatch" in result.issues
-    assert service.database.schema_version() == LATEST_SCHEMA_VERSION == 17
+    assert service.database.schema_version() == LATEST_SCHEMA_VERSION == 18
 
 
 def test_portfolio_netting_realized_unrealized_and_fees(tmp_path):

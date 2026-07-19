@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 17
+LATEST_SCHEMA_VERSION = 18
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -354,6 +354,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (17, "signal_shadow_future_outcomes", datetime.now(timezone.utc).isoformat()),
+                )
+            if 18 not in applied:
+                self._apply_schema_v18(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (18, "signal_shadow_causal_research_integrity", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -1164,6 +1174,22 @@ class DatabaseManager:
                 "max_resolution_bars INTEGER NOT NULL DEFAULT 12",
                 "activated INTEGER NOT NULL DEFAULT 0",
             ],
+        )
+
+    def _apply_schema_v18(self, conn: ConnectionAdapter) -> None:
+        self._ensure_columns(
+            conn,
+            "signal_shadow_observations",
+            [
+                "bars_observed INTEGER NOT NULL DEFAULT 0",
+                "resolution_reason TEXT",
+                "resolution_close_price REAL",
+                "resolution_policy TEXT NOT NULL DEFAULT 'future_only_stop_first_v1'",
+            ],
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shadow_user_outcome "
+            "ON signal_shadow_observations(user_id, outcome_status, captured_at)"
         )
 
     def _ensure_columns(

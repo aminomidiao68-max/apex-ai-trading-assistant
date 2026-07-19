@@ -10,8 +10,10 @@ def frame(tf, side, status, real=True, pressure=None, quality=90, regime="trendi
             "bias": "bullish" if side == "long" else "bearish" if side == "short" else "neutral",
             "confluence": 80,
             "invalidation": 99 if side == "long" else 101 if side == "short" else None,
-            "levels": {"entry": 100, "sl": 99, "tp1": 102},
+            "levels": {"entry": 100, "sl": 99, "tp": 103},
+            "tp1": 102,
             "data_quality": {"score": quality},
+            "frame_freshness": {"fresh": True, "age_seconds": 30},
             "market_regime": {"name": regime},
             "decision": {
                 "side": side,
@@ -38,6 +40,8 @@ def test_precision_fusion_requires_all_causal_gates():
     assert result["action_label"] == "LONG"
     assert result["side"] == "long"
     assert not result["failed_gates"]
+    assert result["levels"]["tp1"] == 102
+    assert result["levels"]["tp"] == 103
     assert result["probability_is_calibrated"] is False
     assert result["ai_override_allowed"] is False
     assert result["actionable_for_live"] is False
@@ -55,6 +59,21 @@ def test_context_or_trigger_conflict_forces_no_trade_or_watch():
     assert result["status"] == "NO_TRADE"
     assert result["action_label"] == "NO_TRADE"
     assert "context_consensus" in result["failed_gates"]
+    assert result["levels"] is None
+
+
+def test_stale_frame_blocks_candidate_without_relaxing_other_gates():
+    service = IntradayFusionService()
+    frames = [
+        frame("5m", "long", "actionable"),
+        frame("15m", "long", "watch"),
+        frame("1h", "long", "actionable"),
+        frame("4h", "long", "actionable"),
+    ]
+    frames[0]["report"]["frame_freshness"] = {"fresh": False, "age_seconds": 3600}
+    result = service.fuse("BTCUSDT", "crypto", frames)
+    assert result["status"] != "ACTIONABLE_CANDIDATE"
+    assert "frame_freshness" in result["failed_gates"]
     assert result["levels"] is None
 
 

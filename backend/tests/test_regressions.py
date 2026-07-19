@@ -49,6 +49,19 @@ def test_internal_shadow_cron_is_staging_only_and_token_protected(monkeypatch):
     ).status_code == 404
 
 
+def test_intraday_causal_filter_excludes_open_and_stale_bars():
+    candles = [
+        {"t": 1000, "o": 100, "h": 101, "l": 99, "c": 100, "v": 1},
+        {"t": 1300, "o": 100, "h": 101, "l": 99, "c": 100, "v": 1},
+    ]
+    completed = main._completed_candles(candles, "5m", now_timestamp=1350)
+    assert [item["t"] for item in completed] == [1000]
+    fresh = main._frame_freshness(completed, "5m", now_timestamp=1350)
+    stale = main._frame_freshness(completed, "5m", now_timestamp=2200)
+    assert fresh["fresh"] is True
+    assert stale["fresh"] is False
+
+
 def test_swagger_docs_are_self_hosted_without_external_cdn():
     docs = client.get("/docs")
     assert docs.status_code == 200

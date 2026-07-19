@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.7.0-signal-alpha18",
-    "status": "Signal Shadow Alpha 18 - Scheduled Wake Collector"
+    "current_version": "3.7.0-signal-alpha19",
+    "status": "Signal Research Alpha 19 - Causal Outcome Integrity"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -1602,6 +1602,41 @@
       "production_enabled": false,
       "order_routed": false,
       "precision_claimed": false,
+      "live_execution_enabled": false
+    }
+  },
+  "signal_alpha19": {
+    "schema_version": 18,
+    "completed_candles_only": true,
+    "frame_freshness_hard_gate": "latest_close_age_lte_2.5x_timeframe",
+    "target_contract_aliases": [
+      "tp",
+      "tp1"
+    ],
+    "terminal_outcomes": [
+      "WIN",
+      "LOSS",
+      "EXPIRED_NO_ENTRY",
+      "EXPIRED_ACTIVE"
+    ],
+    "research_gates": {
+      "minimum_terminal_outcomes": 30,
+      "minimum_activated_outcomes": 30,
+      "evidence_integrity_failures": 0,
+      "metric_completeness_failures": 0
+    },
+    "statistics": [
+      "empirical_target_hit_rate",
+      "wilson_95_interval",
+      "average_median_cumulative_r",
+      "max_drawdown_r",
+      "market_symbol_regime_breakdowns"
+    ],
+    "safety": {
+      "probability_calibrated": false,
+      "threshold_relaxation": false,
+      "order_routed": false,
+      "actionable_for_live": false,
       "live_execution_enabled": false
     }
   }

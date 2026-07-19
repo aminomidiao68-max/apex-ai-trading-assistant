@@ -106,6 +106,7 @@ from app.models import (
     SignalHistoryItem,
     SignalShadowCaptureResponse,
     SignalShadowPanelResponse,
+    SignalShadowResearchPanelResponse,
     SignalShadowResolutionResponse,
     SignalRequest,
     SignalResponse,
@@ -1009,7 +1010,10 @@ async def get_intraday_fusion(
         )
     except Exception as exc:
         raise HTTPException(status_code=503, detail={"code": "fusion_market_data_unavailable"}) from exc
-    items_by_tf = {tf: _norm_candles(raw[-260:]) for tf, raw in zip(timeframes, raw_frames)}
+    items_by_tf = {
+        tf: _completed_candles(_norm_candles(raw[-260:]), tf)[-260:]
+        for tf, raw in zip(timeframes, raw_frames)
+    }
     if any(len(items_by_tf[tf]) < 50 for tf in timeframes):
         raise HTTPException(status_code=422, detail={"code": "fusion_insufficient_frame_data"})
     initial = {tf: analyze(items_by_tf[tf], symbol=symbol, timeframe=tf) for tf in timeframes}
@@ -1020,6 +1024,7 @@ async def get_intraday_fusion(
         htf_bias = initial[htf].get("bias") if htf else initial[tf].get("bias")
         report = analyze(items_by_tf[tf], symbol=symbol, timeframe=tf, htf_bias=htf_bias)
         report["market"] = market_eff
+        report["frame_freshness"] = _frame_freshness(items_by_tf[tf], tf)
         flow = await enrich_orderflow(report, symbol, market_eff, items_by_tf[tf])
         report = apply_strict_decision(
             report,
@@ -1033,6 +1038,7 @@ async def get_intraday_fusion(
         reports.append({"timeframe": tf, "report": report})
     result = intraday_fusion_service.fuse(symbol, market_eff, reports)
     result["frame_source"] = "server_generated_completed_candles"
+    result["completed_candle_enforced"] = True
     result["user_scoped_ai_used"] = False
     return result
 
@@ -1139,6 +1145,42 @@ def get_intraday_fusion_shadow_panel(
     return signal_shadow_service.panel(user.id, minimum_required_resolved)
 
 
+@app.get(
+    "/api/v1/analysis/intraday-fusion/shadow/system-research-panel",
+    response_model=SignalShadowResearchPanelResponse,
+)
+def get_system_intraday_fusion_shadow_research_panel(
+    minimum_terminal_outcomes: int = Query(default=30, ge=30, le=1000),
+    minimum_activated_outcomes: int = Query(default=30, ge=30, le=1000),
+    breakdown_minimum_activated: int = Query(default=10, ge=10, le=1000),
+    user=Depends(current_user),
+):
+    return signal_shadow_service.research_panel(
+        0,
+        minimum_terminal_outcomes=minimum_terminal_outcomes,
+        minimum_activated_outcomes=minimum_activated_outcomes,
+        breakdown_minimum_activated=breakdown_minimum_activated,
+    )
+
+
+@app.get(
+    "/api/v1/analysis/intraday-fusion/shadow/research-panel",
+    response_model=SignalShadowResearchPanelResponse,
+)
+def get_intraday_fusion_shadow_research_panel(
+    minimum_terminal_outcomes: int = Query(default=30, ge=30, le=1000),
+    minimum_activated_outcomes: int = Query(default=30, ge=30, le=1000),
+    breakdown_minimum_activated: int = Query(default=10, ge=10, le=1000),
+    user=Depends(current_user),
+):
+    return signal_shadow_service.research_panel(
+        user.id,
+        minimum_terminal_outcomes=minimum_terminal_outcomes,
+        minimum_activated_outcomes=minimum_activated_outcomes,
+        breakdown_minimum_activated=breakdown_minimum_activated,
+    )
+
+
 def _norm_candles(raw):
     items = []
     for c in raw:
@@ -1160,6 +1202,69 @@ def _norm_candles(raw):
         try: items.append({"t":float(t),"o":float(o),"h":float(h),"l":float(l),"c":float(cl),"v":float(v)})
         except Exception: continue
     return items
+
+
+def _completed_candles(items: list[dict], timeframe: str, now_timestamp: float | None = None):
+    """Drop malformed, duplicate and still-open bars before causal analysis."""
+    seconds = {
+        "1m": 60,
+        "3m": 3 * 60,
+        "5m": 5 * 60,
+        "15m": 15 * 60,
+        "30m": 30 * 60,
+        "1h": 60 * 60,
+        "2h": 2 * 60 * 60,
+        "4h": 4 * 60 * 60,
+        "1d": 24 * 60 * 60,
+    }.get(_canonical_timeframe(timeframe))
+    if not seconds:
+        return []
+    cutoff = float(now_timestamp if now_timestamp is not None else time.time())
+    unique = {}
+    for item in items:
+        try:
+            timestamp = float(item["t"])
+            open_price = float(item["o"])
+            high = float(item["h"])
+            low = float(item["l"])
+            close = float(item["c"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if timestamp + seconds > cutoff:
+            continue
+        if timestamp <= 0 or min(open_price, high, low, close) <= 0:
+            continue
+        if low > high or not (low <= open_price <= high and low <= close <= high):
+            continue
+        unique[timestamp] = dict(item)
+    return [unique[key] for key in sorted(unique)]
+
+
+def _frame_freshness(items: list[dict], timeframe: str, now_timestamp: float | None = None):
+    """Fail closed when the latest completed bar is too old for its frame."""
+    seconds = {
+        "1m": 60,
+        "3m": 3 * 60,
+        "5m": 5 * 60,
+        "15m": 15 * 60,
+        "30m": 30 * 60,
+        "1h": 60 * 60,
+        "2h": 2 * 60 * 60,
+        "4h": 4 * 60 * 60,
+        "1d": 24 * 60 * 60,
+    }.get(_canonical_timeframe(timeframe))
+    if not seconds or not items:
+        return {"fresh": False, "age_seconds": None, "maximum_age_seconds": None}
+    cutoff = float(now_timestamp if now_timestamp is not None else time.time())
+    latest_close = float(items[-1]["t"]) + seconds
+    age = max(0.0, cutoff - latest_close)
+    maximum_age = seconds * 2.5
+    return {
+        "fresh": age <= maximum_age,
+        "age_seconds": round(age, 3),
+        "maximum_age_seconds": round(maximum_age, 3),
+    }
+
 
 def _resample_candles(raw, target_timeframe: str):
     seconds = {

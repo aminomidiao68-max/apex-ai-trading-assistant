@@ -2297,3 +2297,18 @@ Schedule: every 30 minutes
 Endpoint: hidden / token protected / staging only
 Production routing/live: false
 ```
+
+---
+## Addendum — Signal Research Alpha 19
+```text
+Version: 3.7.0-signal-alpha19
+Schema: v18
+Labels: future-only completed candles / stop-first / terminal horizon
+Freshness: all 5m/15m/1h/4h latest closes <= 2.5x timeframe age
+Research gate: >=30 terminal AND >=30 activated outcomes
+Statistics: empirical target-hit rate + Wilson 95% CI + realized R
+Integrity: canonical evidence SHA-256 must pass
+Probability calibration claim: false
+Threshold relaxation: false
+Order routing / Live authorization: false
+```
