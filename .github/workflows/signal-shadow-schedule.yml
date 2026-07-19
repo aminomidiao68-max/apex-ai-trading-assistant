@@ -1,7 +1,11 @@
 name: Scheduled Signal Shadow Collector
+run-name: Shadow collector (${{ github.event_name }})
 on:
   schedule:
-    - cron: "7,37 * * * *"
+    # Separate entries are easier to audit than a comma-list and avoid the
+    # highest-load start-of-hour window where GitHub may delay/drop schedules.
+    - cron: "23 * * * *"
+    - cron: "53 * * * *"
   workflow_dispatch:
 permissions:
   contents: read
