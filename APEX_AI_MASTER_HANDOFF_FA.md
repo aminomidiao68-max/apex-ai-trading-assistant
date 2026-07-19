@@ -2288,3 +2288,12 @@ Staging worker: true / 900s
 Production worker: false
 Routing/Live: false
 ```
+
+---
+## Addendum — Signal Shadow Alpha 18
+```text
+Version: 3.7.0-signal-alpha18
+Schedule: every 30 minutes
+Endpoint: hidden / token protected / staging only
+Production routing/live: false
+```

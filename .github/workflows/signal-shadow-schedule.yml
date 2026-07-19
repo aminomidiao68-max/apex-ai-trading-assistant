@@ -1,0 +1,29 @@
+name: Scheduled Signal Shadow Collector
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: signal-shadow-staging
+  cancel-in-progress: false
+jobs:
+  collect-and-resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Require staging cron token
+        env:
+          SHADOW_CRON_TOKEN: ${{ secrets.SHADOW_CRON_TOKEN }}
+        run: test -n "$SHADOW_CRON_TOKEN"
+      - name: Wake staging and run one idempotent cycle
+        env:
+          SHADOW_CRON_TOKEN: ${{ secrets.SHADOW_CRON_TOKEN }}
+        run: |
+          curl --fail --silent --show-error \
+            --retry 4 --retry-all-errors --retry-delay 10 \
+            --connect-timeout 30 --max-time 600 \
+            -X POST \
+            -H "X-Shadow-Cron-Token: $SHADOW_CRON_TOKEN" \
+            https://apex-ai-chaos-staging.onrender.com/internal/signal-shadow-cycle

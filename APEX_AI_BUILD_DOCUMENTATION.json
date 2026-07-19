@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.7.0-signal-alpha17",
-    "status": "Signal Shadow Alpha 17 - Automated Collection"
+    "current_version": "3.7.0-signal-alpha18",
+    "status": "Signal Shadow Alpha 18 - Scheduled Wake Collector"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -1587,6 +1587,19 @@
     "automatic_future_resolution": true,
     "minimum_resolved": 30,
     "safety": {
+      "order_routed": false,
+      "precision_claimed": false,
+      "live_execution_enabled": false
+    }
+  },
+  "signal_alpha18": {
+    "schedule_minutes": 30,
+    "staging_only": true,
+    "endpoint_in_openapi": false,
+    "constant_time_token_compare": true,
+    "concurrency_lock": true,
+    "safety": {
+      "production_enabled": false,
       "order_routed": false,
       "precision_claimed": false,
       "live_execution_enabled": false

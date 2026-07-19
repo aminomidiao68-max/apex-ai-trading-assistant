@@ -317,3 +317,9 @@
 - duplicate suppression
 - automatic pending outcome resolution
 - production worker disabled
+
+## ⏳ Signal Shadow Alpha 18 — Scheduled Wake
+- GitHub schedule wakes free Staging every 30 minutes
+- secret-token protected hidden endpoint
+- worker/cron concurrency lock
+- production disabled

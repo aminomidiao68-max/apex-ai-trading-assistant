@@ -23,6 +23,32 @@ from app.models import Candle
 client = TestClient(main.app, raise_server_exceptions=True)
 
 
+def test_internal_shadow_cron_is_staging_only_and_token_protected(monkeypatch):
+    monkeypatch.setattr(main.settings, "app_env", "staging")
+    monkeypatch.setattr(main.settings, "signal_shadow_cron_token", "fixture-shadow-cron-token")
+
+    async def fake_cycle():
+        return {"status": "completed", "captured": 2, "resolved": 1, "errors": 0}
+
+    monkeypatch.setattr(main, "run_signal_shadow_cycle", fake_cycle)
+    assert client.post("/internal/signal-shadow-cycle").status_code == 401
+    assert client.post(
+        "/internal/signal-shadow-cycle",
+        headers={"X-Shadow-Cron-Token": "wrong-token"},
+    ).status_code == 401
+    response = client.post(
+        "/internal/signal-shadow-cycle",
+        headers={"X-Shadow-Cron-Token": "fixture-shadow-cron-token"},
+    )
+    assert response.status_code == 200
+    assert response.json()["captured"] == 2
+    monkeypatch.setattr(main.settings, "app_env", "production")
+    assert client.post(
+        "/internal/signal-shadow-cycle",
+        headers={"X-Shadow-Cron-Token": "fixture-shadow-cron-token"},
+    ).status_code == 404
+
+
 def test_swagger_docs_are_self_hosted_without_external_cdn():
     docs = client.get("/docs")
     assert docs.status_code == 200

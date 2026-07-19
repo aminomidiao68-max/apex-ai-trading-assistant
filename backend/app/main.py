@@ -3,11 +3,12 @@ from __future__ import annotations
 import os
 import time
 import asyncio
+import hmac
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import JSONResponse
@@ -246,6 +247,7 @@ paper_testnet_execution_service = PaperTestnetExecutionService(
 paper_market_feed_service = PaperMarketFeedService(storage.database, paper_oms_service)
 paper_feed_worker_task: asyncio.Task | None = None
 signal_shadow_worker_task: asyncio.Task | None = None
+signal_shadow_cycle_lock = asyncio.Lock()
 historical_data_service = HistoricalDataService(storage.database)
 paper_correlation_service = PaperCorrelationService(
     storage.database,
@@ -1035,37 +1037,64 @@ async def get_intraday_fusion(
     return result
 
 
+async def run_signal_shadow_cycle() -> dict:
+    if signal_shadow_cycle_lock.locked():
+        return {"status": "skipped_locked", "captured": 0, "resolved": 0, "errors": 0}
+    captured = resolved = errors = 0
+    interval = max(300, settings.signal_shadow_interval_seconds)
+    async with signal_shadow_cycle_lock:
+        for context in signal_shadow_service.pending_contexts(0, limit=50):
+            try:
+                if not context.get("resolution_timeframe"):
+                    continue
+                raw = await fetch_live_candles(
+                    symbol=context["symbol"], market=context["market"],
+                    timeframe=context["resolution_timeframe"],
+                )
+                outcome = signal_shadow_service.resolve(
+                    0, context["observation_id"], _norm_candles(raw)
+                )
+                if outcome.outcome_status != "PENDING":
+                    resolved += 1
+            except Exception:
+                errors += 1
+        for raw_symbol in settings.signal_shadow_symbols:
+            symbol = raw_symbol.upper()
+            if not signal_shadow_service.should_capture(0, symbol, interval):
+                continue
+            try:
+                market = _auto_market(symbol, None)
+                result = await get_intraday_fusion(symbol=symbol, market=market, user=None)
+                signal_shadow_service.capture(0, result)
+                captured += 1
+            except Exception:
+                errors += 1
+    return {"status": "completed", "captured": captured, "resolved": resolved, "errors": errors}
+
+
 async def signal_shadow_worker_loop() -> None:
     await asyncio.sleep(20)
     interval = max(300, settings.signal_shadow_interval_seconds)
     while True:
         try:
-            for context in signal_shadow_service.pending_contexts(0, limit=50):
-                try:
-                    if not context.get("resolution_timeframe"):
-                        continue
-                    raw = await fetch_live_candles(
-                        symbol=context["symbol"], market=context["market"],
-                        timeframe=context["resolution_timeframe"],
-                    )
-                    signal_shadow_service.resolve(0, context["observation_id"], _norm_candles(raw))
-                except Exception:
-                    continue
-            for symbol in settings.signal_shadow_symbols:
-                symbol = symbol.upper()
-                if not signal_shadow_service.should_capture(0, symbol, interval):
-                    continue
-                try:
-                    market = _auto_market(symbol, None)
-                    result = await get_intraday_fusion(symbol=symbol, market=market, user=None)
-                    signal_shadow_service.capture(0, result)
-                except Exception:
-                    continue
+            await run_signal_shadow_cycle()
         except asyncio.CancelledError:
             raise
         except Exception:
             pass
         await asyncio.sleep(interval)
+
+
+@app.post("/internal/signal-shadow-cycle", include_in_schema=False)
+async def trigger_signal_shadow_cycle(
+    x_shadow_cron_token: str | None = Header(default=None, alias="X-Shadow-Cron-Token"),
+):
+    expected = settings.signal_shadow_cron_token
+    if settings.app_env != "staging" or not expected:
+        raise HTTPException(status_code=404, detail={"code": "not_found"})
+    if not x_shadow_cron_token or not hmac.compare_digest(x_shadow_cron_token, expected):
+        raise HTTPException(status_code=401, detail={"code": "invalid_shadow_cron_token"})
+    return await run_signal_shadow_cycle()
 
 
 @app.post("/api/v1/analysis/intraday-fusion/shadow", response_model=SignalShadowCaptureResponse)
