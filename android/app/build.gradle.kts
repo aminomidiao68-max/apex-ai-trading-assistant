@@ -24,8 +24,8 @@ android {
         applicationId = "com.arena.smartmoney"
         minSdk = 26
         targetSdk = 35
-        versionCode = 84
-        versionName = "3.6.0-release-alpha12"
+        versionCode = 85
+        versionName = "3.6.0-release-alpha13"
 
         buildConfigField("String", "API_BASE_URL", "\"$debugApiBaseUrl\"")
         buildConfigField("String", "WS_BASE_URL", "\"$debugWsBaseUrl\"")
@@ -106,6 +106,26 @@ android {
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
 }
+
+// Never emit an accidentally unsigned artifact from a release task.
+tasks.matching { it.name in setOf("bundleRelease", "assembleRelease", "packageRelease") }
+    .configureEach {
+        doFirst {
+            val releaseSigning = android.signingConfigs.getByName("release")
+            require(releaseSigning.storeFile?.isFile == true) {
+                "Release signing keystore is required; unsigned release output is forbidden"
+            }
+            require(!releaseSigning.storePassword.isNullOrBlank()) {
+                "Release signing store password is required"
+            }
+            require(!releaseSigning.keyAlias.isNullOrBlank()) {
+                "Release signing key alias is required"
+            }
+            require(!releaseSigning.keyPassword.isNullOrBlank()) {
+                "Release signing key password is required"
+            }
+        }
+    }
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.09.03")

@@ -2239,3 +2239,13 @@ SBOM: Python + Android CycloneDX
 APK: debug / production_release_signed=false
 Testnet/Live execution: false
 ```
+
+---
+## Addendum — Release Alpha 13
+```text
+Version: 3.6.0-release-alpha13
+Target: Google Play AAB
+Signing workflow: manual / environment-approved
+Signed AAB available: false until owner provisions Upload Key
+Live/Testnet: false
+```

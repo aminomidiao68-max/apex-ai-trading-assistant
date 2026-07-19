@@ -36,6 +36,8 @@ def main() -> int:
     parser.add_argument("--apk", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--version", default=os.getenv("APP_VERSION", "3.0.0-rc1"))
+    parser.add_argument("--artifact-type", default="debug_apk")
+    parser.add_argument("--production-release-signed", action="store_true")
     args = parser.parse_args()
 
     apk = Path(args.apk).resolve()
@@ -51,8 +53,8 @@ def main() -> int:
             "name": apk.name,
             "size_bytes": apk.stat().st_size,
             "sha256": sha256_file(apk),
-            "type": "debug_apk",
-            "production_release_signed": False,
+            "type": args.artifact_type,
+            "production_release_signed": bool(args.production_release_signed),
         },
         "safety": {
             "live_execution_expected": False,

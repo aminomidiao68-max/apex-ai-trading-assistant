@@ -283,3 +283,10 @@
 - canonical OpenAPI fingerprint
 - honest debug APK provenance
 - no production signing claim
+
+## ⏳ Release Alpha 13 — Play App Signing Gate
+- manual approved signed-AAB workflow
+- temporary upload-keystore materialization
+- release unit/lint/bundle and strict signature verify
+- fail closed without secrets
+- no signed artifact claim before key provisioning
