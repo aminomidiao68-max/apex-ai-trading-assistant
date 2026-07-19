@@ -127,6 +127,7 @@ from app.services.ctrader_connector import CTraderConnector
 from app.services.deflated_performance_service import deflated_performance_service
 from app.services.execution_engine import ExecutionEngine
 from app.services.historical_data_service import HistoricalDataError, HistoricalDataService
+from app.services.intraday_fusion_service import IntradayFusionService
 from app.services.market_data_service import MarketDataService
 from app.services.news_engine import mock_news
 from app.services.notification_service import NotificationService
@@ -253,6 +254,7 @@ automated_panel_service = AutomatedPanelResearchService(
 notification_service = NotificationService(storage)
 readiness_service = ReadinessService(storage.database)
 orderflow_service = OrderFlowService(ttl_seconds=20)
+intraday_fusion_service = IntradayFusionService()
 setup_state_engine = SetupStateEngine()
 
 
@@ -966,6 +968,53 @@ async def get_smc_analysis(
             candles=items[-160:],
             count=len(items),
         )
+
+
+
+@app.get("/api/v1/analysis/intraday-fusion")
+async def get_intraday_fusion(
+    symbol: str = Query("BTCUSDT", min_length=2, max_length=24),
+    market: str = Query("", pattern="^(|crypto|forex)$"),
+    user=Depends(optional_current_user),
+):
+    """Precision-first causal fusion of completed 5m/15m/1h/4h evidence."""
+    from app.services.smc_engine import analyze
+
+    symbol = symbol.upper()
+    market_eff = _auto_market(symbol, market or None)
+    timeframes = ("5m", "15m", "1h", "4h")
+    try:
+        raw_frames = await asyncio.gather(
+            *(fetch_live_candles(symbol=symbol, market=market_eff, timeframe=tf) for tf in timeframes)
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail={"code": "fusion_market_data_unavailable"}) from exc
+    items_by_tf = {tf: _norm_candles(raw[-260:]) for tf, raw in zip(timeframes, raw_frames)}
+    if any(len(items_by_tf[tf]) < 50 for tf in timeframes):
+        raise HTTPException(status_code=422, detail={"code": "fusion_insufficient_frame_data"})
+    initial = {tf: analyze(items_by_tf[tf], symbol=symbol, timeframe=tf) for tf in timeframes}
+    higher = {"5m": "15m", "15m": "1h", "1h": "4h", "4h": None}
+    reports = []
+    for tf in timeframes:
+        htf = higher[tf]
+        htf_bias = initial[htf].get("bias") if htf else initial[tf].get("bias")
+        report = analyze(items_by_tf[tf], symbol=symbol, timeframe=tf, htf_bias=htf_bias)
+        report["market"] = market_eff
+        flow = await enrich_orderflow(report, symbol, market_eff, items_by_tf[tf])
+        report = apply_strict_decision(
+            report,
+            items_by_tf[tf],
+            market=market_eff,
+            timeframe=tf,
+            orderflow_source=str(flow.get("source") or "unknown"),
+            orderflow_confidence=float(flow.get("confidence") or 0),
+            orderflow_snapshot=flow,
+        )
+        reports.append({"timeframe": tf, "report": report})
+    result = intraday_fusion_service.fuse(symbol, market_eff, reports)
+    result["frame_source"] = "server_generated_completed_candles"
+    result["user_scoped_ai_used"] = False
+    return result
 
 
 def _norm_candles(raw):

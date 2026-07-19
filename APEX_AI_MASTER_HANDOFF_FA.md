@@ -2249,3 +2249,13 @@ Signing workflow: manual / environment-approved
 Signed AAB available: false until owner provisions Upload Key
 Live/Testnet: false
 ```
+
+---
+## Addendum — Signal Intelligence Alpha 14
+```text
+Version: 3.7.0-signal-alpha14
+Frames: 5m/15m/1h/4h
+Policy: precision-first / default NO_TRADE
+AI override: false
+Live authorization: false
+```

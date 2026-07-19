@@ -290,3 +290,10 @@
 - release unit/lint/bundle and strict signature verify
 - fail closed without secrets
 - no signed artifact claim before key provisioning
+
+## ⏳ Signal Intelligence Alpha 14 — Intraday Fusion
+- causal 5m/15m triggers with 1h/4h context
+- precision-first nine hard gates
+- real crypto flow requirement
+- honest Forex proxy
+- no AI override or live authorization
