@@ -311,3 +311,9 @@
 - conservative stop-first outcomes
 - minimum 30 resolved observations
 - no manual labels or routing
+
+## ⏳ Signal Shadow Alpha 17 — Automated Collector
+- staging-only 15-minute fixed panel
+- duplicate suppression
+- automatic pending outcome resolution
+- production worker disabled

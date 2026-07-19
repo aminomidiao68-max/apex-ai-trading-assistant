@@ -31,6 +31,10 @@ def test_shadow_capture_never_routes_and_panel_is_insufficient(tmp_path):
     assert panel.status == "INSUFFICIENT_EVIDENCE"
     assert panel.precision_claimed is False
     assert panel.live_execution_enabled is False
+    assert service.should_capture(1, "BTCUSDT", 900) is False
+    assert service.should_capture(1, "ETHUSDT", 900) is True
+    pending = service.pending_contexts(1)
+    assert [item["observation_id"] for item in pending] == [candidate.observation_id]
     captured_ts = datetime.fromisoformat(candidate.captured_at).timestamp()
     resolved = service.resolve(1, candidate.observation_id, [
         {"t": captured_ts + 60, "o": 100, "h": 102.2, "l": 98.8, "c": 101},

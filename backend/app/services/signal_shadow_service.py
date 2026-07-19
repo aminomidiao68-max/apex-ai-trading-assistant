@@ -73,6 +73,25 @@ class SignalShadowService:
             captured_at=now,
         )
 
+    def should_capture(self, user_id: int, symbol: str, minimum_interval_seconds: int) -> bool:
+        with self.database.connection() as conn:
+            row = conn.execute(
+                "SELECT MAX(captured_at) AS captured_at FROM signal_shadow_observations WHERE user_id=? AND symbol=?",
+                (user_id, symbol.upper()),
+            ).fetchone()
+        if not row or not row["captured_at"]:
+            return True
+        age = datetime.now(timezone.utc).timestamp() - datetime.fromisoformat(row["captured_at"]).timestamp()
+        return age >= max(60, minimum_interval_seconds)
+
+    def pending_contexts(self, user_id: int, limit: int = 50) -> list[dict]:
+        with self.database.connection() as conn:
+            rows = conn.execute(
+                "SELECT observation_id,symbol,market,resolution_timeframe,outcome_status FROM signal_shadow_observations WHERE user_id=? AND outcome_status='PENDING' ORDER BY captured_at LIMIT ?",
+                (user_id, max(1, min(limit, 200))),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def resolution_context(self, user_id: int, observation_id: str) -> dict:
         with self.database.connection() as conn:
             row = conn.execute(

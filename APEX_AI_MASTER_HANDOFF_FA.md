@@ -2279,3 +2279,12 @@ Outcome source: future server candles only
 Intrabar: stop-first
 Live authorization: false
 ```
+
+---
+## Addendum — Signal Shadow Alpha 17
+```text
+Version: 3.7.0-signal-alpha17
+Staging worker: true / 900s
+Production worker: false
+Routing/Live: false
+```

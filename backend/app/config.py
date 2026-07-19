@@ -20,7 +20,7 @@ def _csv(value: str | None) -> list[str]:
 class Settings(BaseModel):
     app_name: str = os.getenv("APP_NAME", "Arena Smart Money AI Trader API")
     app_env: str = os.getenv("APP_ENV", "development")
-    app_version: str = os.getenv("APP_VERSION", "3.7.0-signal-alpha16")
+    app_version: str = os.getenv("APP_VERSION", "3.7.0-signal-alpha17")
     default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "UTC")
 
     # Browser CORS is disabled by default in production. Native Android clients
@@ -50,6 +50,11 @@ class Settings(BaseModel):
     enable_live_execution: bool = _to_bool(os.getenv("ENABLE_LIVE_EXECUTION"), False)
     enable_testnet_execution: bool = _to_bool(os.getenv("ENABLE_TESTNET_EXECUTION"), False)
     paper_chaos_enabled: bool = _to_bool(os.getenv("PAPER_CHAOS_ENABLED"), False)
+    signal_shadow_worker_enabled: bool = _to_bool(os.getenv("SIGNAL_SHADOW_WORKER_ENABLED"), False)
+    signal_shadow_interval_seconds: int = int(os.getenv("SIGNAL_SHADOW_INTERVAL_SECONDS", "900"))
+    signal_shadow_symbols: list[str] = _csv(
+        os.getenv("SIGNAL_SHADOW_SYMBOLS", "BTCUSDT,ETHUSDT,XRPUSDT,XAUUSD,EURUSD,GBPUSD,USDJPY,NAS100,US30")
+    )
     paper_feed_worker_enabled: bool = _to_bool(os.getenv("PAPER_FEED_WORKER_ENABLED"), True)
     paper_feed_worker_sweep_seconds: float = float(
         os.getenv("PAPER_FEED_WORKER_SWEEP_SECONDS", "2")

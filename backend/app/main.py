@@ -170,11 +170,16 @@ from app.services.user_news_service import user_news_service
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global paper_feed_worker_task
+    global paper_feed_worker_task, signal_shadow_worker_task
     if settings.paper_feed_worker_enabled and paper_feed_worker_task is None:
         paper_feed_worker_task = asyncio.create_task(
             paper_market_feed_service.run_forever(),
             name="paper-market-feed-worker",
+        )
+    if settings.signal_shadow_worker_enabled and signal_shadow_worker_task is None:
+        signal_shadow_worker_task = asyncio.create_task(
+            signal_shadow_worker_loop(),
+            name="signal-shadow-worker",
         )
     try:
         yield
@@ -186,6 +191,13 @@ async def lifespan(_: FastAPI):
             except asyncio.CancelledError:
                 pass
             paper_feed_worker_task = None
+        if signal_shadow_worker_task is not None:
+            signal_shadow_worker_task.cancel()
+            try:
+                await signal_shadow_worker_task
+            except asyncio.CancelledError:
+                pass
+            signal_shadow_worker_task = None
 
 
 app = FastAPI(
@@ -233,6 +245,7 @@ paper_testnet_execution_service = PaperTestnetExecutionService(
 )
 paper_market_feed_service = PaperMarketFeedService(storage.database, paper_oms_service)
 paper_feed_worker_task: asyncio.Task | None = None
+signal_shadow_worker_task: asyncio.Task | None = None
 historical_data_service = HistoricalDataService(storage.database)
 paper_correlation_service = PaperCorrelationService(
     storage.database,
@@ -1022,6 +1035,39 @@ async def get_intraday_fusion(
     return result
 
 
+async def signal_shadow_worker_loop() -> None:
+    await asyncio.sleep(20)
+    interval = max(300, settings.signal_shadow_interval_seconds)
+    while True:
+        try:
+            for context in signal_shadow_service.pending_contexts(0, limit=50):
+                try:
+                    if not context.get("resolution_timeframe"):
+                        continue
+                    raw = await fetch_live_candles(
+                        symbol=context["symbol"], market=context["market"],
+                        timeframe=context["resolution_timeframe"],
+                    )
+                    signal_shadow_service.resolve(0, context["observation_id"], _norm_candles(raw))
+                except Exception:
+                    continue
+            for symbol in settings.signal_shadow_symbols:
+                symbol = symbol.upper()
+                if not signal_shadow_service.should_capture(0, symbol, interval):
+                    continue
+                try:
+                    market = _auto_market(symbol, None)
+                    result = await get_intraday_fusion(symbol=symbol, market=market, user=None)
+                    signal_shadow_service.capture(0, result)
+                except Exception:
+                    continue
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            pass
+        await asyncio.sleep(interval)
+
+
 @app.post("/api/v1/analysis/intraday-fusion/shadow", response_model=SignalShadowCaptureResponse)
 async def capture_intraday_fusion_shadow(
     symbol: str = Query("BTCUSDT", min_length=2, max_length=24),
@@ -1046,6 +1092,14 @@ async def resolve_intraday_fusion_shadow(observation_id: str, user=Depends(curre
     except SignalShadowError as exc:
         status = 404 if "not_found" in exc.code else 400
         raise HTTPException(status_code=status, detail={"code": exc.code}) from exc
+
+
+@app.get("/api/v1/analysis/intraday-fusion/shadow/system-panel", response_model=SignalShadowPanelResponse)
+def get_system_intraday_fusion_shadow_panel(
+    minimum_required_resolved: int = Query(default=30, ge=10, le=1000),
+    user=Depends(current_user),
+):
+    return signal_shadow_service.panel(0, minimum_required_resolved)
 
 
 @app.get("/api/v1/analysis/intraday-fusion/shadow/panel", response_model=SignalShadowPanelResponse)
