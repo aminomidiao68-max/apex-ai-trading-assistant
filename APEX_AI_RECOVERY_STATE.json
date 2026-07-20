@@ -1,0 +1,88 @@
+{
+  "snapshot_date": "2026-07-20",
+  "timezone": "Asia/Tehran",
+  "project": "APEX AI Trading Assistant / APEX Omega Pro",
+  "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
+  "branch": "main",
+  "current_version": "3.7.0-signal-alpha21",
+  "current_commit": "477d960ecb7c5d272421db7ffd0a5c35e7fa0c75",
+  "current_stage": {
+    "number": 1,
+    "name": "real_oos_shadow_collection",
+    "status": "AUTOMATED_COLLECTION_RUNNING"
+  },
+  "policy": {
+    "markets": ["crypto", "forex_gold"],
+    "signal_policy": "precision_first",
+    "horizon": "intraday",
+    "trigger_frames": ["5m", "15m"],
+    "context_frames": ["1h", "4h"],
+    "default_decision": "NO_TRADE",
+    "ai_override_allowed": false,
+    "probability_is_calibrated": false,
+    "probability_label": "model_estimate_not_calibrated"
+  },
+  "deployment": {
+    "production": "https://apex-ai-trading-assistant.onrender.com",
+    "staging": "https://apex-ai-chaos-staging.onrender.com",
+    "database_schema": 18,
+    "database_persistent": true,
+    "live_execution_enabled": false,
+    "testnet_execution_enabled": false
+  },
+  "free_scheduler": {
+    "primary": "cron-job.org",
+    "interval_minutes": 5,
+    "method": "POST",
+    "endpoint": "/internal/signal-shadow-wake",
+    "header_name": "X-Shadow-External-Token",
+    "token_value_recorded": false,
+    "verified_http_status": 202,
+    "verified_successful_runs": 2,
+    "capture_due_guard_seconds": 900,
+    "github_heartbeat_role": "best_effort_failover"
+  },
+  "shadow_snapshot": {
+    "total_observations": 215,
+    "no_trade_count": 184,
+    "watch_count": 31,
+    "candidate_count": 0,
+    "pending_outcomes": 0,
+    "resolved_outcomes": 0,
+    "activated_resolved_outcomes": 0,
+    "evidence_integrity_failures": 0,
+    "status": "INSUFFICIENT_EVIDENCE",
+    "precision_claimed": false,
+    "actionable_for_live": false
+  },
+  "stage_exit_gates": {
+    "stage_1": {
+      "terminal_outcomes_min": 30,
+      "activated_terminal_outcomes_min": 30,
+      "evidence_integrity_failures_max": 0,
+      "metric_completeness_failures_max": 0
+    },
+    "stage_2": "locked_oos_statistics_walk_forward_and_confidence_intervals",
+    "stage_3": "evidence_based_refinement_and_locked_final_holdout",
+    "stage_4": "three_stable_drift_windows_slo_security_and_staging_soak"
+  },
+  "safety": {
+    "threshold_relaxation_allowed": false,
+    "manual_outcomes_allowed": false,
+    "future_only_labels": true,
+    "completed_candles_only": true,
+    "intrabar_policy": "stop_first",
+    "order_routed": false,
+    "signed_aab_deferred_until_final_instruction": true
+  },
+  "latest_test_gate": {
+    "backend_passed": 148,
+    "backend_skipped": 1,
+    "dependency_vulnerabilities": 0,
+    "bandit_medium_high": 0,
+    "github_backend": "success",
+    "github_android": "success",
+    "github_security_supply_chain": "success"
+  },
+  "recovery_document": "APEX_AI_RECOVERY_CONTINUATION_MASTER_FA.md"
+}
