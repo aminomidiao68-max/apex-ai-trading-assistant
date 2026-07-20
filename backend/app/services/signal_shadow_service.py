@@ -391,11 +391,35 @@ class SignalShadowService:
             live_execution_enabled=settings.enable_live_execution,
         )
 
+    @staticmethod
+    def _scarcity_review(
+        *,
+        candidate_count: int,
+        valid_observations: int,
+        span_days: float,
+        integrity_failures: int,
+        timestamps_complete: bool,
+        minimum_observations: int,
+        minimum_span_days: float,
+    ) -> tuple[str, bool]:
+        if candidate_count > 0:
+            return "CANDIDATES_OBSERVED", False
+        eligible = bool(
+            integrity_failures == 0
+            and timestamps_complete
+            and valid_observations >= minimum_observations
+            and span_days >= minimum_span_days
+        )
+        return (
+            "ELIGIBLE_FOR_FEASIBILITY_AUDIT" if eligible else "COLLECTING_EVIDENCE",
+            eligible,
+        )
+
     def diagnostics(self, user_id: int) -> SignalShadowDiagnosticsResponse:
         """Aggregate immutable evidence without changing any decision threshold."""
         with self.database.connection() as conn:
             fetched = conn.execute(
-                "SELECT fusion_status,outcome_status,evidence_sha256,evidence_json "
+                "SELECT fusion_status,outcome_status,evidence_sha256,evidence_json,captured_at "
                 "FROM signal_shadow_observations WHERE user_id=? ORDER BY captured_at",
                 (user_id,),
             ).fetchall()
@@ -405,6 +429,8 @@ class SignalShadowService:
         gates: Counter[str] = Counter()
         regimes: Counter[str] = Counter()
         analyzed = integrity_failures = stale_observations = all_stale_observations = 0
+        valid_non_all_stale_observations = 0
+        valid_timestamps: list[tuple[float, str]] = []
         for row in rows:
             raw = str(row.get("evidence_json") or "")
             if hashlib.sha256(raw.encode()).hexdigest() != row.get("evidence_sha256"):
@@ -419,14 +445,28 @@ class SignalShadowService:
                 integrity_failures += 1
                 continue
             analyzed += 1
+            captured_at = str(row.get("captured_at") or "")
+            try:
+                valid_timestamps.append((self._timestamp(captured_at), captured_at))
+            except (TypeError, ValueError):
+                # Integrity covers immutable evidence. A malformed database
+                # timestamp blocks only the span calculation, not gate counts.
+                pass
             failed_gates = evidence.get("failed_gates") or []
             gates.update(str(item) for item in failed_gates if item)
             frames = [item for item in (evidence.get("frames") or []) if isinstance(item, dict)]
             freshness = [item.get("fresh") for item in frames if "fresh" in item]
             if freshness and any(value is False for value in freshness):
                 stale_observations += 1
-            if frames and len(freshness) == len(frames) and all(value is False for value in freshness):
+            all_frames_stale = bool(
+                frames
+                and len(freshness) == len(frames)
+                and all(value is False for value in freshness)
+            )
+            if all_frames_stale:
                 all_stale_observations += 1
+            else:
+                valid_non_all_stale_observations += 1
             for frame in frames:
                 if str(frame.get("timeframe")) in {"1h", "4h"}:
                     regimes[str(frame.get("regime") or "unknown")] += 1
@@ -434,6 +474,29 @@ class SignalShadowService:
             name
             for name, _ in sorted(gates.items(), key=lambda item: (-item[1], item[0]))[:10]
         ]
+        started_at = latest_at = None
+        observation_span_days = 0.0
+        if valid_timestamps:
+            started_timestamp, started_at = min(valid_timestamps, key=lambda item: item[0])
+            latest_timestamp, latest_at = max(valid_timestamps, key=lambda item: item[0])
+            observation_span_days = max(0.0, (latest_timestamp - started_timestamp) / 86400.0)
+        scarcity_min_observations = max(
+            1000,
+            settings.signal_shadow_scarcity_min_observations,
+        )
+        scarcity_min_span_days = max(
+            5.0,
+            settings.signal_shadow_scarcity_min_span_days,
+        )
+        scarcity_review_status, feasibility_audit_authorized = self._scarcity_review(
+            candidate_count=int(statuses.get("ACTIONABLE_CANDIDATE", 0)),
+            valid_observations=valid_non_all_stale_observations,
+            span_days=observation_span_days,
+            integrity_failures=integrity_failures,
+            timestamps_complete=len(valid_timestamps) == analyzed,
+            minimum_observations=scarcity_min_observations,
+            minimum_span_days=scarcity_min_span_days,
+        )
         return SignalShadowDiagnosticsResponse(
             total_observations=len(rows),
             observations_analyzed=analyzed,
@@ -449,6 +512,16 @@ class SignalShadowService:
             collection_interval_seconds=max(300, settings.signal_shadow_interval_seconds),
             collector_max_concurrency=max(1, min(settings.signal_shadow_max_concurrency, 8)),
             universe_policy="pre_registered_data_quality_qualified",
+            valid_non_all_stale_observations=valid_non_all_stale_observations,
+            observation_started_at=started_at,
+            observation_latest_at=latest_at,
+            observation_span_days=round(observation_span_days, 6),
+            scarcity_min_observations=scarcity_min_observations,
+            scarcity_min_span_days=scarcity_min_span_days,
+            scarcity_review_status=scarcity_review_status,
+            feasibility_audit_authorized=feasibility_audit_authorized,
+            candidate_rate_claimed=False,
+            threshold_change_authorized=False,
             diagnostic_only=True,
             threshold_relaxation_allowed=False,
             precision_claimed=False,

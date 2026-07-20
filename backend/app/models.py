@@ -1987,6 +1987,20 @@ class SignalShadowDiagnosticsResponse(BaseModel):
     collection_interval_seconds: int = 900
     collector_max_concurrency: int = 3
     universe_policy: str = "pre_registered_data_quality_qualified"
+    valid_non_all_stale_observations: int = 0
+    observation_started_at: Optional[str] = None
+    observation_latest_at: Optional[str] = None
+    observation_span_days: float = 0.0
+    scarcity_min_observations: int = 1000
+    scarcity_min_span_days: float = 5.0
+    scarcity_review_status: Literal[
+        "COLLECTING_EVIDENCE",
+        "CANDIDATES_OBSERVED",
+        "ELIGIBLE_FOR_FEASIBILITY_AUDIT",
+    ] = "COLLECTING_EVIDENCE"
+    feasibility_audit_authorized: bool = False
+    candidate_rate_claimed: bool = False
+    threshold_change_authorized: bool = False
     diagnostic_only: bool = True
     threshold_relaxation_allowed: bool = False
     precision_claimed: bool = False

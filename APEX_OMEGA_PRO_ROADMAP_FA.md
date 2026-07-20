@@ -361,3 +361,12 @@
 - Bounded concurrency پیش‌فرض 3 و hard cap برابر 8
 - حذف Symbolهای تکراری پیش از Cycle
 - بدون تغییر Signal Gate، Threshold، Routing یا Live authorization
+
+## ✅ Signal Shadow Alpha 23 — Candidate Scarcity Monitor
+- Gate ازپیش‌ثبت‌شده: حداقل ۱۰۰۰ Observation معتبر غیر-stale
+- حداقل پوشش زمانی ۵ روز پیش از Feasibility Audit
+- الزام Integrity صفر و Timestamp کامل
+- وضعیت‌های COLLECTING / CANDIDATES_OBSERVED / ELIGIBLE_FOR_AUDIT
+- Feasibility Audit به‌معنای مجوز تغییر Threshold نیست
+- Candidate rate و Precision پیش از شواهد Claim نمی‌شوند
+- بدون تغییر تصمیم، Routing یا Live authorization

@@ -2353,3 +2353,16 @@ Collector concurrency: default 3 / hard cap 8
 Duplicate symbols: removed before collection
 Threshold relaxation / routing / Live authorization: false
 ```
+
+---
+## Addendum — Signal Shadow Alpha 23
+```text
+Version: 3.7.0-signal-alpha23
+Schema: v18 (unchanged)
+Scarcity review minimum: 1000 valid non-all-stale observations
+Minimum time coverage: 5 days
+Integrity failures allowed: 0
+Timestamp completeness required: true
+Feasibility audit authorization: diagnostic only
+Candidate-rate / threshold-change / Live claims: false
+```

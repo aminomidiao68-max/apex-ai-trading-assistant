@@ -123,8 +123,39 @@ def test_shadow_diagnostics_verify_evidence_and_report_stale_blockers(tmp_path):
     assert diagnostics.collection_interval_seconds == 900
     assert diagnostics.collector_max_concurrency == 3
     assert diagnostics.universe_policy == "pre_registered_data_quality_qualified"
+    assert diagnostics.valid_non_all_stale_observations == 0
+    assert diagnostics.observation_started_at is not None
+    assert diagnostics.observation_latest_at is not None
+    assert diagnostics.observation_span_days == 0.0
+    assert diagnostics.scarcity_min_observations == 1000
+    assert diagnostics.scarcity_min_span_days == 5.0
+    assert diagnostics.scarcity_review_status == "COLLECTING_EVIDENCE"
+    assert diagnostics.feasibility_audit_authorized is False
+    assert diagnostics.candidate_rate_claimed is False
+    assert diagnostics.threshold_change_authorized is False
     assert diagnostics.threshold_relaxation_allowed is False
     assert diagnostics.actionable_for_live is False
+
+    status, authorized = service._scarcity_review(
+        candidate_count=0,
+        valid_observations=1000,
+        span_days=5.0,
+        integrity_failures=0,
+        timestamps_complete=True,
+        minimum_observations=1000,
+        minimum_span_days=5.0,
+    )
+    assert status == "ELIGIBLE_FOR_FEASIBILITY_AUDIT" and authorized is True
+    status, authorized = service._scarcity_review(
+        candidate_count=1,
+        valid_observations=1000,
+        span_days=5.0,
+        integrity_failures=0,
+        timestamps_complete=True,
+        minimum_observations=1000,
+        minimum_span_days=5.0,
+    )
+    assert status == "CANDIDATES_OBSERVED" and authorized is False
 
     with db.connection() as conn:
         conn.execute(

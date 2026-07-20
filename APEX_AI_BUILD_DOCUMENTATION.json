@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.7.0-signal-alpha22",
-    "status": "Signal Shadow Alpha 22 - Qualified Universe Collector"
+    "current_version": "3.7.0-signal-alpha23",
+    "status": "Signal Shadow Alpha 23 - Candidate Scarcity Monitor"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -1715,6 +1715,29 @@
       "threshold_relaxation": false,
       "order_routed": false,
       "precision_claimed_before_gate": false,
+      "actionable_for_live": false,
+      "live_execution_enabled": false
+    }
+  },
+  "signal_alpha23": {
+    "schema_version": 18,
+    "scarcity_review_gate": {
+      "minimum_valid_non_stale_observations": 1000,
+      "minimum_observation_span_days": 5,
+      "candidate_count_required_for_skip": 1,
+      "integrity_failures_allowed": 0,
+      "timestamps_must_be_complete": true
+    },
+    "statuses": [
+      "COLLECTING_EVIDENCE",
+      "CANDIDATES_OBSERVED",
+      "ELIGIBLE_FOR_FEASIBILITY_AUDIT"
+    ],
+    "safety": {
+      "candidate_rate_claimed": false,
+      "threshold_change_authorized": false,
+      "feasibility_audit_is_not_threshold_relaxation": true,
+      "order_routed": false,
       "actionable_for_live": false,
       "live_execution_enabled": false
     }

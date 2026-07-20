@@ -145,6 +145,16 @@ def test_system_shadow_cycle_skips_fully_stale_market_without_persisting(monkeyp
             precision_claimed=False,
         ),
     )
+    monkeypatch.setattr(
+        main.signal_shadow_service,
+        "diagnostics",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            valid_non_all_stale_observations=78,
+            observation_span_days=1.5,
+            scarcity_review_status="COLLECTING_EVIDENCE",
+            feasibility_audit_authorized=False,
+        ),
+    )
     result = asyncio.run(main.run_signal_shadow_cycle())
     assert result["captured"] == 0
     assert result["skipped_all_frames_stale"] == 1
@@ -152,6 +162,9 @@ def test_system_shadow_cycle_skips_fully_stale_market_without_persisting(monkeyp
     assert result["not_due_symbols"] == 0
     assert result["collector_max_concurrency"] == 3
     assert result["total_observations"] == 132
+    assert result["valid_non_all_stale_observations"] == 78
+    assert result["scarcity_review_status"] == "COLLECTING_EVIDENCE"
+    assert result["feasibility_audit_authorized"] is False
     assert result["research_ready"] is False
     assert result["actionable_for_live"] is False
 
@@ -202,6 +215,16 @@ def test_shadow_collector_respects_bounded_concurrency(monkeypatch):
             status="INSUFFICIENT_EVIDENCE",
             research_ready=False,
             precision_claimed=False,
+        ),
+    )
+    monkeypatch.setattr(
+        main.signal_shadow_service,
+        "diagnostics",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            valid_non_all_stale_observations=80,
+            observation_span_days=2.0,
+            scarcity_review_status="COLLECTING_EVIDENCE",
+            feasibility_audit_authorized=False,
         ),
     )
     result = asyncio.run(main.run_signal_shadow_cycle())

@@ -14,7 +14,7 @@ services:
       - key: APP_ENV
         value: production
       - key: APP_VERSION
-        value: 3.7.0-signal-alpha22
+        value: 3.7.0-signal-alpha23
       - key: DEFAULT_TIMEZONE
         value: UTC
       - key: CORS_ALLOWED_ORIGINS
@@ -71,6 +71,10 @@ services:
         value: 900
       - key: SIGNAL_SHADOW_MAX_CONCURRENCY
         value: 3
+      - key: SIGNAL_SHADOW_SCARCITY_MIN_OBSERVATIONS
+        value: 1000
+      - key: SIGNAL_SHADOW_SCARCITY_MIN_SPAN_DAYS
+        value: 5
       - key: SIGNAL_SHADOW_SYMBOLS
         value: BTCUSDT,ETHUSDT,XRPUSDT,XAUUSD,EURUSD,GBPUSD,USDJPY,USDCAD,USDCHF,NAS100,US30
       - key: ENABLE_TESTNET_EXECUTION

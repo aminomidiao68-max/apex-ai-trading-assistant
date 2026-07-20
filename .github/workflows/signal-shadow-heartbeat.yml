@@ -41,7 +41,9 @@ jobs:
               "attempted_symbols", "not_due_symbols", "collector_max_concurrency",
               "total_observations", "candidate_count", "pending_outcomes",
               "resolved_outcomes", "activated_resolved_outcomes", "research_status",
-              "research_ready", "precision_claimed", "actionable_for_live",
+              "research_ready", "valid_non_all_stale_observations", "observation_span_days",
+              "scarcity_review_status", "feasibility_audit_authorized",
+              "precision_claimed", "actionable_for_live",
           )
           with open(os.environ["SHADOW_RESPONSE_FILE"], encoding="utf-8") as handle:
               payload = json.load(handle)

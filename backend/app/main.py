@@ -1131,6 +1131,7 @@ async def run_signal_shadow_cycle() -> dict:
         minimum_activated_outcomes=30,
         breakdown_minimum_activated=10,
     )
+    diagnostics = signal_shadow_service.diagnostics(0)
     return {
         "status": "completed",
         "captured": captured,
@@ -1147,6 +1148,10 @@ async def run_signal_shadow_cycle() -> dict:
         "activated_resolved_outcomes": panel.activated_resolved_outcomes,
         "research_status": research.status,
         "research_ready": research.research_ready,
+        "valid_non_all_stale_observations": diagnostics.valid_non_all_stale_observations,
+        "observation_span_days": diagnostics.observation_span_days,
+        "scarcity_review_status": diagnostics.scarcity_review_status,
+        "feasibility_audit_authorized": diagnostics.feasibility_audit_authorized,
         "precision_claimed": research.precision_claimed,
         "actionable_for_live": False,
     }
