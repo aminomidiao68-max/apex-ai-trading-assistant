@@ -1,6 +1,10 @@
-name: Scheduled Signal Shadow Collector
-run-name: Manual shadow recovery
+name: Signal Shadow Heartbeat
+run-name: Shadow heartbeat (${{ github.event_name }})
 on:
+  schedule:
+    # GitHub may delay or drop individual scheduled events. Frequent wakes are
+    # safe: the API lock and 900-second due guard prevent duplicate captures.
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 permissions:
   contents: read
