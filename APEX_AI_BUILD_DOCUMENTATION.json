@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.7.0-signal-alpha20",
-    "status": "Signal Shadow Alpha 20 - Research Autopilot Diagnostics"
+    "current_version": "3.7.0-signal-alpha21",
+    "status": "Signal Shadow Alpha 21 - Free External Wake Failover"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -1642,7 +1642,8 @@
   },
   "signal_alpha20": {
     "schema_version": 18,
-    "automatic_schedule_verified": true,
+    "automatic_schedule_observed": true,
+    "automatic_schedule_reliability": "best_effort_only",
     "diagnostics": [
       "failed_gate_counts",
       "context_regime_counts",
@@ -1663,6 +1664,30 @@
       "threshold_relaxation": false,
       "order_routed": false,
       "precision_claimed_before_gate": false,
+      "actionable_for_live": false,
+      "live_execution_enabled": false
+    }
+  },
+  "signal_alpha21": {
+    "schema_version": 18,
+    "external_wake": {
+      "staging_only": true,
+      "asynchronous_accept": true,
+      "expected_http_status": 202,
+      "endpoint_in_openapi": false,
+      "constant_time_token_compare": true,
+      "independent_token": true
+    },
+    "free_tier_failover": {
+      "provider": "cron-job.org_or_equivalent",
+      "recommended_wake_minutes": 5,
+      "capture_due_guard_seconds": 900,
+      "concurrency_lock": true
+    },
+    "safety": {
+      "production_endpoint_enabled": false,
+      "threshold_relaxation": false,
+      "order_routed": false,
       "actionable_for_live": false,
       "live_execution_enabled": false
     }

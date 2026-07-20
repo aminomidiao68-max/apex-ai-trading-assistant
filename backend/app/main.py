@@ -173,7 +173,7 @@ from app.services.user_news_service import user_news_service
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global paper_feed_worker_task, signal_shadow_worker_task
+    global paper_feed_worker_task, signal_shadow_worker_task, signal_shadow_wake_task
     if settings.paper_feed_worker_enabled and paper_feed_worker_task is None:
         paper_feed_worker_task = asyncio.create_task(
             paper_market_feed_service.run_forever(),
@@ -201,6 +201,13 @@ async def lifespan(_: FastAPI):
             except asyncio.CancelledError:
                 pass
             signal_shadow_worker_task = None
+        if signal_shadow_wake_task is not None and not signal_shadow_wake_task.done():
+            signal_shadow_wake_task.cancel()
+            try:
+                await signal_shadow_wake_task
+            except asyncio.CancelledError:
+                pass
+            signal_shadow_wake_task = None
 
 
 app = FastAPI(
@@ -249,6 +256,7 @@ paper_testnet_execution_service = PaperTestnetExecutionService(
 paper_market_feed_service = PaperMarketFeedService(storage.database, paper_oms_service)
 paper_feed_worker_task: asyncio.Task | None = None
 signal_shadow_worker_task: asyncio.Task | None = None
+signal_shadow_wake_task: asyncio.Task | None = None
 signal_shadow_cycle_lock = asyncio.Lock()
 historical_data_service = HistoricalDataService(storage.database)
 paper_correlation_service = PaperCorrelationService(
@@ -1140,6 +1148,50 @@ async def trigger_signal_shadow_cycle(
     if not x_shadow_cron_token or not hmac.compare_digest(x_shadow_cron_token, expected):
         raise HTTPException(status_code=401, detail={"code": "invalid_shadow_cron_token"})
     return await run_signal_shadow_cycle()
+
+
+def _consume_signal_shadow_wake(task: asyncio.Task) -> None:
+    try:
+        task.result()
+    except (asyncio.CancelledError, Exception):
+        # The next wake remains available; details must never leak into logs.
+        pass
+
+
+@app.post("/internal/signal-shadow-wake", include_in_schema=False, status_code=202)
+async def trigger_external_signal_shadow_wake(
+    x_shadow_external_token: str | None = Header(
+        default=None,
+        alias="X-Shadow-External-Token",
+    ),
+):
+    global signal_shadow_wake_task
+    expected = settings.signal_shadow_external_cron_token
+    if settings.app_env != "staging" or not expected:
+        raise HTTPException(status_code=404, detail={"code": "not_found"})
+    if not x_shadow_external_token or not hmac.compare_digest(
+        x_shadow_external_token,
+        expected,
+    ):
+        raise HTTPException(status_code=401, detail={"code": "invalid_external_cron_token"})
+    if signal_shadow_cycle_lock.locked() or (
+        signal_shadow_wake_task is not None and not signal_shadow_wake_task.done()
+    ):
+        return {
+            "status": "already_running",
+            "background_started": False,
+            "actionable_for_live": False,
+        }
+    signal_shadow_wake_task = asyncio.create_task(
+        run_signal_shadow_cycle(),
+        name="signal-shadow-external-wake",
+    )
+    signal_shadow_wake_task.add_done_callback(_consume_signal_shadow_wake)
+    return {
+        "status": "accepted",
+        "background_started": True,
+        "actionable_for_live": False,
+    }
 
 
 @app.post("/api/v1/analysis/intraday-fusion/shadow", response_model=SignalShadowCaptureResponse)

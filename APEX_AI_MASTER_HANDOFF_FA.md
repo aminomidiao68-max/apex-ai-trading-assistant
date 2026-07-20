@@ -2318,11 +2318,25 @@ Order routing / Live authorization: false
 ```text
 Version: 3.7.0-signal-alpha20
 Schema: v18 (unchanged)
-GitHub schedule: verified automatic success
+GitHub schedule: automatic successes observed / cadence remains best-effort
 Closed/stale market handling: fully stale frame sets are not persisted
 Diagnostics: gate/regime/staleness/evidence-integrity counts
 Cron observability: sanitized cycle + GitHub Job Summary
 Research completion: automatic but requires real future market outcomes
 Threshold relaxation: false
 Order routing / Live authorization: false
+```
+
+---
+## Addendum — Signal Shadow Alpha 21
+```text
+Version: 3.7.0-signal-alpha21
+Schema: v18 (unchanged)
+External wake: hidden / staging only / asynchronous 202
+External token: independent / constant-time compare
+Primary free scheduler: cron-job.org-compatible custom POST header
+Capture due guard: 900 seconds
+Concurrency: shared lock with worker/GitHub cycle
+Production external wake: 404
+Threshold relaxation / routing / Live authorization: false
 ```

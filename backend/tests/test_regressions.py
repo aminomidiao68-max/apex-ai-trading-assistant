@@ -49,6 +49,39 @@ def test_internal_shadow_cron_is_staging_only_and_token_protected(monkeypatch):
     ).status_code == 404
 
 
+def test_external_shadow_wake_is_fast_staging_only_and_token_protected(monkeypatch):
+    monkeypatch.setattr(main.settings, "app_env", "staging")
+    monkeypatch.setattr(
+        main.settings,
+        "signal_shadow_external_cron_token",
+        "fixture-external-shadow-token",
+    )
+    monkeypatch.setattr(main, "signal_shadow_wake_task", None)
+
+    async def fake_cycle():
+        await asyncio.sleep(0)
+        return {"status": "completed", "captured": 0, "resolved": 0, "errors": 0}
+
+    monkeypatch.setattr(main, "run_signal_shadow_cycle", fake_cycle)
+    assert client.post("/internal/signal-shadow-wake").status_code == 401
+    assert client.post(
+        "/internal/signal-shadow-wake",
+        headers={"X-Shadow-External-Token": "wrong-token"},
+    ).status_code == 401
+    response = client.post(
+        "/internal/signal-shadow-wake",
+        headers={"X-Shadow-External-Token": "fixture-external-shadow-token"},
+    )
+    assert response.status_code == 202
+    assert response.json()["status"] in {"accepted", "already_running"}
+    assert response.json()["actionable_for_live"] is False
+    monkeypatch.setattr(main.settings, "app_env", "production")
+    assert client.post(
+        "/internal/signal-shadow-wake",
+        headers={"X-Shadow-External-Token": "fixture-external-shadow-token"},
+    ).status_code == 404
+
+
 def test_intraday_causal_filter_excludes_open_and_stale_bars():
     candles = [
         {"t": 1000, "o": 100, "h": 101, "l": 99, "c": 100, "v": 1},

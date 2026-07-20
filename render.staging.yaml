@@ -14,7 +14,7 @@ services:
       - key: APP_ENV
         value: staging
       - key: APP_VERSION
-        value: 3.7.0-signal-alpha20
+        value: 3.7.0-signal-alpha21
       - key: DATABASE_URL
         fromDatabase:
           name: apex-ai-chaos-staging-postgres
@@ -28,6 +28,8 @@ services:
       - key: AI_EXTERNAL_ENABLED
         value: false
       - key: SIGNAL_SHADOW_CRON_TOKEN
+        sync: false
+      - key: SIGNAL_SHADOW_EXTERNAL_CRON_TOKEN
         sync: false
       - key: SIGNAL_SHADOW_WORKER_ENABLED
         value: true

@@ -343,3 +343,12 @@
 - GitHub Job Summary بدون نمایش Secret
 - ادامه خودکار Future-only Resolver تا عبور حداقل ۳۰ Outcome فعال
 - بدون تغییر Threshold، بدون Routing و بدون مجوز Live
+
+## ✅ Signal Shadow Alpha 21 — Free External Wake Failover
+- Endpoint مخفی و Staging-only برای Wake خارجی
+- پاسخ سریع 202 و اجرای Collector در Background
+- Token مستقل با مقایسه constant-time
+- Lock مشترک با Worker و GitHub Cron
+- سازگار با cron-job.org رایگان و Custom Header
+- Capture Due Guard پانزده‌دقیقه‌ای برای جلوگیری از Duplicate
+- Production برابر 404 و Live Execution خاموش
