@@ -38,6 +38,7 @@ jobs:
 
           allowed = (
               "status", "captured", "resolved", "skipped_all_frames_stale", "errors",
+              "attempted_symbols", "not_due_symbols", "collector_max_concurrency",
               "total_observations", "candidate_count", "pending_outcomes",
               "resolved_outcomes", "activated_resolved_outcomes", "research_status",
               "research_ready", "precision_claimed", "actionable_for_live",

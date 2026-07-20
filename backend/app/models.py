@@ -1983,6 +1983,10 @@ class SignalShadowDiagnosticsResponse(BaseModel):
     stale_frame_observations: int
     all_frames_stale_observations: int
     leading_failed_gates: List[str] = Field(default_factory=list)
+    collection_universe: List[str] = Field(default_factory=list)
+    collection_interval_seconds: int = 900
+    collector_max_concurrency: int = 3
+    universe_policy: str = "pre_registered_data_quality_qualified"
     diagnostic_only: bool = True
     threshold_relaxation_allowed: bool = False
     precision_claimed: bool = False

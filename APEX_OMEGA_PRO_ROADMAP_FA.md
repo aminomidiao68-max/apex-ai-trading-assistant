@@ -352,3 +352,12 @@
 - سازگار با cron-job.org رایگان و Custom Header
 - Capture Due Guard پانزده‌دقیقه‌ای برای جلوگیری از Duplicate
 - Production برابر 404 و Live Execution خاموش
+
+## ✅ Signal Shadow Alpha 22 — Qualified Universe Collector
+- Qualification فقط بر اساس Data Availability/Freshness/Quality و بدون Outcome
+- افزودن USDCAD و USDCHF به Universe ازپیش‌ثبت‌شده
+- رد نمادهای Provider-503 یا Quality زیر 78
+- Cooldown پانزده‌دقیقه‌ای حتی برای stale/error attempts
+- Bounded concurrency پیش‌فرض 3 و hard cap برابر 8
+- حذف Symbolهای تکراری پیش از Cycle
+- بدون تغییر Signal Gate، Threshold، Routing یا Live authorization

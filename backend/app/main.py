@@ -258,6 +258,7 @@ paper_feed_worker_task: asyncio.Task | None = None
 signal_shadow_worker_task: asyncio.Task | None = None
 signal_shadow_wake_task: asyncio.Task | None = None
 signal_shadow_cycle_lock = asyncio.Lock()
+signal_shadow_last_attempt_monotonic: dict[str, float] = {}
 historical_data_service = HistoricalDataService(storage.database)
 paper_correlation_service = PaperCorrelationService(
     storage.database,
@@ -1065,6 +1066,12 @@ async def run_signal_shadow_cycle() -> dict:
             "resolved": 0,
             "skipped_all_frames_stale": 0,
             "errors": 0,
+            "attempted_symbols": 0,
+            "not_due_symbols": 0,
+            "collector_max_concurrency": max(
+                1,
+                min(settings.signal_shadow_max_concurrency, 8),
+            ),
         }
     captured = resolved = skipped_all_frames_stale = errors = 0
     interval = max(300, settings.signal_shadow_interval_seconds)
@@ -1084,22 +1091,39 @@ async def run_signal_shadow_cycle() -> dict:
                     resolved += 1
             except Exception:
                 errors += 1
-        for raw_symbol in settings.signal_shadow_symbols:
-            symbol = raw_symbol.upper()
+        maximum_concurrency = max(1, min(settings.signal_shadow_max_concurrency, 8))
+        semaphore = asyncio.Semaphore(maximum_concurrency)
+
+        async def collect_symbol(symbol: str) -> str:
+            now_monotonic = time.monotonic()
+            last_attempt = signal_shadow_last_attempt_monotonic.get(symbol)
+            if last_attempt is not None and now_monotonic - last_attempt < interval:
+                return "not_due"
             if not signal_shadow_service.should_capture(0, symbol, interval):
-                continue
-            try:
-                market = _auto_market(symbol, None)
-                result = await get_intraday_fusion(symbol=symbol, market=market, user=None)
-                # A fully stale frame set represents a closed/unavailable market,
-                # not a new OOS observation. Do not inflate NO_TRADE counts.
-                if _all_fusion_frames_stale(result):
-                    skipped_all_frames_stale += 1
-                    continue
-                signal_shadow_service.capture(0, result)
-                captured += 1
-            except Exception:
-                errors += 1
+                return "not_due"
+            # Record attempts even when providers fail or all frames are stale;
+            # otherwise a five-minute wake would repeatedly hit closed markets.
+            signal_shadow_last_attempt_monotonic[symbol] = now_monotonic
+            async with semaphore:
+                try:
+                    market = _auto_market(symbol, None)
+                    result = await get_intraday_fusion(symbol=symbol, market=market, user=None)
+                    # A fully stale frame set represents a closed/unavailable market,
+                    # not a new OOS observation. Do not inflate NO_TRADE counts.
+                    if _all_fusion_frames_stale(result):
+                        return "stale"
+                    signal_shadow_service.capture(0, result)
+                    return "captured"
+                except Exception:
+                    return "error"
+
+        symbols = list(dict.fromkeys(item.upper() for item in settings.signal_shadow_symbols))
+        collection_results = await asyncio.gather(*(collect_symbol(symbol) for symbol in symbols))
+        captured += collection_results.count("captured")
+        skipped_all_frames_stale += collection_results.count("stale")
+        errors += collection_results.count("error")
+        attempted_symbols = sum(result != "not_due" for result in collection_results)
+        not_due_symbols = collection_results.count("not_due")
     panel = signal_shadow_service.panel(0, minimum_required_resolved=30)
     research = signal_shadow_service.research_panel(
         0,
@@ -1113,6 +1137,9 @@ async def run_signal_shadow_cycle() -> dict:
         "resolved": resolved,
         "skipped_all_frames_stale": skipped_all_frames_stale,
         "errors": errors,
+        "attempted_symbols": attempted_symbols,
+        "not_due_symbols": not_due_symbols,
+        "collector_max_concurrency": maximum_concurrency,
         "total_observations": panel.total_observations,
         "candidate_count": panel.candidate_count,
         "pending_outcomes": panel.pending_outcomes,

@@ -20,7 +20,7 @@ def _csv(value: str | None) -> list[str]:
 class Settings(BaseModel):
     app_name: str = os.getenv("APP_NAME", "Arena Smart Money AI Trader API")
     app_env: str = os.getenv("APP_ENV", "development")
-    app_version: str = os.getenv("APP_VERSION", "3.7.0-signal-alpha21")
+    app_version: str = os.getenv("APP_VERSION", "3.7.0-signal-alpha22")
     default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "UTC")
 
     # Browser CORS is disabled by default in production. Native Android clients
@@ -52,8 +52,12 @@ class Settings(BaseModel):
     paper_chaos_enabled: bool = _to_bool(os.getenv("PAPER_CHAOS_ENABLED"), False)
     signal_shadow_worker_enabled: bool = _to_bool(os.getenv("SIGNAL_SHADOW_WORKER_ENABLED"), False)
     signal_shadow_interval_seconds: int = int(os.getenv("SIGNAL_SHADOW_INTERVAL_SECONDS", "900"))
+    signal_shadow_max_concurrency: int = int(os.getenv("SIGNAL_SHADOW_MAX_CONCURRENCY", "3"))
     signal_shadow_symbols: list[str] = _csv(
-        os.getenv("SIGNAL_SHADOW_SYMBOLS", "BTCUSDT,ETHUSDT,XRPUSDT,XAUUSD,EURUSD,GBPUSD,USDJPY,NAS100,US30")
+        os.getenv(
+            "SIGNAL_SHADOW_SYMBOLS",
+            "BTCUSDT,ETHUSDT,XRPUSDT,XAUUSD,EURUSD,GBPUSD,USDJPY,USDCAD,USDCHF,NAS100,US30",
+        )
     )
     signal_shadow_cron_token: str = os.getenv("SIGNAL_SHADOW_CRON_TOKEN", "").strip()
     signal_shadow_external_cron_token: str = os.getenv(

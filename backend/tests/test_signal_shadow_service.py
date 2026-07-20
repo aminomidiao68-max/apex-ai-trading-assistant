@@ -118,6 +118,11 @@ def test_shadow_diagnostics_verify_evidence_and_report_stale_blockers(tmp_path):
     assert diagnostics.stale_frame_observations == 1
     assert diagnostics.all_frames_stale_observations == 1
     assert diagnostics.leading_failed_gates == ["context_regime", "frame_freshness"]
+    assert "USDCAD" in diagnostics.collection_universe
+    assert "USDCHF" in diagnostics.collection_universe
+    assert diagnostics.collection_interval_seconds == 900
+    assert diagnostics.collector_max_concurrency == 3
+    assert diagnostics.universe_policy == "pre_registered_data_quality_qualified"
     assert diagnostics.threshold_relaxation_allowed is False
     assert diagnostics.actionable_for_live is False
 

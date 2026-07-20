@@ -2340,3 +2340,16 @@ Concurrency: shared lock with worker/GitHub cycle
 Production external wake: 404
 Threshold relaxation / routing / Live authorization: false
 ```
+
+---
+## Addendum — Signal Shadow Alpha 22
+```text
+Version: 3.7.0-signal-alpha22
+Schema: v18 (unchanged)
+Qualified additions: USDCAD / USDCHF
+Qualification: 4 frames fresh + quality >=78 each / no outcome selection
+Attempt cooldown: 900 seconds including stale/provider-error attempts
+Collector concurrency: default 3 / hard cap 8
+Duplicate symbols: removed before collection
+Threshold relaxation / routing / Live authorization: false
+```

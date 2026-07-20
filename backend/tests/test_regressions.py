@@ -107,6 +107,8 @@ def test_system_shadow_cycle_skips_fully_stale_market_without_persisting(monkeyp
 
     monkeypatch.setattr(main.settings, "signal_shadow_symbols", ["XAUUSD"])
     monkeypatch.setattr(main.settings, "signal_shadow_interval_seconds", 900)
+    monkeypatch.setattr(main.settings, "signal_shadow_max_concurrency", 3)
+    main.signal_shadow_last_attempt_monotonic.clear()
     monkeypatch.setattr(main.signal_shadow_service, "pending_contexts", lambda *_args, **_kwargs: [])
     monkeypatch.setattr(main.signal_shadow_service, "should_capture", lambda *_args: True)
 
@@ -146,9 +148,67 @@ def test_system_shadow_cycle_skips_fully_stale_market_without_persisting(monkeyp
     result = asyncio.run(main.run_signal_shadow_cycle())
     assert result["captured"] == 0
     assert result["skipped_all_frames_stale"] == 1
+    assert result["attempted_symbols"] == 1
+    assert result["not_due_symbols"] == 0
+    assert result["collector_max_concurrency"] == 3
     assert result["total_observations"] == 132
     assert result["research_ready"] is False
     assert result["actionable_for_live"] is False
+
+    repeated = asyncio.run(main.run_signal_shadow_cycle())
+    assert repeated["attempted_symbols"] == 0
+    assert repeated["not_due_symbols"] == 1
+    assert repeated["skipped_all_frames_stale"] == 0
+
+
+def test_shadow_collector_respects_bounded_concurrency(monkeypatch):
+    from types import SimpleNamespace
+
+    symbols = ["EURUSD", "GBPUSD", "USDJPY", "USDCAD"]
+    monkeypatch.setattr(main.settings, "signal_shadow_symbols", symbols)
+    monkeypatch.setattr(main.settings, "signal_shadow_interval_seconds", 900)
+    monkeypatch.setattr(main.settings, "signal_shadow_max_concurrency", 2)
+    main.signal_shadow_last_attempt_monotonic.clear()
+    monkeypatch.setattr(main.signal_shadow_service, "pending_contexts", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(main.signal_shadow_service, "should_capture", lambda *_args: True)
+    active = 0
+    maximum_seen = 0
+
+    async def qualified_fusion(symbol, **_kwargs):
+        nonlocal active, maximum_seen
+        active += 1
+        maximum_seen = max(maximum_seen, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return {"symbol": symbol, "status": "NO_TRADE", "frames": [{"fresh": True}] * 4}
+
+    monkeypatch.setattr(main, "get_intraday_fusion", qualified_fusion)
+    monkeypatch.setattr(main.signal_shadow_service, "capture", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        main.signal_shadow_service,
+        "panel",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            total_observations=4,
+            candidate_count=0,
+            pending_outcomes=0,
+            resolved_outcomes=0,
+            activated_resolved_outcomes=0,
+        ),
+    )
+    monkeypatch.setattr(
+        main.signal_shadow_service,
+        "research_panel",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            status="INSUFFICIENT_EVIDENCE",
+            research_ready=False,
+            precision_claimed=False,
+        ),
+    )
+    result = asyncio.run(main.run_signal_shadow_cycle())
+    assert result["captured"] == 4
+    assert result["attempted_symbols"] == 4
+    assert result["collector_max_concurrency"] == 2
+    assert maximum_seen == 2
 
 
 def test_swagger_docs_are_self_hosted_without_external_cdn():
