@@ -3,7 +3,7 @@
 > نوع سند: Living Recovery / Continuation Master
 > تاریخ Snapshot: 2026-07-20
 > منطقه زمانی مالک: Asia/Tehran
-> وضعیت فعلی: Signal Shadow Alpha 21 — Free External Wake Failover
+> وضعیت فعلی: Signal Shadow Alpha 23 — Candidate Scarcity Monitor
 > هدف: ادامه امن پروژه در یک گفت‌وگوی جدید، حتی اگر کل تاریخچه چت از دست برود
 
 ---
@@ -31,11 +31,11 @@ https://github.com/aminomidiao68-max/apex-ai-trading-assistant
 Branch:
 main
 
-Latest functional Alpha 21 commit:
-477d960ecb7c5d272421db7ffd0a5c35e7fa0c75
+Latest functional Alpha 23 commit:
+6ec63955345662a95ee2764f9365653fb5728e79
 ```
 
-آخرین Commitهای زیرساخت Cron قبل از Alpha 21:
+Commitهای زیرساخت Cron و Failover:
 
 ```text
 57e4abe058abdab495a603b8da821b1ba2599c3d
@@ -45,7 +45,7 @@ fix: add resilient shadow wake cadence
 fix: add independent shadow heartbeat failover
 ```
 
-Alpha 21 بعد از Commitهای بالا منتشر شده و HEAD اصلی مورد انتظار هنگام این Snapshot برابر `477d960...` است.
+Alpha 23 بعد از فازهای Collector/Scarcity منتشر شده و HEAD اصلی مورد انتظار این Snapshot برابر `6ec6395...` است.
 
 ---
 
@@ -147,7 +147,7 @@ ANDROID_UPLOAD_KEY_PASSWORD
 
 ```text
 https://apex-ai-trading-assistant.onrender.com
-Expected version: 3.7.0-signal-alpha21
+Expected version: 3.7.0-signal-alpha23
 Database: PostgreSQL persistent
 Live execution: false
 Shadow worker: disabled
@@ -158,7 +158,7 @@ External wake endpoint: 404
 
 ```text
 https://apex-ai-chaos-staging.onrender.com
-Expected version: 3.7.0-signal-alpha21
+Expected version: 3.7.0-signal-alpha23
 Database: Neon Free PostgreSQL / persistent
 Schema: v18
 Worker: enabled
@@ -195,16 +195,16 @@ Endpoint به‌صورت Async پاسخ می‌دهد و Collector در Backgrou
 
 ## 6. وضعیت تست و سلامت فعلی
 
-آخرین Test Gate محلی Alpha 21:
+آخرین Test Gate محلی Alpha 23:
 
 ```text
-Targeted tests: 38 passed
-Full Backend: 148 passed, 1 skipped
+Targeted tests: 39 passed
+Full Backend: 149 passed, 1 skipped
 Dependency vulnerabilities: 0
 Bandit Medium/High: 0
 ```
 
-آخرین CI GitHub Alpha 21:
+آخرین CI GitHub Alpha 23:
 
 ```text
 Backend Tests: success
@@ -237,8 +237,8 @@ live_execution_enabled=false
 بعد از فعال‌شدن Cron خارجی رایگان:
 
 ```text
-total_observations=215
-no_trade_count=184
+total_observations=290
+no_trade_count=259
 watch_count=31
 candidate_count=0
 pending_outcomes=0
@@ -253,10 +253,15 @@ live_execution_enabled=false
 Diagnostics:
 
 ```text
-observations_analyzed=215
+observations_analyzed=290
+valid_non_all_stale_observations=236
+observation_span_days=1.070778
 evidence_integrity_failures=0
-outcome_counts.NOT_APPLICABLE=215
+outcome_counts.NOT_APPLICABLE=290
 all_frames_stale_observations_historical=54
+scarcity_review_status=COLLECTING_EVIDENCE
+feasibility_audit_authorized=false
+threshold_change_authorized=false
 threshold_relaxation_allowed=false
 ```
 
@@ -311,6 +316,8 @@ XAUUSD
 EURUSD
 GBPUSD
 USDJPY
+USDCAD
+USDCHF
 NAS100
 US30
 ```
@@ -323,6 +330,18 @@ activated_terminal_outcomes >= 30
 evidence_integrity_failures == 0
 metric_completeness_failures == 0
 ```
+
+Scarcity Review Gate موازی برای جلوگیری از انتظار نامحدود:
+
+```text
+valid_non_all_stale_observations >= 1000
+observation_span_days >= 5
+candidate_count == 0
+evidence_integrity_failures == 0
+timestamps_complete == true
+```
+
+عبور از Scarcity Gate فقط `ELIGIBLE_FOR_FEASIBILITY_AUDIT` صادر می‌کند و مجوز کاهش Threshold نیست.
 
 Outcomeهای مجاز:
 
@@ -592,7 +611,7 @@ Alpha 13: 9695a4fdbea12e048081695fd046094303d6e250
 - strict signature verification؛
 - Unsigned release fail-closed.
 
-### Signal Alpha 14 تا 21
+### Signal Alpha 14 تا 23
 
 ```text
 Alpha 14: 0b518e654989d0237d6e598b8e347bdfb0c5dc65
@@ -605,6 +624,8 @@ Schedule repair: b696582a5c3d64cd5117c63ebefadea82c1d3d17
 Alpha 20: ac2989836089c42e7b186bb37a2a544f7548275c
 Heartbeat failover: 5e8d254334e30e0ca217610e4ad052a57fe91595
 Alpha 21: 477d960ecb7c5d272421db7ffd0a5c35e7fa0c75
+Alpha 22: 22bd836786eb0b04a9d5d8273f83477fbc3963f9
+Alpha 23: 6ec63955345662a95ee2764f9365653fb5728e79
 ```
 
 Alpha 14:
@@ -669,6 +690,22 @@ Alpha 21:
 - cron-job.org integration؛
 - Production 404؛
 - shared lock و due guard.
+
+Alpha 22:
+
+- Universe ازپیش‌ثبت‌شده با USDCAD و USDCHF؛
+- Qualification بر اساس Freshness/Quality و بدون Outcome؛
+- Cooldown پانزده‌دقیقه‌ای برای stale/error؛
+- bounded concurrency برابر 3؛
+- بدون تغییر Threshold.
+
+Alpha 23:
+
+- Scarcity review gate ازپیش‌ثبت‌شده؛
+- حداقل 1000 Observation معتبر غیر-stale؛
+- حداقل پوشش زمانی 5 روز؛
+- Feasibility Audit فقط با Integrity صفر؛
+- هیچ مجوز تغییر Threshold یا Live.
 
 ---
 
@@ -816,7 +853,7 @@ GET https://apex-ai-chaos-staging.onrender.com/ready
 Expected:
 
 ```text
-version=3.7.0-signal-alpha21
+version=3.7.0-signal-alpha23
 migration_current=true
 live_execution_enabled=false
 ```

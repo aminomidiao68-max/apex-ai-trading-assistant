@@ -4,8 +4,8 @@
   "project": "APEX AI Trading Assistant / APEX Omega Pro",
   "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
   "branch": "main",
-  "current_version": "3.7.0-signal-alpha21",
-  "current_commit": "477d960ecb7c5d272421db7ffd0a5c35e7fa0c75",
+  "current_version": "3.7.0-signal-alpha23",
+  "current_commit": "6ec63955345662a95ee2764f9365653fb5728e79",
   "current_stage": {
     "number": 1,
     "name": "real_oos_shadow_collection",
@@ -20,7 +20,8 @@
     "default_decision": "NO_TRADE",
     "ai_override_allowed": false,
     "probability_is_calibrated": false,
-    "probability_label": "model_estimate_not_calibrated"
+    "probability_label": "model_estimate_not_calibrated",
+    "signal_logic_frozen": true
   },
   "deployment": {
     "production": "https://apex-ai-trading-assistant.onrender.com",
@@ -38,13 +39,33 @@
     "header_name": "X-Shadow-External-Token",
     "token_value_recorded": false,
     "verified_http_status": 202,
-    "verified_successful_runs": 2,
     "capture_due_guard_seconds": 900,
     "github_heartbeat_role": "best_effort_failover"
   },
+  "collector": {
+    "universe": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "XRPUSDT",
+      "XAUUSD",
+      "EURUSD",
+      "GBPUSD",
+      "USDJPY",
+      "USDCAD",
+      "USDCHF",
+      "NAS100",
+      "US30"
+    ],
+    "universe_policy": "pre_registered_data_quality_qualified",
+    "interval_seconds": 900,
+    "maximum_concurrency": 3,
+    "stale_and_error_attempt_cooldown": true
+  },
   "shadow_snapshot": {
-    "total_observations": 215,
-    "no_trade_count": 184,
+    "total_observations": 290,
+    "valid_non_all_stale_observations": 236,
+    "observation_span_days": 1.070778,
+    "no_trade_count": 259,
     "watch_count": 31,
     "candidate_count": 0,
     "pending_outcomes": 0,
@@ -54,6 +75,14 @@
     "status": "INSUFFICIENT_EVIDENCE",
     "precision_claimed": false,
     "actionable_for_live": false
+  },
+  "scarcity_review": {
+    "status": "COLLECTING_EVIDENCE",
+    "minimum_valid_non_stale_observations": 1000,
+    "minimum_observation_span_days": 5.0,
+    "feasibility_audit_authorized": false,
+    "candidate_rate_claimed": false,
+    "threshold_change_authorized": false
   },
   "stage_exit_gates": {
     "stage_1": {
@@ -76,7 +105,7 @@
     "signed_aab_deferred_until_final_instruction": true
   },
   "latest_test_gate": {
-    "backend_passed": 148,
+    "backend_passed": 149,
     "backend_skipped": 1,
     "dependency_vulnerabilities": 0,
     "bandit_medium_high": 0,
