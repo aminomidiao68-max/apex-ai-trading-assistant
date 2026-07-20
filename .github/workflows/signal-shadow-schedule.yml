@@ -2,10 +2,9 @@ name: Scheduled Signal Shadow Collector
 run-name: Shadow collector (${{ github.event_name }})
 on:
   schedule:
-    # Separate entries are easier to audit than a comma-list and avoid the
-    # highest-load start-of-hour window where GitHub may delay/drop schedules.
-    - cron: "23 * * * *"
-    - cron: "53 * * * *"
+    # GitHub may delay or drop individual scheduled events. Frequent wakes are
+    # safe: the API lock and 900-second due guard prevent duplicate captures.
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 permissions:
   contents: read
