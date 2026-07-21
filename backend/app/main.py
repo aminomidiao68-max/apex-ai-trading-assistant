@@ -108,6 +108,7 @@ from app.models import (
     SignalShadowDiagnosticsResponse,
     SignalShadowPanelResponse,
     SignalShadowResearchPanelResponse,
+    SignalShadowResearchSnapshotResponse,
     SignalShadowResolutionResponse,
     SignalRequest,
     SignalResponse,
@@ -1318,6 +1319,78 @@ def get_intraday_fusion_shadow_research_panel(
         minimum_activated_outcomes=minimum_activated_outcomes,
         breakdown_minimum_activated=breakdown_minimum_activated,
     )
+
+
+@app.post(
+    "/api/v1/analysis/intraday-fusion/shadow/system-research-snapshot",
+    response_model=SignalShadowResearchSnapshotResponse,
+)
+def lock_system_intraday_fusion_shadow_research_snapshot(
+    minimum_terminal_outcomes: int = Query(default=30, ge=30, le=1000),
+    minimum_activated_outcomes: int = Query(default=30, ge=30, le=1000),
+    breakdown_minimum_activated: int = Query(default=10, ge=10, le=1000),
+    user=Depends(current_user),
+):
+    try:
+        return signal_shadow_service.lock_research_snapshot(
+            0,
+            minimum_terminal_outcomes=minimum_terminal_outcomes,
+            minimum_activated_outcomes=minimum_activated_outcomes,
+            breakdown_minimum_activated=breakdown_minimum_activated,
+        )
+    except SignalShadowError as exc:
+        raise HTTPException(status_code=400, detail={"code": exc.code}) from exc
+
+
+@app.post(
+    "/api/v1/analysis/intraday-fusion/shadow/research-snapshot",
+    response_model=SignalShadowResearchSnapshotResponse,
+)
+def lock_intraday_fusion_shadow_research_snapshot(
+    minimum_terminal_outcomes: int = Query(default=30, ge=30, le=1000),
+    minimum_activated_outcomes: int = Query(default=30, ge=30, le=1000),
+    breakdown_minimum_activated: int = Query(default=10, ge=10, le=1000),
+    user=Depends(current_user),
+):
+    try:
+        return signal_shadow_service.lock_research_snapshot(
+            user.id,
+            minimum_terminal_outcomes=minimum_terminal_outcomes,
+            minimum_activated_outcomes=minimum_activated_outcomes,
+            breakdown_minimum_activated=breakdown_minimum_activated,
+        )
+    except SignalShadowError as exc:
+        raise HTTPException(status_code=400, detail={"code": exc.code}) from exc
+
+
+@app.get(
+    "/api/v1/analysis/intraday-fusion/shadow/system-research-snapshot/{snapshot_id}",
+    response_model=SignalShadowResearchSnapshotResponse,
+)
+def get_system_intraday_fusion_shadow_research_snapshot(
+    snapshot_id: str,
+    user=Depends(current_user),
+):
+    try:
+        return signal_shadow_service.get_research_snapshot(0, snapshot_id)
+    except SignalShadowError as exc:
+        status_code = 404 if exc.code.endswith("not_found") else 400
+        raise HTTPException(status_code=status_code, detail={"code": exc.code}) from exc
+
+
+@app.get(
+    "/api/v1/analysis/intraday-fusion/shadow/research-snapshot/{snapshot_id}",
+    response_model=SignalShadowResearchSnapshotResponse,
+)
+def get_intraday_fusion_shadow_research_snapshot(
+    snapshot_id: str,
+    user=Depends(current_user),
+):
+    try:
+        return signal_shadow_service.get_research_snapshot(user.id, snapshot_id)
+    except SignalShadowError as exc:
+        status_code = 404 if exc.code.endswith("not_found") else 400
+        raise HTTPException(status_code=status_code, detail={"code": exc.code}) from exc
 
 
 def _norm_candles(raw):

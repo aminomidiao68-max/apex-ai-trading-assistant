@@ -16,6 +16,7 @@ from app.models import (
     SignalShadowPanelResponse,
     SignalShadowResearchBreakdown,
     SignalShadowResearchPanelResponse,
+    SignalShadowResearchSnapshotResponse,
     SignalShadowResolutionResponse,
 )
 from app.services.database_service import DatabaseManager
@@ -914,3 +915,108 @@ class SignalShadowService:
             actionable_for_live=False,
             live_execution_enabled=settings.enable_live_execution,
         )
+
+    @staticmethod
+    def _research_snapshot_response(
+        row: dict,
+        *,
+        duplicate: bool,
+    ) -> SignalShadowResearchSnapshotResponse:
+        raw = str(row["result_json"])
+        digest = hashlib.sha256(raw.encode()).hexdigest()
+        if digest != str(row["result_sha256"]):
+            raise SignalShadowError("shadow_research_snapshot_integrity_failed")
+        result = SignalShadowResearchPanelResponse.model_validate(json.loads(raw))
+        return SignalShadowResearchSnapshotResponse(
+            snapshot_id=str(row["snapshot_id"]),
+            dataset_sha256=str(row["dataset_sha256"]),
+            result_sha256=str(row["result_sha256"]),
+            policy_version=str(row["policy_version"]),
+            terminal_outcomes=int(row["terminal_outcomes"]),
+            activated_terminal_outcomes=int(row["activated_terminal_outcomes"]),
+            locked_at=str(row["locked_at"]),
+            duplicate=duplicate,
+            immutable=True,
+            manual_outcome_allowed=False,
+            threshold_change_authorized=False,
+            actionable_for_live=False,
+            live_execution_enabled=settings.enable_live_execution,
+            result=result,
+        )
+
+    def lock_research_snapshot(
+        self,
+        user_id: int,
+        *,
+        minimum_terminal_outcomes: int = 30,
+        minimum_activated_outcomes: int = 30,
+        breakdown_minimum_activated: int = 10,
+    ) -> SignalShadowResearchSnapshotResponse:
+        panel = self.research_panel(
+            user_id,
+            minimum_terminal_outcomes=minimum_terminal_outcomes,
+            minimum_activated_outcomes=minimum_activated_outcomes,
+            breakdown_minimum_activated=breakdown_minimum_activated,
+        )
+        if not panel.research_ready or panel.status != "RESEARCH_READY":
+            raise SignalShadowError("shadow_research_not_ready")
+        policy_version = "shadow_research_snapshot_v1"
+        dataset_sha256 = panel.evidence_dataset_sha256
+        with self.database.connection() as conn:
+            existing = conn.execute(
+                "SELECT * FROM signal_shadow_research_snapshots WHERE user_id=? "
+                "AND dataset_sha256=? AND policy_version=?",
+                (user_id, dataset_sha256, policy_version),
+            ).fetchone()
+        if existing is not None:
+            return self._research_snapshot_response(dict(existing), duplicate=True)
+
+        payload = panel.model_dump(mode="json")
+        payload["actionable_for_live"] = False
+        payload["live_execution_enabled"] = settings.enable_live_execution
+        result_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        result_sha256 = hashlib.sha256(result_json.encode()).hexdigest()
+        snapshot_id = uuid4().hex
+        locked_at = datetime.now(timezone.utc).isoformat()
+        with self.database.connection() as conn:
+            conn.execute(
+                """INSERT INTO signal_shadow_research_snapshots (
+                    snapshot_id,user_id,dataset_sha256,result_sha256,policy_version,
+                    terminal_outcomes,activated_terminal_outcomes,result_json,locked_at
+                ) VALUES (?,?,?,?,?,?,?,?,?)""",
+                (
+                    snapshot_id,
+                    user_id,
+                    dataset_sha256,
+                    result_sha256,
+                    policy_version,
+                    panel.terminal_outcomes,
+                    panel.activated_terminal_outcomes,
+                    result_json,
+                    locked_at,
+                ),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM signal_shadow_research_snapshots WHERE user_id=? "
+                "AND snapshot_id=?",
+                (user_id, snapshot_id),
+            ).fetchone()
+        if row is None:
+            raise SignalShadowError("shadow_research_snapshot_persist_failed")
+        return self._research_snapshot_response(dict(row), duplicate=False)
+
+    def get_research_snapshot(
+        self,
+        user_id: int,
+        snapshot_id: str,
+    ) -> SignalShadowResearchSnapshotResponse:
+        with self.database.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM signal_shadow_research_snapshots WHERE user_id=? "
+                "AND snapshot_id=?",
+                (user_id, snapshot_id),
+            ).fetchone()
+        if row is None:
+            raise SignalShadowError("shadow_research_snapshot_not_found")
+        return self._research_snapshot_response(dict(row), duplicate=False)

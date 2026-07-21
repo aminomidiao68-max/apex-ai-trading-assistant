@@ -2393,3 +2393,17 @@ Final holdout used: false
 Metrics withheld before minimum sample: true
 Routing / Live authorization: false
 ```
+
+---
+## Addendum — Signal Research Alpha 26
+```text
+Version: 3.7.0-signal-alpha26
+Schema: v19
+Snapshot policy: shadow_research_snapshot_v1
+Lock gate: RESEARCH_READY only
+Identity: dataset_sha256 + result_sha256 + user + policy
+Idempotency: true
+Integrity verified on read: true
+System/User scope separation: true
+Manual outcome / threshold authorization / Live: false
+```

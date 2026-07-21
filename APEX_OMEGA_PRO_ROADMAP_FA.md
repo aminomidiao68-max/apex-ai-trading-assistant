@@ -389,3 +389,13 @@
 - Worst-fold و تعداد Foldهای Average-R مثبت
 - Final Holdout هنوز استفاده نمی‌شود
 - تمام Foldها پیش از ۶۰ Outcome برابر withheld
+
+## ✅ Signal Research Alpha 26 — Immutable Snapshot Gate
+- Schema v19 برای Research Snapshotهای immutable
+- Lock فقط پس از Research Gate
+- Dataset SHA-256 و Result SHA-256
+- Idempotency بر اساس User/Dataset/Policy
+- Integrity verification هنگام Read
+- Snapshotهای System و User جدا
+- Manual outcome و Threshold authorization خاموش
+- هیچ Snapshotی مجوز Live ایجاد نمی‌کند

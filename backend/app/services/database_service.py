@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 18
+LATEST_SCHEMA_VERSION = 19
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -364,6 +364,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (18, "signal_shadow_causal_research_integrity", datetime.now(timezone.utc).isoformat()),
+                )
+            if 19 not in applied:
+                self._apply_schema_v19(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (19, "signal_shadow_immutable_research_snapshots", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -1190,6 +1200,29 @@ class DatabaseManager:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_shadow_user_outcome "
             "ON signal_shadow_observations(user_id, outcome_status, captured_at)"
+        )
+
+    def _apply_schema_v19(self, conn: ConnectionAdapter) -> None:
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS signal_shadow_research_snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                user_id {user_id_type} NOT NULL,
+                dataset_sha256 TEXT NOT NULL,
+                result_sha256 TEXT NOT NULL,
+                policy_version TEXT NOT NULL,
+                terminal_outcomes INTEGER NOT NULL,
+                activated_terminal_outcomes INTEGER NOT NULL,
+                result_json TEXT NOT NULL,
+                locked_at TEXT NOT NULL,
+                UNIQUE(user_id, dataset_sha256, policy_version)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shadow_research_snapshot_user_locked "
+            "ON signal_shadow_research_snapshots(user_id, locked_at DESC)"
         )
 
     def _ensure_columns(

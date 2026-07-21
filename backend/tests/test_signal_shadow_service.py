@@ -86,7 +86,7 @@ def test_shadow_capture_never_routes_and_panel_is_insufficient(tmp_path):
     after = service.panel(1, minimum_required_resolved=30)
     assert after.pending_outcomes == 0 and after.resolved_outcomes == 1
     assert service.panel(2).total_observations == 0
-    assert db.schema_version() == LATEST_SCHEMA_VERSION == 18
+    assert db.schema_version() == LATEST_SCHEMA_VERSION == 19
 
 
 def test_shadow_diagnostics_verify_evidence_and_report_stale_blockers(tmp_path):
@@ -244,6 +244,8 @@ def test_research_panel_withholds_metrics_then_uses_wilson_and_integrity_gate(tm
     assert empty.worst_fold_average_rr is None
     assert empty.final_holdout_used is False
     assert len(empty.evidence_dataset_sha256) == 64
+    with pytest.raises(SignalShadowError, match="shadow_research_not_ready"):
+        service.lock_research_snapshot(11)
 
     observation_ids = []
     for index in range(60):
@@ -297,6 +299,33 @@ def test_research_panel_withholds_metrics_then_uses_wilson_and_integrity_gate(tm
     assert panel.actionable_for_live is False
     assert all(item.sample_eligible for item in panel.breakdowns)
 
+    snapshot = service.lock_research_snapshot(11)
+    assert snapshot.duplicate is False
+    assert snapshot.immutable is True
+    assert snapshot.dataset_sha256 == panel.evidence_dataset_sha256
+    assert len(snapshot.result_sha256) == 64
+    assert snapshot.terminal_outcomes == 60
+    assert snapshot.activated_terminal_outcomes == 60
+    assert snapshot.result.model_dump() == panel.model_dump()
+    assert snapshot.manual_outcome_allowed is False
+    assert snapshot.threshold_change_authorized is False
+    assert snapshot.actionable_for_live is False
+    duplicate = service.lock_research_snapshot(11)
+    assert duplicate.snapshot_id == snapshot.snapshot_id
+    assert duplicate.result_sha256 == snapshot.result_sha256
+    assert duplicate.duplicate is True
+    loaded = service.get_research_snapshot(11, snapshot.snapshot_id)
+    assert loaded.snapshot_id == snapshot.snapshot_id
+    assert loaded.duplicate is False
+    with pytest.raises(SignalShadowError, match="shadow_research_snapshot_not_found"):
+        service.get_research_snapshot(12, snapshot.snapshot_id)
+    with db.connection() as conn:
+        count = conn.execute(
+            "SELECT COUNT(*) AS count FROM signal_shadow_research_snapshots WHERE user_id=?",
+            (11,),
+        ).fetchone()
+    assert int(count["count"]) == 1
+
     with db.connection() as conn:
         conn.execute(
             "UPDATE signal_shadow_observations SET evidence_json=? WHERE observation_id=?",
@@ -314,6 +343,15 @@ def test_research_panel_withholds_metrics_then_uses_wilson_and_integrity_gate(tm
     assert failed.chronological_stability_status == "WITHHELD_INSUFFICIENT_SAMPLE"
     assert failed.chronological_folds == []
     assert failed.breakdowns == []
+
+    with db.connection() as conn:
+        conn.execute(
+            "UPDATE signal_shadow_research_snapshots SET result_json=? WHERE snapshot_id=?",
+            ("{}", snapshot.snapshot_id),
+        )
+        conn.commit()
+    with pytest.raises(SignalShadowError, match="shadow_research_snapshot_integrity_failed"):
+        service.get_research_snapshot(11, snapshot.snapshot_id)
 
 
 def test_invalid_candidate_geometry_is_rejected(tmp_path):

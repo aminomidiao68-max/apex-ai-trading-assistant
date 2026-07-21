@@ -2104,6 +2104,23 @@ class SignalShadowResearchPanelResponse(BaseModel):
     live_execution_enabled: bool = False
 
 
+class SignalShadowResearchSnapshotResponse(BaseModel):
+    snapshot_id: str
+    dataset_sha256: str
+    result_sha256: str
+    policy_version: str = "shadow_research_snapshot_v1"
+    terminal_outcomes: int
+    activated_terminal_outcomes: int
+    locked_at: str
+    duplicate: bool = False
+    immutable: bool = True
+    manual_outcome_allowed: bool = False
+    threshold_change_authorized: bool = False
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+    result: SignalShadowResearchPanelResponse
+
+
 class ConnectorCapability(BaseModel):
     connector: str
     market_type: str
