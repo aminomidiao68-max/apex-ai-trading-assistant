@@ -399,3 +399,13 @@
 - Snapshotهای System و User جدا
 - Manual outcome و Threshold authorization خاموش
 - هیچ Snapshotی مجوز Live ایجاد نمی‌کند
+
+## ✅ Signal Research Alpha 27 — Feasibility Audit Panel Preparation
+- Audit فقط پس از ۱۰۰۰ Observation معتبر و ۵ روز
+- Metrics پیش از Gate کاملاً withheld
+- Failure-cardinality histogram
+- Single-gate near misses و pairwise co-failures
+- Gate pass/fail counts و minimum failed gates
+- Candidate observed مسیر Audit را متوقف می‌کند
+- Candidate-rate و Threshold change claim ممنوع
+- بدون تغییر Signal Logic، Routing یا Live authorization

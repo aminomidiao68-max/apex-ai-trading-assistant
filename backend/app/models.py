@@ -2008,6 +2008,37 @@ class SignalShadowDiagnosticsResponse(BaseModel):
     live_execution_enabled: bool = False
 
 
+class SignalShadowFeasibilityPanelResponse(BaseModel):
+    status: Literal[
+        "NOT_ELIGIBLE",
+        "CANDIDATES_OBSERVED",
+        "AVAILABLE",
+        "INTEGRITY_FAILED",
+    ]
+    total_observations: int
+    valid_non_all_stale_observations: int
+    observation_span_days: float
+    minimum_required_observations: int
+    minimum_required_span_days: float
+    candidate_count: int
+    evidence_integrity_failures: int
+    minimum_failed_gates_observed: Optional[int] = None
+    zero_failed_gate_observations: Optional[int] = None
+    failure_cardinality_counts: dict[str, int] = Field(default_factory=dict)
+    failed_gate_counts: dict[str, int] = Field(default_factory=dict)
+    passed_gate_counts: dict[str, int] = Field(default_factory=dict)
+    single_gate_near_miss_counts: dict[str, int] = Field(default_factory=dict)
+    top_cofailure_pairs: dict[str, int] = Field(default_factory=dict)
+    audit_metrics_available: bool = False
+    feasibility_audit_authorized: bool = False
+    diagnostic_only: bool = True
+    candidate_rate_claimed: bool = False
+    threshold_change_authorized: bool = False
+    threshold_relaxation_allowed: bool = False
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+
+
 class SignalShadowResearchBreakdown(BaseModel):
     group_type: Literal["market", "symbol", "context_regime"]
     group_value: str

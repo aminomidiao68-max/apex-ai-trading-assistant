@@ -2407,3 +2407,15 @@ Integrity verified on read: true
 System/User scope separation: true
 Manual outcome / threshold authorization / Live: false
 ```
+
+---
+## Addendum — Signal Research Alpha 27
+```text
+Version: 3.7.0-signal-alpha27
+Schema: v19 (unchanged)
+Eligibility: 1000 valid non-stale observations + 5 days + zero candidates
+Metrics: cardinality / near-miss / co-failure / gate pass-fail
+Metrics before Gate: withheld
+Candidate-rate claim: false
+Threshold change / routing / Live authorization: false
+```

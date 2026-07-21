@@ -6,6 +6,7 @@ import math
 import random
 from collections import Counter
 from datetime import datetime, timezone
+from itertools import combinations
 from statistics import median
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from app.config import settings
 from app.models import (
     SignalShadowCaptureResponse,
     SignalShadowDiagnosticsResponse,
+    SignalShadowFeasibilityPanelResponse,
     SignalShadowPanelResponse,
     SignalShadowResearchBreakdown,
     SignalShadowResearchPanelResponse,
@@ -527,6 +529,123 @@ class SignalShadowService:
             diagnostic_only=True,
             threshold_relaxation_allowed=False,
             precision_claimed=False,
+            actionable_for_live=False,
+            live_execution_enabled=settings.enable_live_execution,
+        )
+
+    @staticmethod
+    def _aggregate_feasibility(evidence_packets: list[dict]) -> dict:
+        failed_counts: Counter[str] = Counter()
+        passed_counts: Counter[str] = Counter()
+        cardinality_counts: Counter[str] = Counter()
+        near_miss_counts: Counter[str] = Counter()
+        cofailure_counts: Counter[str] = Counter()
+        minimum_failed = None
+        zero_failed = 0
+        for evidence in evidence_packets:
+            failed = {str(item) for item in (evidence.get("failed_gates") or []) if item}
+            explicit_gate_states = {
+                str(item.get("name")): bool(item.get("passed"))
+                for item in (evidence.get("gates") or [])
+                if isinstance(item, dict) and item.get("name")
+            }
+            all_gate_names = set(explicit_gate_states) | failed
+            for name in all_gate_names:
+                if name in failed or explicit_gate_states.get(name) is False:
+                    failed_counts[name] += 1
+                else:
+                    passed_counts[name] += 1
+            cardinality = len(failed)
+            cardinality_counts[str(cardinality)] += 1
+            minimum_failed = cardinality if minimum_failed is None else min(minimum_failed, cardinality)
+            if cardinality == 0:
+                zero_failed += 1
+            if cardinality == 1:
+                near_miss_counts[next(iter(failed))] += 1
+            for first, second in combinations(sorted(failed), 2):
+                cofailure_counts[f"{first}|{second}"] += 1
+        top_pairs = dict(
+            sorted(cofailure_counts.items(), key=lambda item: (-item[1], item[0]))[:20]
+        )
+        return {
+            "minimum_failed_gates_observed": minimum_failed,
+            "zero_failed_gate_observations": zero_failed,
+            "failure_cardinality_counts": dict(
+                sorted(cardinality_counts.items(), key=lambda item: int(item[0]))
+            ),
+            "failed_gate_counts": dict(sorted(failed_counts.items())),
+            "passed_gate_counts": dict(sorted(passed_counts.items())),
+            "single_gate_near_miss_counts": dict(sorted(near_miss_counts.items())),
+            "top_cofailure_pairs": top_pairs,
+        }
+
+    def feasibility_panel(self, user_id: int) -> SignalShadowFeasibilityPanelResponse:
+        diagnostics = self.diagnostics(user_id)
+        candidate_count = int(diagnostics.status_counts.get("ACTIONABLE_CANDIDATE", 0))
+        base = {
+            "total_observations": diagnostics.total_observations,
+            "valid_non_all_stale_observations": diagnostics.valid_non_all_stale_observations,
+            "observation_span_days": diagnostics.observation_span_days,
+            "minimum_required_observations": diagnostics.scarcity_min_observations,
+            "minimum_required_span_days": diagnostics.scarcity_min_span_days,
+            "candidate_count": candidate_count,
+            "evidence_integrity_failures": diagnostics.evidence_integrity_failures,
+        }
+        if diagnostics.evidence_integrity_failures:
+            return SignalShadowFeasibilityPanelResponse(
+                status="INTEGRITY_FAILED",
+                **base,
+                live_execution_enabled=settings.enable_live_execution,
+            )
+        if candidate_count > 0:
+            return SignalShadowFeasibilityPanelResponse(
+                status="CANDIDATES_OBSERVED",
+                **base,
+                live_execution_enabled=settings.enable_live_execution,
+            )
+        if not diagnostics.feasibility_audit_authorized:
+            return SignalShadowFeasibilityPanelResponse(
+                status="NOT_ELIGIBLE",
+                **base,
+                live_execution_enabled=settings.enable_live_execution,
+            )
+
+        with self.database.connection() as conn:
+            rows = conn.execute(
+                "SELECT evidence_sha256,evidence_json FROM signal_shadow_observations "
+                "WHERE user_id=? ORDER BY captured_at,observation_id",
+                (user_id,),
+            ).fetchall()
+        packets: list[dict] = []
+        for row in rows:
+            raw = str(row["evidence_json"] or "")
+            if hashlib.sha256(raw.encode()).hexdigest() != row["evidence_sha256"]:
+                return SignalShadowFeasibilityPanelResponse(
+                    status="INTEGRITY_FAILED",
+                    **{**base, "evidence_integrity_failures": 1},
+                    live_execution_enabled=settings.enable_live_execution,
+                )
+            evidence = json.loads(raw)
+            frames = [item for item in (evidence.get("frames") or []) if isinstance(item, dict)]
+            freshness = [item.get("fresh") for item in frames if "fresh" in item]
+            all_frames_stale = bool(
+                frames
+                and len(freshness) == len(frames)
+                and all(value is False for value in freshness)
+            )
+            if not all_frames_stale:
+                packets.append(evidence)
+        metrics = self._aggregate_feasibility(packets)
+        return SignalShadowFeasibilityPanelResponse(
+            status="AVAILABLE",
+            **base,
+            **metrics,
+            audit_metrics_available=True,
+            feasibility_audit_authorized=True,
+            diagnostic_only=True,
+            candidate_rate_claimed=False,
+            threshold_change_authorized=False,
+            threshold_relaxation_allowed=False,
             actionable_for_live=False,
             live_execution_enabled=settings.enable_live_execution,
         )

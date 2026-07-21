@@ -106,6 +106,7 @@ from app.models import (
     SignalHistoryItem,
     SignalShadowCaptureResponse,
     SignalShadowDiagnosticsResponse,
+    SignalShadowFeasibilityPanelResponse,
     SignalShadowPanelResponse,
     SignalShadowResearchPanelResponse,
     SignalShadowResearchSnapshotResponse,
@@ -1283,6 +1284,22 @@ def get_system_intraday_fusion_shadow_diagnostics(user=Depends(current_user)):
 )
 def get_intraday_fusion_shadow_diagnostics(user=Depends(current_user)):
     return signal_shadow_service.diagnostics(user.id)
+
+
+@app.get(
+    "/api/v1/analysis/intraday-fusion/shadow/system-feasibility-panel",
+    response_model=SignalShadowFeasibilityPanelResponse,
+)
+def get_system_intraday_fusion_shadow_feasibility_panel(user=Depends(current_user)):
+    return signal_shadow_service.feasibility_panel(0)
+
+
+@app.get(
+    "/api/v1/analysis/intraday-fusion/shadow/feasibility-panel",
+    response_model=SignalShadowFeasibilityPanelResponse,
+)
+def get_intraday_fusion_shadow_feasibility_panel(user=Depends(current_user)):
+    return signal_shadow_service.feasibility_panel(user.id)
 
 
 @app.get(

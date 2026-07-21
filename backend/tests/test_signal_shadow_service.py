@@ -168,6 +168,87 @@ def test_shadow_diagnostics_verify_evidence_and_report_stale_blockers(tmp_path):
     assert failed.observations_analyzed == 0
 
 
+def test_feasibility_panel_is_gated_and_aggregates_when_authorized(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    db = DatabaseManager(db_path=str(tmp_path / "feasibility.db"))
+    service = SignalShadowService(db)
+    packets = [
+        {
+            "symbol": "EURUSD",
+            "market": "forex",
+            "status": "NO_TRADE",
+            "side": "flat",
+            "failed_gates": ["gate_a", "gate_b"],
+            "gates": [
+                {"name": "gate_a", "passed": False},
+                {"name": "gate_b", "passed": False},
+            ],
+            "frames": [{"fresh": True}] * 4,
+        },
+        {
+            "symbol": "USDCHF",
+            "market": "forex",
+            "status": "WATCH",
+            "side": "flat",
+            "failed_gates": ["gate_a"],
+            "gates": [
+                {"name": "gate_a", "passed": False},
+                {"name": "gate_b", "passed": True},
+            ],
+            "frames": [{"fresh": True}] * 4,
+        },
+        {
+            "symbol": "USDCAD",
+            "market": "forex",
+            "status": "WATCH",
+            "side": "flat",
+            "failed_gates": [],
+            "gates": [
+                {"name": "gate_a", "passed": True},
+                {"name": "gate_b", "passed": True},
+            ],
+            "frames": [{"fresh": True}] * 4,
+        },
+    ]
+    for packet in packets:
+        service.capture(27, packet)
+    withheld = service.feasibility_panel(27)
+    assert withheld.status == "NOT_ELIGIBLE"
+    assert withheld.audit_metrics_available is False
+    assert withheld.failed_gate_counts == {}
+    assert withheld.threshold_change_authorized is False
+
+    monkeypatch.setattr(
+        service,
+        "diagnostics",
+        lambda _user_id: SimpleNamespace(
+            total_observations=3,
+            valid_non_all_stale_observations=1000,
+            observation_span_days=5.0,
+            scarcity_min_observations=1000,
+            scarcity_min_span_days=5.0,
+            status_counts={"NO_TRADE": 1, "WATCH": 2},
+            evidence_integrity_failures=0,
+            feasibility_audit_authorized=True,
+        ),
+    )
+    available = service.feasibility_panel(27)
+    assert available.status == "AVAILABLE"
+    assert available.audit_metrics_available is True
+    assert available.minimum_failed_gates_observed == 0
+    assert available.zero_failed_gate_observations == 1
+    assert available.failure_cardinality_counts == {"0": 1, "1": 1, "2": 1}
+    assert available.failed_gate_counts == {"gate_a": 2, "gate_b": 1}
+    assert available.passed_gate_counts == {"gate_a": 1, "gate_b": 2}
+    assert available.single_gate_near_miss_counts == {"gate_a": 1}
+    assert available.top_cofailure_pairs == {"gate_a|gate_b": 1}
+    assert available.feasibility_audit_authorized is True
+    assert available.candidate_rate_claimed is False
+    assert available.threshold_change_authorized is False
+    assert available.actionable_for_live is False
+
+
 def test_active_candidate_has_terminal_horizon_expiry(tmp_path):
     db = DatabaseManager(db_path=str(tmp_path / "active-expiry.db"))
     service = SignalShadowService(db)
