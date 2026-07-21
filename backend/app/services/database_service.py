@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 19
+LATEST_SCHEMA_VERSION = 20
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -374,6 +374,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (19, "signal_shadow_immutable_research_snapshots", datetime.now(timezone.utc).isoformat()),
+                )
+            if 20 not in applied:
+                self._apply_schema_v20(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (20, "signal_shadow_forward_holdout_plans", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -1223,6 +1233,32 @@ class DatabaseManager:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_shadow_research_snapshot_user_locked "
             "ON signal_shadow_research_snapshots(user_id, locked_at DESC)"
+        )
+
+    def _apply_schema_v20(self, conn: ConnectionAdapter) -> None:
+        user_id_type = "BIGINT" if self.backend == "postgresql" else "INTEGER"
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS signal_shadow_forward_holdout_plans (
+                plan_id TEXT PRIMARY KEY,
+                user_id {user_id_type} NOT NULL,
+                source_snapshot_id TEXT NOT NULL,
+                source_dataset_sha256 TEXT NOT NULL,
+                policy_version TEXT NOT NULL,
+                cutoff_at TEXT NOT NULL,
+                required_activated_outcomes INTEGER NOT NULL,
+                holdout_dataset_sha256 TEXT,
+                holdout_member_ids_json TEXT,
+                created_at TEXT NOT NULL,
+                ready_at TEXT,
+                consumed_at TEXT,
+                UNIQUE(user_id, source_snapshot_id, policy_version)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shadow_holdout_user_created "
+            "ON signal_shadow_forward_holdout_plans(user_id, created_at DESC)"
         )
 
     def _ensure_columns(

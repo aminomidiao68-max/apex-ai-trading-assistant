@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.7.0-signal-alpha27",
-    "status": "Signal Research Alpha 27 - Feasibility Audit Panel"
+    "current_version": "3.7.0-signal-alpha28",
+    "status": "Signal Research Alpha 28 - Forward Holdout Plan"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -1839,6 +1839,30 @@
       "candidate_rate_claimed": false,
       "threshold_change_authorized": false,
       "threshold_relaxation_allowed": false,
+      "order_routed": false,
+      "actionable_for_live": false,
+      "live_execution_enabled": false
+    }
+  },
+  "signal_alpha28": {
+    "schema_version": 20,
+    "forward_holdout_plan": {
+      "source_research_snapshot_required": true,
+      "immutable_cutoff": true,
+      "minimum_future_activated_outcomes": 30,
+      "future_only_membership": true,
+      "membership_locked_when_ready": true,
+      "holdout_dataset_sha256": true,
+      "metrics_exposed_before_consumption": false
+    },
+    "statuses": [
+      "COLLECTING",
+      "READY",
+      "CONSUMED"
+    ],
+    "safety": {
+      "final_holdout_used": false,
+      "threshold_change_authorized": false,
       "order_routed": false,
       "actionable_for_live": false,
       "live_execution_enabled": false

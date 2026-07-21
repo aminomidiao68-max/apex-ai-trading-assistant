@@ -86,7 +86,7 @@ def test_shadow_capture_never_routes_and_panel_is_insufficient(tmp_path):
     after = service.panel(1, minimum_required_resolved=30)
     assert after.pending_outcomes == 0 and after.resolved_outcomes == 1
     assert service.panel(2).total_observations == 0
-    assert db.schema_version() == LATEST_SCHEMA_VERSION == 19
+    assert db.schema_version() == LATEST_SCHEMA_VERSION == 20
 
 
 def test_shadow_diagnostics_verify_evidence_and_report_stale_blockers(tmp_path):
@@ -406,6 +406,68 @@ def test_research_panel_withholds_metrics_then_uses_wilson_and_integrity_gate(tm
             (11,),
         ).fetchone()
     assert int(count["count"]) == 1
+
+    holdout = service.lock_forward_holdout_plan(
+        11,
+        snapshot.snapshot_id,
+        required_activated_outcomes=30,
+    )
+    assert holdout.status == "COLLECTING"
+    assert holdout.future_candidates == 0
+    assert holdout.future_activated_outcomes == 0
+    assert holdout.holdout_dataset_sha256 is None
+    assert holdout.ready_at is None
+    assert holdout.immutable_cutoff is True
+    assert holdout.holdout_metrics_exposed is False
+    assert holdout.final_holdout_used is False
+    duplicate_holdout = service.lock_forward_holdout_plan(11, snapshot.snapshot_id)
+    assert duplicate_holdout.plan_id == holdout.plan_id
+    assert duplicate_holdout.duplicate is True
+    with pytest.raises(SignalShadowError, match="shadow_forward_holdout_plan_not_found"):
+        service.get_forward_holdout_plan(12, holdout.plan_id)
+
+    for index in range(30):
+        candidate = service.capture(11, _candidate(max_bars=1))
+        with db.connection() as conn:
+            conn.execute(
+                "UPDATE signal_shadow_observations SET outcome_status=?,realized_rr=?,"
+                "activated=?,resolved_at=? WHERE observation_id=?",
+                (
+                    "WIN" if index % 2 == 0 else "LOSS",
+                    2.0 if index % 2 == 0 else -1.0,
+                    1,
+                    datetime.now(timezone.utc).isoformat(),
+                    candidate.observation_id,
+                ),
+            )
+            conn.commit()
+    ready_holdout = service.get_forward_holdout_plan(11, holdout.plan_id)
+    assert ready_holdout.status == "READY"
+    assert ready_holdout.future_candidates == 30
+    assert ready_holdout.future_terminal_outcomes == 30
+    assert ready_holdout.future_activated_outcomes == 30
+    assert len(ready_holdout.holdout_dataset_sha256) == 64
+    assert ready_holdout.ready_at is not None
+    locked_holdout_sha = ready_holdout.holdout_dataset_sha256
+
+    later_candidate = service.capture(11, _candidate(max_bars=1))
+    with db.connection() as conn:
+        conn.execute(
+            "UPDATE signal_shadow_observations SET outcome_status='WIN',realized_rr=2,"
+            "activated=1,resolved_at=? WHERE observation_id=?",
+            (datetime.now(timezone.utc).isoformat(), later_candidate.observation_id),
+        )
+        conn.commit()
+    still_locked = service.get_forward_holdout_plan(11, holdout.plan_id)
+    assert still_locked.future_activated_outcomes == 31
+    assert still_locked.holdout_dataset_sha256 == locked_holdout_sha
+    assert still_locked.final_holdout_used is False
+    with db.connection() as conn:
+        plan_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM signal_shadow_forward_holdout_plans WHERE user_id=?",
+            (11,),
+        ).fetchone()
+    assert int(plan_count["count"]) == 1
 
     with db.connection() as conn:
         conn.execute(

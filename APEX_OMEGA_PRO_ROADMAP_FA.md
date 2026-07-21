@@ -409,3 +409,13 @@
 - Candidate observed مسیر Audit را متوقف می‌کند
 - Candidate-rate و Threshold change claim ممنوع
 - بدون تغییر Signal Logic، Routing یا Live authorization
+
+## ✅ Signal Research Alpha 28 — Forward Holdout Plan Preparation
+- Schema v20 برای Forward Holdout Plan
+- Research Snapshot آماده به‌عنوان Development source
+- Cutoff زمانی immutable و فقط Candidateهای آینده
+- حداقل ۳۰ Outcome فعال آینده
+- Lock دائمی Member IDs و Holdout Dataset SHA هنگام Ready
+- Metrics تا مصرف صریح Final Holdout مخفی
+- Statusهای COLLECTING / READY / CONSUMED
+- Final Holdout هنوز مصرف نشده و Live authorization خاموش

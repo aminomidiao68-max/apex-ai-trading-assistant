@@ -15,6 +15,7 @@ from app.models import (
     SignalShadowCaptureResponse,
     SignalShadowDiagnosticsResponse,
     SignalShadowFeasibilityPanelResponse,
+    SignalShadowForwardHoldoutPlanResponse,
     SignalShadowPanelResponse,
     SignalShadowResearchBreakdown,
     SignalShadowResearchPanelResponse,
@@ -1139,3 +1140,182 @@ class SignalShadowService:
         if row is None:
             raise SignalShadowError("shadow_research_snapshot_not_found")
         return self._research_snapshot_response(dict(row), duplicate=False)
+
+    def _forward_holdout_plan_response(
+        self,
+        user_id: int,
+        row: dict,
+        *,
+        duplicate: bool,
+    ) -> SignalShadowForwardHoldoutPlanResponse:
+        cutoff_at = str(row["cutoff_at"])
+        with self.database.connection() as conn:
+            fetched = conn.execute(
+                "SELECT observation_id,evidence_sha256,outcome_status,realized_rr,"
+                "captured_at,resolved_at,activated,resolution_policy "
+                "FROM signal_shadow_observations WHERE user_id=? "
+                "AND fusion_status='ACTIONABLE_CANDIDATE' AND captured_at>? "
+                "ORDER BY captured_at,observation_id",
+                (user_id, cutoff_at),
+            ).fetchall()
+        future_rows = [dict(item) for item in fetched]
+        terminal_rows = [
+            item for item in future_rows if item["outcome_status"] in _TERMINAL_OUTCOMES
+        ]
+        activated_rows = [
+            item
+            for item in future_rows
+            if item["outcome_status"] in _ACTIVATED_TERMINAL_OUTCOMES
+            and bool(item["activated"])
+        ]
+        required = int(row["required_activated_outcomes"])
+        holdout_sha256 = row.get("holdout_dataset_sha256")
+        ready_at = row.get("ready_at")
+        if holdout_sha256 is None and len(activated_rows) >= required:
+            selected_rows = activated_rows[:required]
+            payload = [
+                {
+                    "observation_id": item["observation_id"],
+                    "evidence_sha256": item["evidence_sha256"],
+                    "outcome_status": item["outcome_status"],
+                    "realized_rr": item["realized_rr"],
+                    "captured_at": item["captured_at"],
+                    "resolved_at": item["resolved_at"],
+                    "resolution_policy": item["resolution_policy"],
+                }
+                for item in selected_rows
+            ]
+            canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+            candidate_sha256 = hashlib.sha256(canonical.encode()).hexdigest()
+            member_ids_json = json.dumps(
+                [item["observation_id"] for item in selected_rows],
+                separators=(",", ":"),
+            )
+            candidate_ready_at = datetime.now(timezone.utc).isoformat()
+            with self.database.connection() as conn:
+                conn.execute(
+                    "UPDATE signal_shadow_forward_holdout_plans SET "
+                    "holdout_dataset_sha256=?,holdout_member_ids_json=?,ready_at=? "
+                    "WHERE user_id=? AND plan_id=? AND holdout_dataset_sha256 IS NULL",
+                    (
+                        candidate_sha256,
+                        member_ids_json,
+                        candidate_ready_at,
+                        user_id,
+                        row["plan_id"],
+                    ),
+                )
+                conn.commit()
+                refreshed = conn.execute(
+                    "SELECT * FROM signal_shadow_forward_holdout_plans "
+                    "WHERE user_id=? AND plan_id=?",
+                    (user_id, row["plan_id"]),
+                ).fetchone()
+            if refreshed is None:
+                raise SignalShadowError("shadow_forward_holdout_plan_not_found")
+            row = dict(refreshed)
+            holdout_sha256 = row.get("holdout_dataset_sha256")
+            ready_at = row.get("ready_at")
+        consumed_at = row["consumed_at"]
+        status = (
+            "CONSUMED"
+            if consumed_at
+            else "READY"
+            if holdout_sha256 is not None
+            else "COLLECTING"
+        )
+        return SignalShadowForwardHoldoutPlanResponse(
+            plan_id=str(row["plan_id"]),
+            source_snapshot_id=str(row["source_snapshot_id"]),
+            source_dataset_sha256=str(row["source_dataset_sha256"]),
+            policy_version=str(row["policy_version"]),
+            cutoff_at=cutoff_at,
+            required_activated_outcomes=required,
+            future_candidates=len(future_rows),
+            future_terminal_outcomes=len(terminal_rows),
+            future_activated_outcomes=len(activated_rows),
+            holdout_dataset_sha256=holdout_sha256,
+            status=status,
+            created_at=str(row["created_at"]),
+            ready_at=str(ready_at) if ready_at else None,
+            consumed_at=str(consumed_at) if consumed_at else None,
+            duplicate=duplicate,
+            immutable_cutoff=True,
+            holdout_metrics_exposed=False,
+            final_holdout_used=bool(consumed_at),
+            threshold_change_authorized=False,
+            actionable_for_live=False,
+            live_execution_enabled=settings.enable_live_execution,
+        )
+
+    def lock_forward_holdout_plan(
+        self,
+        user_id: int,
+        source_snapshot_id: str,
+        *,
+        required_activated_outcomes: int = 30,
+    ) -> SignalShadowForwardHoldoutPlanResponse:
+        source = self.get_research_snapshot(user_id, source_snapshot_id)
+        required = max(30, min(int(required_activated_outcomes), 1000))
+        policy_version = "forward_holdout_v1"
+        with self.database.connection() as conn:
+            existing = conn.execute(
+                "SELECT * FROM signal_shadow_forward_holdout_plans WHERE user_id=? "
+                "AND source_snapshot_id=? AND policy_version=?",
+                (user_id, source_snapshot_id, policy_version),
+            ).fetchone()
+        if existing is not None:
+            return self._forward_holdout_plan_response(
+                user_id,
+                dict(existing),
+                duplicate=True,
+            )
+        now = datetime.now(timezone.utc).isoformat()
+        plan_id = uuid4().hex
+        with self.database.connection() as conn:
+            conn.execute(
+                """INSERT INTO signal_shadow_forward_holdout_plans (
+                    plan_id,user_id,source_snapshot_id,source_dataset_sha256,
+                    policy_version,cutoff_at,required_activated_outcomes,
+                    holdout_dataset_sha256,holdout_member_ids_json,
+                    created_at,ready_at,consumed_at
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    plan_id,
+                    user_id,
+                    source_snapshot_id,
+                    source.dataset_sha256,
+                    policy_version,
+                    now,
+                    required,
+                    None,
+                    None,
+                    now,
+                    None,
+                    None,
+                ),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM signal_shadow_forward_holdout_plans WHERE user_id=? "
+                "AND plan_id=?",
+                (user_id, plan_id),
+            ).fetchone()
+        if row is None:
+            raise SignalShadowError("shadow_forward_holdout_plan_persist_failed")
+        return self._forward_holdout_plan_response(user_id, dict(row), duplicate=False)
+
+    def get_forward_holdout_plan(
+        self,
+        user_id: int,
+        plan_id: str,
+    ) -> SignalShadowForwardHoldoutPlanResponse:
+        with self.database.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM signal_shadow_forward_holdout_plans WHERE user_id=? "
+                "AND plan_id=?",
+                (user_id, plan_id),
+            ).fetchone()
+        if row is None:
+            raise SignalShadowError("shadow_forward_holdout_plan_not_found")
+        return self._forward_holdout_plan_response(user_id, dict(row), duplicate=False)

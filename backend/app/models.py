@@ -2152,6 +2152,30 @@ class SignalShadowResearchSnapshotResponse(BaseModel):
     result: SignalShadowResearchPanelResponse
 
 
+class SignalShadowForwardHoldoutPlanResponse(BaseModel):
+    plan_id: str
+    source_snapshot_id: str
+    source_dataset_sha256: str
+    policy_version: str = "forward_holdout_v1"
+    cutoff_at: str
+    required_activated_outcomes: int
+    future_candidates: int
+    future_terminal_outcomes: int
+    future_activated_outcomes: int
+    holdout_dataset_sha256: Optional[str] = None
+    status: Literal["COLLECTING", "READY", "CONSUMED"]
+    created_at: str
+    ready_at: Optional[str] = None
+    consumed_at: Optional[str] = None
+    duplicate: bool = False
+    immutable_cutoff: bool = True
+    holdout_metrics_exposed: bool = False
+    final_holdout_used: bool = False
+    threshold_change_authorized: bool = False
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+
+
 class ConnectorCapability(BaseModel):
     connector: str
     market_type: str

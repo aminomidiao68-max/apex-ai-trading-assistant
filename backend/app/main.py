@@ -107,6 +107,7 @@ from app.models import (
     SignalShadowCaptureResponse,
     SignalShadowDiagnosticsResponse,
     SignalShadowFeasibilityPanelResponse,
+    SignalShadowForwardHoldoutPlanResponse,
     SignalShadowPanelResponse,
     SignalShadowResearchPanelResponse,
     SignalShadowResearchSnapshotResponse,
@@ -1405,6 +1406,76 @@ def get_intraday_fusion_shadow_research_snapshot(
 ):
     try:
         return signal_shadow_service.get_research_snapshot(user.id, snapshot_id)
+    except SignalShadowError as exc:
+        status_code = 404 if exc.code.endswith("not_found") else 400
+        raise HTTPException(status_code=status_code, detail={"code": exc.code}) from exc
+
+
+@app.post(
+    "/api/v1/analysis/intraday-fusion/shadow/forward-holdout-plan/{source_snapshot_id}",
+    response_model=SignalShadowForwardHoldoutPlanResponse,
+)
+def lock_intraday_fusion_shadow_forward_holdout_plan(
+    source_snapshot_id: str,
+    required_activated_outcomes: int = Query(default=30, ge=30, le=1000),
+    user=Depends(current_user),
+):
+    try:
+        return signal_shadow_service.lock_forward_holdout_plan(
+            user.id,
+            source_snapshot_id,
+            required_activated_outcomes=required_activated_outcomes,
+        )
+    except SignalShadowError as exc:
+        status_code = 404 if exc.code.endswith("not_found") else 400
+        raise HTTPException(status_code=status_code, detail={"code": exc.code}) from exc
+
+
+@app.post(
+    "/api/v1/analysis/intraday-fusion/shadow/system-forward-holdout-plan/{source_snapshot_id}",
+    response_model=SignalShadowForwardHoldoutPlanResponse,
+)
+def lock_system_intraday_fusion_shadow_forward_holdout_plan(
+    source_snapshot_id: str,
+    required_activated_outcomes: int = Query(default=30, ge=30, le=1000),
+    user=Depends(current_user),
+):
+    try:
+        return signal_shadow_service.lock_forward_holdout_plan(
+            0,
+            source_snapshot_id,
+            required_activated_outcomes=required_activated_outcomes,
+        )
+    except SignalShadowError as exc:
+        status_code = 404 if exc.code.endswith("not_found") else 400
+        raise HTTPException(status_code=status_code, detail={"code": exc.code}) from exc
+
+
+@app.get(
+    "/api/v1/analysis/intraday-fusion/shadow/forward-holdout-plan/{plan_id}",
+    response_model=SignalShadowForwardHoldoutPlanResponse,
+)
+def get_intraday_fusion_shadow_forward_holdout_plan(
+    plan_id: str,
+    user=Depends(current_user),
+):
+    try:
+        return signal_shadow_service.get_forward_holdout_plan(user.id, plan_id)
+    except SignalShadowError as exc:
+        status_code = 404 if exc.code.endswith("not_found") else 400
+        raise HTTPException(status_code=status_code, detail={"code": exc.code}) from exc
+
+
+@app.get(
+    "/api/v1/analysis/intraday-fusion/shadow/system-forward-holdout-plan/{plan_id}",
+    response_model=SignalShadowForwardHoldoutPlanResponse,
+)
+def get_system_intraday_fusion_shadow_forward_holdout_plan(
+    plan_id: str,
+    user=Depends(current_user),
+):
+    try:
+        return signal_shadow_service.get_forward_holdout_plan(0, plan_id)
     except SignalShadowError as exc:
         status_code = 404 if exc.code.endswith("not_found") else 400
         raise HTTPException(status_code=status_code, detail={"code": exc.code}) from exc

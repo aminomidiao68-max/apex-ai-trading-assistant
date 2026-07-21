@@ -2419,3 +2419,17 @@ Metrics before Gate: withheld
 Candidate-rate claim: false
 Threshold change / routing / Live authorization: false
 ```
+
+---
+## Addendum — Signal Research Alpha 28
+```text
+Version: 3.7.0-signal-alpha28
+Schema: v20
+Source: immutable RESEARCH_READY snapshot
+Forward cutoff: immutable
+Required future activated outcomes: >=30
+Membership: locked once READY / member IDs + SHA-256 persisted
+Metrics exposed: false
+Final holdout consumed: false
+Threshold change / routing / Live authorization: false
+```
