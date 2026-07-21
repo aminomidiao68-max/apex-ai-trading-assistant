@@ -2379,3 +2379,17 @@ Seed: evidence_dataset_sha256
 Metrics: average-R CI / profit factor R / win-nonwin R / expiry rates / streak
 Signal logic / threshold / routing / Live authorization changes: none
 ```
+
+---
+## Addendum — Signal Research Alpha 25
+```text
+Version: 3.7.0-signal-alpha25
+Schema: v18 (unchanged)
+Mode: Stage 2 chronological stability preparation
+Minimum active outcomes: 60
+Folds: 3 contiguous chronological slices / no shuffle
+Reselection: model=false / threshold=false
+Final holdout used: false
+Metrics withheld before minimum sample: true
+Routing / Live authorization: false
+```

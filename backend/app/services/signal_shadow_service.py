@@ -593,6 +593,50 @@ class SignalShadowService:
         upper = means[int(math.ceil(last * 0.975))]
         return lower, upper, block_length
 
+    @classmethod
+    def _chronological_stability_folds(
+        cls,
+        rows: list[dict],
+        *,
+        fold_count: int = 3,
+    ) -> list[dict]:
+        """Evaluate contiguous fixed-policy OOS slices without reselection."""
+        count = len(rows)
+        if fold_count < 2 or count < fold_count:
+            return []
+        base_size, remainder = divmod(count, fold_count)
+        folds: list[dict] = []
+        offset = 0
+        for fold_index in range(fold_count):
+            size = base_size + (1 if fold_index < remainder else 0)
+            fold_rows = rows[offset : offset + size]
+            offset += size
+            values = [float(row["realized_rr"]) for row in fold_rows]
+            wins = sum(1 for row in fold_rows if row["outcome_status"] == "WIN")
+            folds.append(
+                {
+                    "fold_index": fold_index + 1,
+                    "sample_count": size,
+                    "observed_from": str(fold_rows[0]["captured_at"]),
+                    "observed_to": str(fold_rows[-1]["captured_at"]),
+                    "wins": wins,
+                    "losses": sum(
+                        1 for row in fold_rows if row["outcome_status"] == "LOSS"
+                    ),
+                    "expired_active": sum(
+                        1
+                        for row in fold_rows
+                        if row["outcome_status"] == "EXPIRED_ACTIVE"
+                    ),
+                    "target_hit_rate_pct": round(100.0 * wins / size, 4),
+                    "average_realized_rr": round(sum(values) / size, 6),
+                    "cumulative_realized_rr": round(sum(values), 6),
+                    "max_drawdown_rr": round(cls._max_drawdown_rr(values), 6),
+                    "max_consecutive_nonwins": cls._max_consecutive_nonwins(fold_rows),
+                }
+            )
+        return folds
+
     @staticmethod
     def _context_regime(evidence: dict) -> str:
         regimes = [
@@ -787,6 +831,25 @@ class SignalShadowService:
             bootstrap_upper = round(block_high, 6)
             bootstrap_block_length = block_length
             dependence_aware_metrics_available = True
+        chronological_minimum_activated = 60
+        chronological_fold_count = 3
+        chronological_status = "WITHHELD_INSUFFICIENT_SAMPLE"
+        chronological_folds: list[dict] = []
+        worst_fold_average_rr = None
+        positive_average_rr_folds = None
+        all_folds_positive_average_rr = None
+        if ready and len(activated) >= chronological_minimum_activated:
+            chronological_folds = self._chronological_stability_folds(
+                activated,
+                fold_count=chronological_fold_count,
+            )
+            chronological_status = "AVAILABLE"
+            fold_averages = [fold["average_realized_rr"] for fold in chronological_folds]
+            worst_fold_average_rr = min(fold_averages)
+            positive_average_rr_folds = sum(value > 0 for value in fold_averages)
+            all_folds_positive_average_rr = bool(
+                positive_average_rr_folds == chronological_fold_count
+            )
         observed = [str(row["captured_at"]) for row in terminal]
         breakdowns = (
             self._breakdowns(
@@ -834,6 +897,16 @@ class SignalShadowService:
             bootstrap_replicates=2000,
             bootstrap_method="deterministic_circular_moving_block",
             dependence_aware_metrics_available=dependence_aware_metrics_available,
+            chronological_stability_status=chronological_status,
+            chronological_minimum_activated=chronological_minimum_activated,
+            chronological_fold_count=chronological_fold_count,
+            chronological_folds=chronological_folds,
+            worst_fold_average_rr=worst_fold_average_rr,
+            positive_average_rr_folds=positive_average_rr_folds,
+            all_folds_positive_average_rr=all_folds_positive_average_rr,
+            chronological_model_reselection_used=False,
+            chronological_shuffle_used=False,
+            final_holdout_used=False,
             breakdown_minimum_activated=breakdown_minimum_activated,
             breakdowns=breakdowns,
             precision_claimed=ready,

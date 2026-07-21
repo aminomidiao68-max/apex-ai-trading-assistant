@@ -2025,6 +2025,21 @@ class SignalShadowResearchBreakdown(BaseModel):
     average_realized_rr: Optional[float] = None
 
 
+class SignalShadowChronologicalFold(BaseModel):
+    fold_index: int
+    sample_count: int
+    observed_from: str
+    observed_to: str
+    wins: int
+    losses: int
+    expired_active: int
+    target_hit_rate_pct: float
+    average_realized_rr: float
+    cumulative_realized_rr: float
+    max_drawdown_rr: float
+    max_consecutive_nonwins: int
+
+
 class SignalShadowResearchPanelResponse(BaseModel):
     status: Literal["INSUFFICIENT_EVIDENCE", "INTEGRITY_FAILED", "RESEARCH_READY"]
     total_candidates: int
@@ -2063,6 +2078,19 @@ class SignalShadowResearchPanelResponse(BaseModel):
     bootstrap_method: str = "deterministic_circular_moving_block"
     dependence_aware_metrics_available: bool = False
     serial_dependence_warning: str = "shadow_outcomes_may_be_temporally_and_cross_sectionally_dependent"
+    chronological_stability_status: Literal[
+        "WITHHELD_INSUFFICIENT_SAMPLE",
+        "AVAILABLE",
+    ] = "WITHHELD_INSUFFICIENT_SAMPLE"
+    chronological_minimum_activated: int = 60
+    chronological_fold_count: int = 3
+    chronological_folds: List[SignalShadowChronologicalFold] = Field(default_factory=list)
+    worst_fold_average_rr: Optional[float] = None
+    positive_average_rr_folds: Optional[int] = None
+    all_folds_positive_average_rr: Optional[bool] = None
+    chronological_model_reselection_used: bool = False
+    chronological_shuffle_used: bool = False
+    final_holdout_used: bool = False
     breakdown_minimum_activated: int
     breakdowns: List[SignalShadowResearchBreakdown] = Field(default_factory=list)
     metric_label: str = "empirical_shadow_target_hit_rate_not_probability"

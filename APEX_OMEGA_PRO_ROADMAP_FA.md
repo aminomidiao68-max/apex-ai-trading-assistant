@@ -380,3 +380,12 @@
 - Active-expiry و No-entry rates
 - تمام Metricها پیش از Gate برابر null
 - بدون تغییر Signal Logic، Threshold، Routing یا Live authorization
+
+## ✅ Signal Research Alpha 25 — Chronological OOS Stability Preparation
+- حداقل ۶۰ Outcome فعال برای Stability Panel
+- سه Fold زمانی پیوسته و بدون Shuffle
+- Fixed-policy evaluation بدون Model/Threshold reselection
+- Target-hit، Average/Cumulative R، Drawdown و Non-win streak هر Fold
+- Worst-fold و تعداد Foldهای Average-R مثبت
+- Final Holdout هنوز استفاده نمی‌شود
+- تمام Foldها پیش از ۶۰ Outcome برابر withheld

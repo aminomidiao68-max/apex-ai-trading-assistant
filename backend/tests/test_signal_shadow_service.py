@@ -239,10 +239,14 @@ def test_research_panel_withholds_metrics_then_uses_wilson_and_integrity_gate(tm
     assert empty.bootstrap_average_rr_95_lower is None
     assert empty.profit_factor_rr is None
     assert empty.dependence_aware_metrics_available is False
+    assert empty.chronological_stability_status == "WITHHELD_INSUFFICIENT_SAMPLE"
+    assert empty.chronological_folds == []
+    assert empty.worst_fold_average_rr is None
+    assert empty.final_holdout_used is False
     assert len(empty.evidence_dataset_sha256) == 64
 
     observation_ids = []
-    for index in range(30):
+    for index in range(60):
         candidate = service.capture(11, _candidate(max_bars=1))
         observation_ids.append(candidate.observation_id)
         captured_ts = _move_capture_to_past(db, candidate.observation_id, minutes=120)
@@ -255,13 +259,13 @@ def test_research_panel_withholds_metrics_then_uses_wilson_and_integrity_gate(tm
 
     panel = service.research_panel(11)
     assert panel.status == "RESEARCH_READY"
-    assert panel.terminal_outcomes == 30
-    assert panel.activated_terminal_outcomes == 30
-    assert panel.wins == 15 and panel.losses == 15
+    assert panel.terminal_outcomes == 60
+    assert panel.activated_terminal_outcomes == 60
+    assert panel.wins == 30 and panel.losses == 30
     assert panel.target_hit_rate_pct == 50.0
     assert panel.wilson_95_lower_pct < 50 < panel.wilson_95_upper_pct
     assert panel.average_realized_rr == 0.5
-    assert panel.cumulative_realized_rr == 15.0
+    assert panel.cumulative_realized_rr == 30.0
     assert panel.profit_factor_rr == 2.0
     assert panel.average_win_rr == 2.0
     assert panel.average_nonwin_rr == -1.0
@@ -270,9 +274,21 @@ def test_research_panel_withholds_metrics_then_uses_wilson_and_integrity_gate(tm
     assert panel.max_consecutive_nonwins == 1
     assert panel.bootstrap_average_rr_95_lower <= 0.5
     assert panel.bootstrap_average_rr_95_upper >= 0.5
-    assert panel.bootstrap_block_length == 5
+    assert panel.bootstrap_block_length == 8
     assert panel.bootstrap_replicates == 2000
     assert panel.dependence_aware_metrics_available is True
+    assert panel.chronological_stability_status == "AVAILABLE"
+    assert panel.chronological_minimum_activated == 60
+    assert panel.chronological_fold_count == 3
+    assert len(panel.chronological_folds) == 3
+    assert all(fold.sample_count == 20 for fold in panel.chronological_folds)
+    assert all(fold.average_realized_rr == 0.5 for fold in panel.chronological_folds)
+    assert panel.worst_fold_average_rr == 0.5
+    assert panel.positive_average_rr_folds == 3
+    assert panel.all_folds_positive_average_rr is True
+    assert panel.chronological_model_reselection_used is False
+    assert panel.chronological_shuffle_used is False
+    assert panel.final_holdout_used is False
     again = service.research_panel(11)
     assert again.bootstrap_average_rr_95_lower == panel.bootstrap_average_rr_95_lower
     assert again.bootstrap_average_rr_95_upper == panel.bootstrap_average_rr_95_upper
@@ -295,6 +311,8 @@ def test_research_panel_withholds_metrics_then_uses_wilson_and_integrity_gate(tm
     assert failed.bootstrap_average_rr_95_lower is None
     assert failed.profit_factor_rr is None
     assert failed.dependence_aware_metrics_available is False
+    assert failed.chronological_stability_status == "WITHHELD_INSUFFICIENT_SAMPLE"
+    assert failed.chronological_folds == []
     assert failed.breakdowns == []
 
 
