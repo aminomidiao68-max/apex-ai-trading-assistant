@@ -236,6 +236,9 @@ def test_research_panel_withholds_metrics_then_uses_wilson_and_integrity_gate(tm
     assert empty.status == "INSUFFICIENT_EVIDENCE"
     assert empty.precision_claimed is False
     assert empty.target_hit_rate_pct is None
+    assert empty.bootstrap_average_rr_95_lower is None
+    assert empty.profit_factor_rr is None
+    assert empty.dependence_aware_metrics_available is False
     assert len(empty.evidence_dataset_sha256) == 64
 
     observation_ids = []
@@ -259,6 +262,20 @@ def test_research_panel_withholds_metrics_then_uses_wilson_and_integrity_gate(tm
     assert panel.wilson_95_lower_pct < 50 < panel.wilson_95_upper_pct
     assert panel.average_realized_rr == 0.5
     assert panel.cumulative_realized_rr == 15.0
+    assert panel.profit_factor_rr == 2.0
+    assert panel.average_win_rr == 2.0
+    assert panel.average_nonwin_rr == -1.0
+    assert panel.active_expiry_rate_pct == 0.0
+    assert panel.no_entry_rate_pct == 0.0
+    assert panel.max_consecutive_nonwins == 1
+    assert panel.bootstrap_average_rr_95_lower <= 0.5
+    assert panel.bootstrap_average_rr_95_upper >= 0.5
+    assert panel.bootstrap_block_length == 5
+    assert panel.bootstrap_replicates == 2000
+    assert panel.dependence_aware_metrics_available is True
+    again = service.research_panel(11)
+    assert again.bootstrap_average_rr_95_lower == panel.bootstrap_average_rr_95_lower
+    assert again.bootstrap_average_rr_95_upper == panel.bootstrap_average_rr_95_upper
     assert panel.precision_claimed is True
     assert panel.probability_is_calibrated is False
     assert panel.actionable_for_live is False
@@ -275,6 +292,9 @@ def test_research_panel_withholds_metrics_then_uses_wilson_and_integrity_gate(tm
     assert failed.evidence_integrity_failures == 1
     assert failed.precision_claimed is False
     assert failed.target_hit_rate_pct is None
+    assert failed.bootstrap_average_rr_95_lower is None
+    assert failed.profit_factor_rr is None
+    assert failed.dependence_aware_metrics_available is False
     assert failed.breakdowns == []
 
 

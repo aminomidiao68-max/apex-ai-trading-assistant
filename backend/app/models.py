@@ -2050,6 +2050,19 @@ class SignalShadowResearchPanelResponse(BaseModel):
     median_realized_rr: Optional[float] = None
     cumulative_realized_rr: Optional[float] = None
     max_drawdown_rr: Optional[float] = None
+    profit_factor_rr: Optional[float] = None
+    average_win_rr: Optional[float] = None
+    average_nonwin_rr: Optional[float] = None
+    active_expiry_rate_pct: Optional[float] = None
+    no_entry_rate_pct: Optional[float] = None
+    max_consecutive_nonwins: Optional[int] = None
+    bootstrap_average_rr_95_lower: Optional[float] = None
+    bootstrap_average_rr_95_upper: Optional[float] = None
+    bootstrap_block_length: Optional[int] = None
+    bootstrap_replicates: int = 2000
+    bootstrap_method: str = "deterministic_circular_moving_block"
+    dependence_aware_metrics_available: bool = False
+    serial_dependence_warning: str = "shadow_outcomes_may_be_temporally_and_cross_sectionally_dependent"
     breakdown_minimum_activated: int
     breakdowns: List[SignalShadowResearchBreakdown] = Field(default_factory=list)
     metric_label: str = "empirical_shadow_target_hit_rate_not_probability"

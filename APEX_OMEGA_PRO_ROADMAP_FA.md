@@ -370,3 +370,13 @@
 - Feasibility Audit به‌معنای مجوز تغییر Threshold نیست
 - Candidate rate و Precision پیش از شواهد Claim نمی‌شوند
 - بدون تغییر تصمیم، Routing یا Live authorization
+
+## ✅ Signal Research Alpha 24 — Dependence-Aware Metrics Preparation
+- Stage 2 tooling پشت Research Gate و بدون اجرای زودهنگام
+- deterministic circular moving-block bootstrap با ۲۰۰۰ تکرار
+- Seed از Evidence Dataset SHA-256
+- Average R confidence interval با لحاظ وابستگی زمانی
+- Profit Factor R، Average win/non-win R و Max non-win streak
+- Active-expiry و No-entry rates
+- تمام Metricها پیش از Gate برابر null
+- بدون تغییر Signal Logic، Threshold، Routing یا Live authorization

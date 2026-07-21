@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import random
 from collections import Counter
 from datetime import datetime, timezone
 from statistics import median
@@ -551,6 +552,48 @@ class SignalShadowService:
         return maximum
 
     @staticmethod
+    def _max_consecutive_nonwins(rows: list[dict]) -> int:
+        current = maximum = 0
+        for row in rows:
+            if row.get("outcome_status") == "WIN":
+                current = 0
+            else:
+                current += 1
+                maximum = max(maximum, current)
+        return maximum
+
+    @staticmethod
+    def _moving_block_bootstrap_mean_ci(
+        values: list[float],
+        dataset_sha256: str,
+        *,
+        replicates: int = 2000,
+    ) -> tuple[float, float, int]:
+        """Deterministic circular moving-block bootstrap for serial dependence."""
+        if not values:
+            return 0.0, 0.0, 0
+        count = len(values)
+        block_length = max(2, min(count, int(round(math.sqrt(count)))))
+        seed = int(dataset_sha256[:16], 16) if dataset_sha256 else 0
+        rng = random.Random(seed)
+        means: list[float] = []
+        for _ in range(max(100, replicates)):
+            sample: list[float] = []
+            while len(sample) < count:
+                start = rng.randrange(count)
+                sample.extend(
+                    values[(start + offset) % count]
+                    for offset in range(block_length)
+                )
+            sample = sample[:count]
+            means.append(sum(sample) / count)
+        means.sort()
+        last = len(means) - 1
+        lower = means[int(math.floor(last * 0.025))]
+        upper = means[int(math.ceil(last * 0.975))]
+        return lower, upper, block_length
+
+    @staticmethod
     def _context_regime(evidence: dict) -> str:
         regimes = [
             str(item.get("regime") or "unknown")
@@ -699,6 +742,11 @@ class SignalShadowService:
             1 for row in valid_terminal if row["outcome_status"] == "EXPIRED_NO_ENTRY"
         )
         rate = lower = upper = average_rr = median_rr = cumulative_rr = max_drawdown = None
+        profit_factor = average_win = average_nonwin = None
+        active_expiry_rate = no_entry_rate = None
+        max_consecutive_nonwins = None
+        bootstrap_lower = bootstrap_upper = bootstrap_block_length = None
+        dependence_aware_metrics_available = False
         if ready:
             low_value, high_value = self._wilson_95(wins, len(activated))
             rate = round(100.0 * wins / len(activated), 4)
@@ -708,6 +756,37 @@ class SignalShadowService:
             median_rr = round(float(median(realized_values)), 6)
             cumulative_rr = round(sum(realized_values), 6)
             max_drawdown = round(self._max_drawdown_rr(realized_values), 6)
+            positive_sum = sum(value for value in realized_values if value > 0)
+            negative_sum = abs(sum(value for value in realized_values if value < 0))
+            profit_factor = round(positive_sum / negative_sum, 6) if negative_sum > 0 else None
+            win_values = [
+                float(row["realized_rr"])
+                for row in activated
+                if row["outcome_status"] == "WIN"
+            ]
+            nonwin_values = [
+                float(row["realized_rr"])
+                for row in activated
+                if row["outcome_status"] != "WIN"
+            ]
+            average_win = round(sum(win_values) / len(win_values), 6) if win_values else None
+            average_nonwin = (
+                round(sum(nonwin_values) / len(nonwin_values), 6)
+                if nonwin_values
+                else None
+            )
+            active_expiry_rate = round(100.0 * expired_active / len(activated), 4)
+            no_entry_rate = round(100.0 * expired_no_entry / len(valid_terminal), 4)
+            max_consecutive_nonwins = self._max_consecutive_nonwins(activated)
+            block_low, block_high, block_length = self._moving_block_bootstrap_mean_ci(
+                realized_values,
+                dataset_sha256,
+                replicates=2000,
+            )
+            bootstrap_lower = round(block_low, 6)
+            bootstrap_upper = round(block_high, 6)
+            bootstrap_block_length = block_length
+            dependence_aware_metrics_available = True
         observed = [str(row["captured_at"]) for row in terminal]
         breakdowns = (
             self._breakdowns(
@@ -743,6 +822,18 @@ class SignalShadowService:
             median_realized_rr=median_rr,
             cumulative_realized_rr=cumulative_rr,
             max_drawdown_rr=max_drawdown,
+            profit_factor_rr=profit_factor,
+            average_win_rr=average_win,
+            average_nonwin_rr=average_nonwin,
+            active_expiry_rate_pct=active_expiry_rate,
+            no_entry_rate_pct=no_entry_rate,
+            max_consecutive_nonwins=max_consecutive_nonwins,
+            bootstrap_average_rr_95_lower=bootstrap_lower,
+            bootstrap_average_rr_95_upper=bootstrap_upper,
+            bootstrap_block_length=bootstrap_block_length,
+            bootstrap_replicates=2000,
+            bootstrap_method="deterministic_circular_moving_block",
+            dependence_aware_metrics_available=dependence_aware_metrics_available,
             breakdown_minimum_activated=breakdown_minimum_activated,
             breakdowns=breakdowns,
             precision_claimed=ready,

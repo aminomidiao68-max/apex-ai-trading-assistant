@@ -2366,3 +2366,16 @@ Timestamp completeness required: true
 Feasibility audit authorization: diagnostic only
 Candidate-rate / threshold-change / Live claims: false
 ```
+
+---
+## Addendum — Signal Research Alpha 24
+```text
+Version: 3.7.0-signal-alpha24
+Schema: v18 (unchanged)
+Mode: Stage 2 preparation only / metrics withheld before Gate
+Bootstrap: deterministic circular moving block / 2000 replicates
+Block length: round(sqrt(active outcomes))
+Seed: evidence_dataset_sha256
+Metrics: average-R CI / profit factor R / win-nonwin R / expiry rates / streak
+Signal logic / threshold / routing / Live authorization changes: none
+```

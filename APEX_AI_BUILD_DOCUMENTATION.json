@@ -4,8 +4,8 @@
     "description": "Mobile-first AI-assisted trading platform for Crypto & Forex with advanced SMC/ICT analysis, risk management, and backtesting",
     "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
     "created_date": "2026-07-01",
-    "current_version": "3.7.0-signal-alpha23",
-    "status": "Signal Shadow Alpha 23 - Candidate Scarcity Monitor"
+    "current_version": "3.7.0-signal-alpha24",
+    "status": "Signal Research Alpha 24 - Dependence Aware Metrics"
   },
   "architecture": {
     "type": "Hybrid (Mobile + Backend)",
@@ -1737,6 +1737,32 @@
       "candidate_rate_claimed": false,
       "threshold_change_authorized": false,
       "feasibility_audit_is_not_threshold_relaxation": true,
+      "order_routed": false,
+      "actionable_for_live": false,
+      "live_execution_enabled": false
+    }
+  },
+  "signal_alpha24": {
+    "schema_version": 18,
+    "stage_2_preparation_only": true,
+    "metrics": [
+      "deterministic_circular_moving_block_bootstrap_average_r_ci",
+      "profit_factor_r",
+      "average_win_and_nonwin_r",
+      "active_expiry_rate",
+      "no_entry_rate",
+      "maximum_consecutive_nonwins"
+    ],
+    "bootstrap": {
+      "replicates": 2000,
+      "block_length": "round_sqrt_sample_size",
+      "seed": "evidence_dataset_sha256",
+      "serial_dependence_aware": true
+    },
+    "safety": {
+      "metrics_withheld_before_research_gate": true,
+      "probability_calibrated": false,
+      "threshold_change_authorized": false,
       "order_routed": false,
       "actionable_for_live": false,
       "live_execution_enabled": false
