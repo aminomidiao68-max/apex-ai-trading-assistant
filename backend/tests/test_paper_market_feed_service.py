@@ -117,7 +117,7 @@ def test_feed_is_opt_in_real_quote_only_and_user_scoped(tmp_path):
     assert subscription.live_routed is False
     assert feed.list_subscriptions(1).count == 1
     assert feed.list_subscriptions(2).count == 0
-    assert database.schema_version() == LATEST_SCHEMA_VERSION == 20
+    assert database.schema_version() == LATEST_SCHEMA_VERSION == 21
 
 
 def test_real_feed_fills_once_and_duplicate_tick_is_idempotent(tmp_path):

@@ -2176,6 +2176,42 @@ class SignalShadowForwardHoldoutPlanResponse(BaseModel):
     live_execution_enabled: bool = False
 
 
+class SignalShadowHoldoutConsumeRequest(BaseModel):
+    acknowledgement: Literal["CONSUME_FINAL_HOLDOUT_ONCE"]
+
+
+class SignalShadowHoldoutConsumptionResponse(BaseModel):
+    plan_id: str
+    holdout_dataset_sha256: str
+    holdout_result_sha256: str
+    consumption_request_sha256: str
+    consumed_at: str
+    duplicate: bool = False
+    activated_outcomes: int
+    wins: int
+    losses: int
+    expired_active: int
+    target_hit_rate_pct: float
+    wilson_95_lower_pct: float
+    wilson_95_upper_pct: float
+    average_realized_rr: float
+    median_realized_rr: float
+    cumulative_realized_rr: float
+    max_drawdown_rr: float
+    profit_factor_rr: Optional[float] = None
+    max_consecutive_nonwins: int
+    bootstrap_average_rr_95_lower: float
+    bootstrap_average_rr_95_upper: float
+    bootstrap_block_length: int
+    bootstrap_replicates: int = 2000
+    holdout_metrics_exposed: bool = True
+    final_holdout_used: bool = True
+    threshold_change_authorized: bool = False
+    live_authorized: bool = False
+    actionable_for_live: bool = False
+    live_execution_enabled: bool = False
+
+
 class ConnectorCapability(BaseModel):
     connector: str
     market_type: str

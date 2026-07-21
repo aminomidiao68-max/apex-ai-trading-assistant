@@ -13,7 +13,7 @@ from typing import Any, Iterator
 from app.config import settings
 
 
-LATEST_SCHEMA_VERSION = 20
+LATEST_SCHEMA_VERSION = 21
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -384,6 +384,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (20, "signal_shadow_forward_holdout_plans", datetime.now(timezone.utc).isoformat()),
+                )
+            if 21 not in applied:
+                self._apply_schema_v21(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (21, "signal_shadow_one_shot_holdout_consumption", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -1259,6 +1269,17 @@ class DatabaseManager:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_shadow_holdout_user_created "
             "ON signal_shadow_forward_holdout_plans(user_id, created_at DESC)"
+        )
+
+    def _apply_schema_v21(self, conn: ConnectionAdapter) -> None:
+        self._ensure_columns(
+            conn,
+            "signal_shadow_forward_holdout_plans",
+            [
+                "holdout_result_sha256 TEXT",
+                "holdout_result_json TEXT",
+                "consumption_request_sha256 TEXT",
+            ],
         )
 
     def _ensure_columns(

@@ -108,6 +108,8 @@ from app.models import (
     SignalShadowDiagnosticsResponse,
     SignalShadowFeasibilityPanelResponse,
     SignalShadowForwardHoldoutPlanResponse,
+    SignalShadowHoldoutConsumeRequest,
+    SignalShadowHoldoutConsumptionResponse,
     SignalShadowPanelResponse,
     SignalShadowResearchPanelResponse,
     SignalShadowResearchSnapshotResponse,
@@ -1476,6 +1478,46 @@ def get_system_intraday_fusion_shadow_forward_holdout_plan(
 ):
     try:
         return signal_shadow_service.get_forward_holdout_plan(0, plan_id)
+    except SignalShadowError as exc:
+        status_code = 404 if exc.code.endswith("not_found") else 400
+        raise HTTPException(status_code=status_code, detail={"code": exc.code}) from exc
+
+
+@app.post(
+    "/api/v1/analysis/intraday-fusion/shadow/forward-holdout-plan/{plan_id}/consume",
+    response_model=SignalShadowHoldoutConsumptionResponse,
+)
+def consume_intraday_fusion_shadow_forward_holdout(
+    plan_id: str,
+    request: SignalShadowHoldoutConsumeRequest,
+    user=Depends(current_user),
+):
+    try:
+        return signal_shadow_service.consume_forward_holdout_once(
+            user.id,
+            plan_id,
+            request.acknowledgement,
+        )
+    except SignalShadowError as exc:
+        status_code = 404 if exc.code.endswith("not_found") else 400
+        raise HTTPException(status_code=status_code, detail={"code": exc.code}) from exc
+
+
+@app.post(
+    "/api/v1/analysis/intraday-fusion/shadow/system-forward-holdout-plan/{plan_id}/consume",
+    response_model=SignalShadowHoldoutConsumptionResponse,
+)
+def consume_system_intraday_fusion_shadow_forward_holdout(
+    plan_id: str,
+    request: SignalShadowHoldoutConsumeRequest,
+    user=Depends(current_user),
+):
+    try:
+        return signal_shadow_service.consume_forward_holdout_once(
+            0,
+            plan_id,
+            request.acknowledgement,
+        )
     except SignalShadowError as exc:
         status_code = 404 if exc.code.endswith("not_found") else 400
         raise HTTPException(status_code=status_code, detail={"code": exc.code}) from exc

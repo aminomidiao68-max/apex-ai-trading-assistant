@@ -2433,3 +2433,16 @@ Metrics exposed: false
 Final holdout consumed: false
 Threshold change / routing / Live authorization: false
 ```
+
+---
+## Addendum — Signal Research Alpha 29
+```text
+Version: 3.7.0-signal-alpha29
+Schema: v21
+Consume acknowledgement: CONSUME_FINAL_HOLDOUT_ONCE
+Preconditions: READY plan + locked membership + integrity pass
+Result: canonical JSON + SHA-256 + consumed_at
+Replay: idempotent / no recomputation
+Current production holdout consumed: false
+Threshold change / routing / Live authorization: false
+```

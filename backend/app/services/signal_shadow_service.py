@@ -16,6 +16,7 @@ from app.models import (
     SignalShadowDiagnosticsResponse,
     SignalShadowFeasibilityPanelResponse,
     SignalShadowForwardHoldoutPlanResponse,
+    SignalShadowHoldoutConsumptionResponse,
     SignalShadowPanelResponse,
     SignalShadowResearchBreakdown,
     SignalShadowResearchPanelResponse,
@@ -1141,6 +1142,28 @@ class SignalShadowService:
             raise SignalShadowError("shadow_research_snapshot_not_found")
         return self._research_snapshot_response(dict(row), duplicate=False)
 
+    @staticmethod
+    def _holdout_payload(rows: list[dict]) -> tuple[list[dict], str, str]:
+        payload = [
+            {
+                "observation_id": item["observation_id"],
+                "evidence_sha256": item["evidence_sha256"],
+                "outcome_status": item["outcome_status"],
+                "realized_rr": item["realized_rr"],
+                "captured_at": item["captured_at"],
+                "resolved_at": item["resolved_at"],
+                "resolution_policy": item["resolution_policy"],
+            }
+            for item in rows
+        ]
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+        dataset_sha256 = hashlib.sha256(canonical.encode()).hexdigest()
+        member_ids_json = json.dumps(
+            [item["observation_id"] for item in rows],
+            separators=(",", ":"),
+        )
+        return payload, dataset_sha256, member_ids_json
+
     def _forward_holdout_plan_response(
         self,
         user_id: int,
@@ -1173,24 +1196,7 @@ class SignalShadowService:
         ready_at = row.get("ready_at")
         if holdout_sha256 is None and len(activated_rows) >= required:
             selected_rows = activated_rows[:required]
-            payload = [
-                {
-                    "observation_id": item["observation_id"],
-                    "evidence_sha256": item["evidence_sha256"],
-                    "outcome_status": item["outcome_status"],
-                    "realized_rr": item["realized_rr"],
-                    "captured_at": item["captured_at"],
-                    "resolved_at": item["resolved_at"],
-                    "resolution_policy": item["resolution_policy"],
-                }
-                for item in selected_rows
-            ]
-            canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-            candidate_sha256 = hashlib.sha256(canonical.encode()).hexdigest()
-            member_ids_json = json.dumps(
-                [item["observation_id"] for item in selected_rows],
-                separators=(",", ":"),
-            )
+            _, candidate_sha256, member_ids_json = self._holdout_payload(selected_rows)
             candidate_ready_at = datetime.now(timezone.utc).isoformat()
             with self.database.connection() as conn:
                 conn.execute(
@@ -1319,3 +1325,168 @@ class SignalShadowService:
         if row is None:
             raise SignalShadowError("shadow_forward_holdout_plan_not_found")
         return self._forward_holdout_plan_response(user_id, dict(row), duplicate=False)
+
+    @staticmethod
+    def _holdout_consumption_response(
+        row: dict,
+        *,
+        duplicate: bool,
+    ) -> SignalShadowHoldoutConsumptionResponse:
+        raw = str(row.get("holdout_result_json") or "")
+        expected_sha = str(row.get("holdout_result_sha256") or "")
+        if not raw or hashlib.sha256(raw.encode()).hexdigest() != expected_sha:
+            raise SignalShadowError("shadow_holdout_result_integrity_failed")
+        metrics = json.loads(raw)
+        return SignalShadowHoldoutConsumptionResponse(
+            plan_id=str(row["plan_id"]),
+            holdout_dataset_sha256=str(row["holdout_dataset_sha256"]),
+            holdout_result_sha256=expected_sha,
+            consumption_request_sha256=str(row["consumption_request_sha256"]),
+            consumed_at=str(row["consumed_at"]),
+            duplicate=duplicate,
+            **metrics,
+            holdout_metrics_exposed=True,
+            final_holdout_used=True,
+            threshold_change_authorized=False,
+            live_authorized=False,
+            actionable_for_live=False,
+            live_execution_enabled=settings.enable_live_execution,
+        )
+
+    def consume_forward_holdout_once(
+        self,
+        user_id: int,
+        plan_id: str,
+        acknowledgement: str,
+    ) -> SignalShadowHoldoutConsumptionResponse:
+        if acknowledgement != "CONSUME_FINAL_HOLDOUT_ONCE":
+            raise SignalShadowError("shadow_holdout_acknowledgement_required")
+        plan_status = self.get_forward_holdout_plan(user_id, plan_id)
+        if plan_status.status == "COLLECTING":
+            raise SignalShadowError("shadow_forward_holdout_not_ready")
+        with self.database.connection() as conn:
+            stored = conn.execute(
+                "SELECT * FROM signal_shadow_forward_holdout_plans WHERE user_id=? "
+                "AND plan_id=?",
+                (user_id, plan_id),
+            ).fetchone()
+        if stored is None:
+            raise SignalShadowError("shadow_forward_holdout_plan_not_found")
+        row = dict(stored)
+        if row.get("consumed_at"):
+            return self._holdout_consumption_response(row, duplicate=True)
+        try:
+            member_ids = json.loads(str(row.get("holdout_member_ids_json") or ""))
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise SignalShadowError("shadow_holdout_membership_integrity_failed") from exc
+        required = int(row["required_activated_outcomes"])
+        if (
+            not isinstance(member_ids, list)
+            or len(member_ids) != required
+            or len(set(member_ids)) != required
+            or not all(isinstance(item, str) and item for item in member_ids)
+        ):
+            raise SignalShadowError("shadow_holdout_membership_integrity_failed")
+        with self.database.connection() as conn:
+            fetched = conn.execute(
+                "SELECT observation_id,evidence_sha256,evidence_json,outcome_status,"
+                "realized_rr,captured_at,resolved_at,activated,resolution_policy "
+                "FROM signal_shadow_observations WHERE user_id=? "
+                "AND fusion_status='ACTIONABLE_CANDIDATE' AND captured_at>?",
+                (user_id, row["cutoff_at"]),
+            ).fetchall()
+        by_id = {str(item["observation_id"]): dict(item) for item in fetched}
+        try:
+            members = [by_id[item] for item in member_ids]
+        except KeyError as exc:
+            raise SignalShadowError("shadow_holdout_membership_integrity_failed") from exc
+        values: list[float] = []
+        for member in members:
+            evidence_raw = str(member.get("evidence_json") or "")
+            if hashlib.sha256(evidence_raw.encode()).hexdigest() != member["evidence_sha256"]:
+                raise SignalShadowError("shadow_holdout_member_evidence_integrity_failed")
+            if (
+                member["outcome_status"] not in _ACTIVATED_TERMINAL_OUTCOMES
+                or not bool(member["activated"])
+            ):
+                raise SignalShadowError("shadow_holdout_member_outcome_incomplete")
+            value = self._number(member.get("realized_rr"))
+            if value is None:
+                raise SignalShadowError("shadow_holdout_member_outcome_incomplete")
+            values.append(value)
+        _, recomputed_sha, _ = self._holdout_payload(members)
+        if recomputed_sha != row.get("holdout_dataset_sha256"):
+            raise SignalShadowError("shadow_holdout_dataset_integrity_failed")
+        request_payload = {
+            "acknowledgement": acknowledgement,
+            "holdout_dataset_sha256": recomputed_sha,
+            "plan_id": plan_id,
+            "policy_version": "forward_holdout_consume_v1",
+        }
+        request_raw = json.dumps(request_payload, sort_keys=True, separators=(",", ":"))
+        request_sha256 = hashlib.sha256(request_raw.encode()).hexdigest()
+        wins = sum(1 for member in members if member["outcome_status"] == "WIN")
+        losses = sum(1 for member in members if member["outcome_status"] == "LOSS")
+        expired_active = sum(
+            1 for member in members if member["outcome_status"] == "EXPIRED_ACTIVE"
+        )
+        wilson_low, wilson_high = self._wilson_95(wins, required)
+        positive_sum = sum(value for value in values if value > 0)
+        negative_sum = abs(sum(value for value in values if value < 0))
+        bootstrap_low, bootstrap_high, block_length = self._moving_block_bootstrap_mean_ci(
+            values,
+            recomputed_sha,
+            replicates=2000,
+        )
+        metrics = {
+            "activated_outcomes": required,
+            "wins": wins,
+            "losses": losses,
+            "expired_active": expired_active,
+            "target_hit_rate_pct": round(100.0 * wins / required, 4),
+            "wilson_95_lower_pct": round(100.0 * wilson_low, 4),
+            "wilson_95_upper_pct": round(100.0 * wilson_high, 4),
+            "average_realized_rr": round(sum(values) / required, 6),
+            "median_realized_rr": round(float(median(values)), 6),
+            "cumulative_realized_rr": round(sum(values), 6),
+            "max_drawdown_rr": round(self._max_drawdown_rr(values), 6),
+            "profit_factor_rr": (
+                round(positive_sum / negative_sum, 6) if negative_sum > 0 else None
+            ),
+            "max_consecutive_nonwins": self._max_consecutive_nonwins(members),
+            "bootstrap_average_rr_95_lower": round(bootstrap_low, 6),
+            "bootstrap_average_rr_95_upper": round(bootstrap_high, 6),
+            "bootstrap_block_length": block_length,
+            "bootstrap_replicates": 2000,
+        }
+        result_json = json.dumps(metrics, sort_keys=True, separators=(",", ":"))
+        result_sha256 = hashlib.sha256(result_json.encode()).hexdigest()
+        consumed_at = datetime.now(timezone.utc).isoformat()
+        with self.database.connection() as conn:
+            conn.execute(
+                "UPDATE signal_shadow_forward_holdout_plans SET "
+                "holdout_result_sha256=?,holdout_result_json=?,"
+                "consumption_request_sha256=?,consumed_at=? "
+                "WHERE user_id=? AND plan_id=? AND consumed_at IS NULL",
+                (
+                    result_sha256,
+                    result_json,
+                    request_sha256,
+                    consumed_at,
+                    user_id,
+                    plan_id,
+                ),
+            )
+            conn.commit()
+            final_row = conn.execute(
+                "SELECT * FROM signal_shadow_forward_holdout_plans WHERE user_id=? "
+                "AND plan_id=?",
+                (user_id, plan_id),
+            ).fetchone()
+        if final_row is None:
+            raise SignalShadowError("shadow_forward_holdout_plan_not_found")
+        final = dict(final_row)
+        duplicate = str(final.get("consumption_request_sha256")) != request_sha256
+        if duplicate:
+            raise SignalShadowError("shadow_holdout_consumption_conflict")
+        return self._holdout_consumption_response(final, duplicate=False)

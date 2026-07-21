@@ -86,7 +86,7 @@ def test_shadow_capture_never_routes_and_panel_is_insufficient(tmp_path):
     after = service.panel(1, minimum_required_resolved=30)
     assert after.pending_outcomes == 0 and after.resolved_outcomes == 1
     assert service.panel(2).total_observations == 0
-    assert db.schema_version() == LATEST_SCHEMA_VERSION == 20
+    assert db.schema_version() == LATEST_SCHEMA_VERSION == 21
 
 
 def test_shadow_diagnostics_verify_evidence_and_report_stale_blockers(tmp_path):
@@ -462,6 +462,40 @@ def test_research_panel_withholds_metrics_then_uses_wilson_and_integrity_gate(tm
     assert still_locked.future_activated_outcomes == 31
     assert still_locked.holdout_dataset_sha256 == locked_holdout_sha
     assert still_locked.final_holdout_used is False
+    with pytest.raises(SignalShadowError, match="shadow_holdout_acknowledgement_required"):
+        service.consume_forward_holdout_once(11, holdout.plan_id, "WRONG")
+    consumed = service.consume_forward_holdout_once(
+        11,
+        holdout.plan_id,
+        "CONSUME_FINAL_HOLDOUT_ONCE",
+    )
+    assert consumed.duplicate is False
+    assert consumed.activated_outcomes == 30
+    assert consumed.wins == 15 and consumed.losses == 15
+    assert consumed.expired_active == 0
+    assert consumed.target_hit_rate_pct == 50.0
+    assert consumed.average_realized_rr == 0.5
+    assert consumed.cumulative_realized_rr == 15.0
+    assert consumed.profit_factor_rr == 2.0
+    assert consumed.max_consecutive_nonwins == 1
+    assert consumed.bootstrap_block_length == 5
+    assert len(consumed.holdout_result_sha256) == 64
+    assert len(consumed.consumption_request_sha256) == 64
+    assert consumed.holdout_metrics_exposed is True
+    assert consumed.final_holdout_used is True
+    assert consumed.threshold_change_authorized is False
+    assert consumed.live_authorized is False
+    assert consumed.actionable_for_live is False
+    consumed_again = service.consume_forward_holdout_once(
+        11,
+        holdout.plan_id,
+        "CONSUME_FINAL_HOLDOUT_ONCE",
+    )
+    assert consumed_again.duplicate is True
+    assert consumed_again.holdout_result_sha256 == consumed.holdout_result_sha256
+    consumed_plan = service.get_forward_holdout_plan(11, holdout.plan_id)
+    assert consumed_plan.status == "CONSUMED"
+    assert consumed_plan.final_holdout_used is True
     with db.connection() as conn:
         plan_count = conn.execute(
             "SELECT COUNT(*) AS count FROM signal_shadow_forward_holdout_plans WHERE user_id=?",
@@ -495,6 +529,20 @@ def test_research_panel_withholds_metrics_then_uses_wilson_and_integrity_gate(tm
         conn.commit()
     with pytest.raises(SignalShadowError, match="shadow_research_snapshot_integrity_failed"):
         service.get_research_snapshot(11, snapshot.snapshot_id)
+
+    with db.connection() as conn:
+        conn.execute(
+            "UPDATE signal_shadow_forward_holdout_plans SET holdout_result_json=? "
+            "WHERE plan_id=?",
+            ("{}", holdout.plan_id),
+        )
+        conn.commit()
+    with pytest.raises(SignalShadowError, match="shadow_holdout_result_integrity_failed"):
+        service.consume_forward_holdout_once(
+            11,
+            holdout.plan_id,
+            "CONSUME_FINAL_HOLDOUT_ONCE",
+        )
 
 
 def test_invalid_candidate_geometry_is_rejected(tmp_path):

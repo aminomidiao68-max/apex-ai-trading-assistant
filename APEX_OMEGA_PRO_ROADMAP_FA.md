@@ -419,3 +419,12 @@
 - Metrics تا مصرف صریح Final Holdout مخفی
 - Statusهای COLLECTING / READY / CONSUMED
 - Final Holdout هنوز مصرف نشده و Live authorization خاموش
+
+## ✅ Signal Research Alpha 29 — One-shot Holdout Consumption Preparation
+- Acknowledgement صریح برای مصرف یک‌باره
+- Re-verify Membership، Evidence و Dataset SHA
+- Persist Result JSON و Result SHA-256
+- Idempotent replay بدون محاسبه مجدد
+- Holdout target-hit/Wilson/R/Drawdown/Bootstrap metrics
+- Result mutation هنگام Replay کشف می‌شود
+- Current Holdout مصرف نشده و Threshold/Live authorization خاموش
