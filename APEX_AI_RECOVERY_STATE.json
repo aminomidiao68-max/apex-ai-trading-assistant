@@ -4,19 +4,28 @@
   "project": "APEX AI Trading Assistant / APEX Omega Pro",
   "repository": "https://github.com/aminomidiao68-max/apex-ai-trading-assistant",
   "branch": "main",
-  "current_version": "3.7.0-signal-alpha23",
-  "current_commit": "6ec63955345662a95ee2764f9365653fb5728e79",
+  "current_version": "3.7.0-signal-alpha48",
+  "current_commit": "e22f738498ed5423921fb16e6518963a1d69f1fe",
   "current_stage": {
     "number": 1,
     "name": "real_oos_shadow_collection",
     "status": "AUTOMATED_COLLECTION_RUNNING"
   },
   "policy": {
-    "markets": ["crypto", "forex_gold"],
+    "markets": [
+      "crypto",
+      "forex_gold"
+    ],
     "signal_policy": "precision_first",
     "horizon": "intraday",
-    "trigger_frames": ["5m", "15m"],
-    "context_frames": ["1h", "4h"],
+    "trigger_frames": [
+      "5m",
+      "15m"
+    ],
+    "context_frames": [
+      "1h",
+      "4h"
+    ],
     "default_decision": "NO_TRADE",
     "ai_override_allowed": false,
     "probability_is_calibrated": false,
@@ -105,7 +114,7 @@
     "signed_aab_deferred_until_final_instruction": true
   },
   "latest_test_gate": {
-    "backend_passed": 149,
+    "backend_passed": 150,
     "backend_skipped": 1,
     "dependency_vulnerabilities": 0,
     "bandit_medium_high": 0,

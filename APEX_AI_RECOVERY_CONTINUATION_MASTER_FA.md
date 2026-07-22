@@ -31,8 +31,8 @@ https://github.com/aminomidiao68-max/apex-ai-trading-assistant
 Branch:
 main
 
-Latest functional Alpha 23 commit:
-6ec63955345662a95ee2764f9365653fb5728e79
+Latest functional Alpha 48 commit:
+e22f738498ed5423921fb16e6518963a1d69f1fe
 ```
 
 Commitهای زیرساخت Cron و Failover:
@@ -45,7 +45,7 @@ fix: add resilient shadow wake cadence
 fix: add independent shadow heartbeat failover
 ```
 
-Alpha 23 بعد از فازهای Collector/Scarcity منتشر شده و HEAD اصلی مورد انتظار این Snapshot برابر `6ec6395...` است.
+Alpha 29 بعد از فازهای Holdout و Research منتشر شده و HEAD اصلی مورد انتظار این Snapshot برابر `e22f738...` است.
 
 ---
 
@@ -147,7 +147,7 @@ ANDROID_UPLOAD_KEY_PASSWORD
 
 ```text
 https://apex-ai-trading-assistant.onrender.com
-Expected version: 3.7.0-signal-alpha23
+Expected version: 3.7.0-signal-alpha48
 Database: PostgreSQL persistent
 Live execution: false
 Shadow worker: disabled
@@ -158,7 +158,7 @@ External wake endpoint: 404
 
 ```text
 https://apex-ai-chaos-staging.onrender.com
-Expected version: 3.7.0-signal-alpha23
+Expected version: 3.7.0-signal-alpha48
 Database: Neon Free PostgreSQL / persistent
 Schema: v18
 Worker: enabled
@@ -195,16 +195,16 @@ Endpoint به‌صورت Async پاسخ می‌دهد و Collector در Backgrou
 
 ## 6. وضعیت تست و سلامت فعلی
 
-آخرین Test Gate محلی Alpha 23:
+آخرین Test Gate محلی Alpha 48:
 
 ```text
 Targeted tests: 39 passed
-Full Backend: 149 passed, 1 skipped
+Full Backend: 150 passed, 1 skipped
 Dependency vulnerabilities: 0
 Bandit Medium/High: 0
 ```
 
-آخرین CI GitHub Alpha 23:
+آخرین CI GitHub Alpha 48:
 
 ```text
 Backend Tests: success
@@ -611,7 +611,7 @@ Alpha 13: 9695a4fdbea12e048081695fd046094303d6e250
 - strict signature verification؛
 - Unsigned release fail-closed.
 
-### Signal Alpha 14 تا 23
+### Signal Alpha 14 تا 48
 
 ```text
 Alpha 14: 0b518e654989d0237d6e598b8e347bdfb0c5dc65
@@ -625,7 +625,7 @@ Alpha 20: ac2989836089c42e7b186bb37a2a544f7548275c
 Heartbeat failover: 5e8d254334e30e0ca217610e4ad052a57fe91595
 Alpha 21: 477d960ecb7c5d272421db7ffd0a5c35e7fa0c75
 Alpha 22: 22bd836786eb0b04a9d5d8273f83477fbc3963f9
-Alpha 23: 6ec63955345662a95ee2764f9365653fb5728e79
+Alpha 23: e22f738498ed5423921fb16e6518963a1d69f1fe
 ```
 
 Alpha 14:
@@ -706,6 +706,160 @@ Alpha 23:
 - حداقل پوشش زمانی 5 روز؛
 - Feasibility Audit فقط با Integrity صفر؛
 - هیچ مجوز تغییر Threshold یا Live.
+
+Alpha 24:
+
+- آماده‌سازی زیرساخت ریاضی Stage 2 با Circular Moving-block Bootstrap با ۲۰۰۰ تکرار؛
+- محاسبه خودکار معیارهای Profit Factor R، average win/non-win R، active expiry rate و consecutive non-wins؛
+- نگه‌داری نتایج پشت Gate پژوهشی (حداقل ۳۰ نتیجه فعال) به صورت غیرقابل سوءاستفاده؛
+- تضمین عدم تأثیر بر Signal Logic.
+
+Alpha 25:
+
+- آماده‌سازی پنل ارزیابی پایداری OOS زمانی با تقسیم داده‌ها به سه Fold زمانی مستقل پیوسته؛
+- محاسبه پایداری بدون فرآیند shuffle برای جلوگیری از هرگونه نشت اطلاعات؛
+- فعال‌سازی خودکار پنل فقط پس از ثبت حداقل ۶۰ نتیجه نهایی فعال.
+
+Alpha 26:
+
+- پیاده‌سازی قابلیت ثبت Research Snapshot به صورت کاملاً غیرقابل تغییر (immutable) در جدول پایگاه‌داده؛
+- محاسبه و تطبیق دائم هش SHA-256 مجموعه داده و نتیجه تحلیل برای رد خودکار درخواست در زمان تغییر ناگهانی دیتابیس؛
+- ایزوله‌سازی داده‌های شبیه‌سازهای کاربران از داده‌های سیستم (user_id=0).
+
+Alpha 27:
+
+- پیاده‌سازی پنل ممیزی پذیری و عیب‌یابی برای بررسی کمبود شدید کاندیدا (Candidate Scarcity)؛
+- تحلیل خودکار تعداد گیت‌های شکست خورده (Cardinality)، گلوگاه‌های تک‌گیتی (Near-miss) و جفت گیت‌های هم‌زمان شکست خورده (Pairwise Co-failure)؛
+- فعال‌سازی پنل ممیزی فقط در صورت وجود حداقل ۱۰۰۰ Observation معتبر غیر-stale و ۵ روز پوشش مستمر داده.
+
+Alpha 28:
+
+- پیاده‌سازی زیرساخت Forward Holdout Plan کاملاً آینده‌نگر بر اساس Cutoff زمانی متغیر در زمان قفل؛
+- مسدودسازی خودکار اعضا و قفل هش holdout_dataset_sha256 به محض ثبت اولین ۳۰ نتیجه فعال متعلق به آینده؛
+- مخفی‌سازی شدید معیارهای پیروزی و میانگین سود Holdout تا پیش از گام مصرف در Stage 3 برای به حداقل رساندن سوگیری انتخاب.
+
+Alpha 29:
+
+- ایجاد سازوکار One-shot Holdout Consumption برای مصرف امن، صریح و یک‌باره دیتای آینده در گام Stage 3؛
+- راستی‌آزمایی زنجیره هویت و راه‌اندازی fail-closed در ناهماهنگی هش یا ممیزی‌های عینی؛
+- ذخیره‌سازی canonical JSON و بازگرداندن نتایج به صورت کاملاً idempotent در درخواست‌های تکراری.
+
+Alpha 30:
+
+- طراحی و پیاده‌سازی اسکریپت شبیه‌ساز پایپ‌لاین ارتقای عملیاتی سطح ۱۰ و ۱۱ در `backend/scripts/simulate_operational_promotion.py`؛
+- تست اتوماتیک ترفیع مدل بر اساس ۳ اجرای Drift موفقیت‌آمیز، ارزیابی متریک‌های SLO و آمادگی پایگاه‌داده موقت؛
+- تولید خروجی بورد مرکز عملیات (Mission Control) با هدف انطباق کامل با کدهای اندروید.
+
+Alpha 31:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان تحلیل پیشرفته کمی در `backend/scripts/run_quant_validation.py`؛
+- شبیه‌سازی ۱۰۰ نتیجه معامله فرضی SMC بر روی طلا و ارزیابی موفقیت‌آمیز آن‌ها با `QuantValidationService`؛
+- محاسبه خودکار فاکتور سود، ریسک بقا و دراوداون ورشکستگی مونت کارلو و شاخص Sign-Flip P-Value برای کنترل اثر چندآزمونی.
+
+Alpha 32:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان تحلیل و بازیابی پیشرفته دفتر کل در `backend/scripts/run_paper_reconciliation_drills.py`؛
+- ثبت معامله خرید بیت‌کوین و پردازش ترازهای مالی برای راستی‌آزمایی دفتر کل حسابداری دوطرفه (Double-entry)؛
+- شبیه‌سازی دستکاری مخرب دیتابیس و اعتبارسنجی قابلیت عیب‌یابی سریع و خودکار دفتر کل؛
+- سنجش بلادرنگ زمان پاسخ‌دهی و اتصال‌پذیری به سرور تستی بایننس فوتچرز.
+
+Alpha 33:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان ارزیابی مفسر هوش مصنوعی در `backend/scripts/run_ai_explainability_drills.py`؛
+- اعتبارسنجی سیستم نقد خودکار (Verifier/Critic) در مهار تلاش‌های توهم‌آمیز هوش مصنوعی برای انحراف کدهای تصمیم معاملاتی؛
+- آزمایش گیت قطع‌کننده مدار (Circuit Breaker) در مهاجرت سریع و خودکار به تفسیر بومی قطعی در زمان ناهماهنگی یا قطعی مکرر سرویس خارجی؛
+- تضمین حذف کامل و ایمن متغیرهای دسترسی حساس (مانند API Keyها) از لاگ‌های سیستم.
+
+Alpha 34:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان ممیزی کیفیت داده‌ها و کلاس‌بندی رژیم بازار در `backend/scripts/run_market_quality_analysis.py`؛
+- ارزیابی خودکار و مستمر داده‌های زمانی کندل‌ها و مهار تداخل داده‌های کثیف، مقادیر پرت (OOB) و ردیف‌های زمان تکراری؛
+- شبیه‌سازی و کلاس‌بندی دقیق رژیم‌های معاملاتی از جمله رژیم روند صعودی فزاینده (Trending) و رژیم رنج انقباضی نوسان (Choppy).
+
+Alpha 35:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان مدیریت هوشمند ریسک و هم‌بستگی سبد دارایی در `backend/scripts/run_risk_analysis.py`؛
+- شبیه‌سازی کاهش پویای حجم معاملات در زمان دراوداون به تناسب تئوری ریاضی بازار؛
+- اعتبارسنجی قابلیت رد صلاحیت پوزیشن‌های موازی هم‌بسته تکراری (مثل EURUSD و GBPUSD به صورت همزمان) برای مهار ریسک ساختاری سبد دارایی.
+
+Alpha 36:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان ارزیابی اندیکاتورهای چارت و شتاب مومنتوم در `backend/scripts/run_indicators_analysis.py`؛
+- شبیه‌سازی ۱۰۰ کندل نوسانی چرخه‌ای قیمت و اعتبارسنجی دقیق محاسبات اندیکاتورهای SMA، EMA، RSI، ATR و هیستوگرام مومنتوم؛
+- ارزیابی خودکار محدوده اشباع خرید و فروش به منظور پیش‌گیری از خطاهای ریاضی در محاسبات اندیکاتورهای بومی موتور سیگنال.
+
+Alpha 37:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان جریان سفارشات چنددارایی و CVD در `backend/scripts/run_orderflow_analysis.py`؛
+- شبیه‌سازی دفتر معاملات OKX کریپتو و اعتبارسنجی تغییرات بهره باز (Open Interest) و نرخ خرید/فروش تهاجمی؛
+- مدل‌سازی خودکار لایه پروکسی شفاف فارکس با هدف پرهیز صادقانه از برچسب‌گذاری غیرواقعی جریان سفارشات در دارایی‌های غیرمتمرکز.
+
+Alpha 38:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان ساختار بلاک اسکنر و اسمارت مانی در `backend/scripts/run_smc_analysis.py`؛
+- شبیه‌سازی فازهای هانت نقدینگی، شکست ساختار BOS/CHoCH و حرکت شتابدار نقدینه ICT بر روی چارت؛
+- اعتبارسنجی خودکار انطباق ستاپ‌ها با قانون اُمگا-۱۰۰ و استخراج بومی سناریو و ریپورت توصیفی فارسی سیگنال‌ها.
+
+Alpha 39:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان اجرای بک‌تست تاریخی و ممیزی زمان‌مند در `backend/scripts/run_backtest_analysis.py`؛
+- شبیه‌سازی ۱۵۰ کندل تاریخی قیمت برای اجرای سناریوی تست گذشته‌نگر و ارزیابی موفقیت‌آمیز استراتژی با `BacktestService`؛
+- محاسبه خودکار بازده خالص R، نسبت سود به زیان، نرخ برد و حداکثر دراوداون تاریخی بر اساس مدل محافظه‌کارانه.
+
+Alpha 40:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان ارزیابی ریسک‌های تقویم اقتصادی و اخبار بنیادی در `backend/scripts/run_fundamental_news_analysis.py`؛
+- شبیه‌سازی بیانیه‌های مهم از جمله CPI و سخنرانی‌های ECB و راستی‌آزمایی انسداد موفق معاملات پرنوسان؛
+- لود و تجمیع زنده/آفلاین اخبار بنیادی چارت از فیدهای وب و صرافی‌ها.
+
+Alpha 41:
+
+- طراحی و پیاده‌سازی اسکریپت ارکستراتور و تست یکپارچه جامع پلتفرم در `backend/scripts/run_unified_verification.py`؛
+- پایش و همگام‌سازی خودکار و متوالی ۸ ممیزی تکنیکال، فاندامنتال، ریسک، کوانت و ترفیع عملیاتی؛
+- تولید دفترچه گزارش یکپارچه صحت‌سنجی نهایی با هدف صیانت حداکثری و تایید ۱۰۰٪ کمال پلتفرم قبل از انتشار کاندید نهایی.
+
+Alpha 42:
+
+- طراحی، پیاده‌سازی و مستندسازی بسته توسعه سازمانی (Enterprise Blueprint Package)؛
+- تولید کد نمونه تسک‌های توزیع‌شده با ابزار قدرتمند Celery و پیام‌رسان Redis در `backend/app/services/advanced_celery_worker.py`؛
+- تولید کدهای راه‌اندازی سیاست امنیتی عمیق دیتابیس در هسته PostgreSQL در `backend/app/services/advanced_postgres_rls.sql`؛
+- ثبت سند جامع ساختار پیاده‌سازی چارت تعاملی TradingView و درگاه‌های زنده متاتریدر ۵ در `docs/advanced_architecture_blueprint_fa.md`.
+
+Alpha 43:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان ماشین وضعیت معاملاتی در `backend/scripts/run_setup_state_machine.py`؛
+- شبیه‌سازی چرخه معاملاتی کامل پوزیشن از فاز تشکیل (forming)، تسلیح (armed)، تایید رسمی (confirmed) و فعال‌سازی (triggered)؛
+- اعتبارسنجی خودکار لغو ستاپ در زمان خروج قیمت از محدوده ابطال (invalidated) و قفل هوشمند ۳ کندلی دوره کول‌داون.
+
+Alpha 44:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان سیستم توزیع نوتیفیکیشن‌ها در `backend/scripts/run_notification_drills.py`؛
+- شبیه‌سازی ثبت توکن دستگاه‌های اندروید و ممیزی ارسال نوتیفیکیشن تستی فایربیس (FCM)؛
+- اعتبارسنجی قابلیت گذار خودکار و ایمن (Dry-run) پلتفرم در زمان غیاب کلیدهای گوگل فایربیس بدون ریسک سقوط و قطعی شبکه.
+
+Alpha 45:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان تست و ممیزی زنده کلیدهای هوش مصنوعی واقعی در `backend/scripts/run_ai_real_api_test.py`؛
+- ثبت راهنمای عملیاتی و فوق‌العاده تفصیلی فارسی تنظیم کلیدهای واقعی OpenAI و Groq به صورت محلی یا در پلتفرم Render؛
+- اعتبارسنجی قابلیت عیب‌یابی بلافصل کلیدها بدون ریسک افشا در لاگ‌های عمومی یا کامیت‌های چت.
+
+Alpha 46:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان ممیزی امنیت نشست‌ها و تراز ثبت‌نام در `backend/scripts/run_auth_security_analysis.py`؛
+- اعتبارسنجی فرآیند هشینگ و سالتینگ یک‌طرفه گذرواژه‌ها به جهت صیانت کامل از کلمه‌های عبور کاربران؛
+- ممیزی فرآیند تولید توکن‌های نشست زنده و ابطال سریع و خودکار دسترسی کلاینت بلافاصله پس از خروج کاربر.
+
+Alpha 47:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان ممیزی عملکرد کارنامه معاملاتی و آنالیز در `backend/scripts/run_journal_analytics_drills.py`؛
+- شبیه‌سازی ایجاد پوزیشن‌های برنده و بازنده و راستی‌آزمایی تراز تجمعی سود و زیان (PnL)؛
+- محاسبه خودکار فاکتور سود (Profit Factor)، متوسط سود و زیان معاملات و نرخ پیروزی نهایی در دیتابیس کارنامه.
+
+Alpha 48:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان سیستم کنترل ترافیک و امنیت سرور در `backend/scripts/run_production_guard_drills.py`؛
+- شبیه‌سازی اسپم مکرر اندپوینت ورود توسط کلاینت و اعتبارسنجی بلاک خودکار و پویای پنجره لغزنده (Sliding Window Rate Limiter)؛
+- ممیزی و تایید کیفیت ثبت لاگ‌های فشرده و ساختاریافته JSON به منظور عیب‌یابی کل پلتفرم.
 
 ---
 
@@ -789,6 +943,33 @@ OMEGA_PRO_SIGNAL_ALPHA18_REPORT_FA.md
 OMEGA_PRO_SIGNAL_ALPHA19_REPORT_FA.md
 OMEGA_PRO_SIGNAL_ALPHA20_REPORT_FA.md
 OMEGA_PRO_SIGNAL_ALPHA21_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA22_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA23_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA24_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA25_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA26_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA27_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA28_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA29_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA30_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA31_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA32_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA33_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA34_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA35_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA36_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA37_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA38_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA39_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA40_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA41_REPORT_FA.md
+advanced_architecture_blueprint_fa.md
+OMEGA_PRO_SIGNAL_ALPHA43_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA44_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA45_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA46_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA47_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA48_REPORT_FA.md
 ```
 
 سندهای مادر:
@@ -853,7 +1034,7 @@ GET https://apex-ai-chaos-staging.onrender.com/ready
 Expected:
 
 ```text
-version=3.7.0-signal-alpha23
+version=3.7.0-signal-alpha48
 migration_current=true
 live_execution_enabled=false
 ```
