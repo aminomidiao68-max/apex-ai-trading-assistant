@@ -1335,7 +1335,7 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
         if conf < 8: direction=NEUTRAL
         grade = _grade(conf, setup["probability"], rr)
         # Apply Omega-100 Rule
-        omega_ok, omega_reasons = _omega_compliant(conf, setup["probability"], rr)
+        omega_ok, omega_reasons = _omega_compliant(conf, setup["probability"], rr, mtf_aligned=mtf_align)
         if not omega_ok:
             # Signal is watch-only, not actionable
             action_label = "WATCH"
@@ -1863,12 +1863,13 @@ OMEGA_MIN_CONF = 40
 OMEGA_MIN_PROB = 60
 OMEGA_MAX_DAILY_TRADES = 6
 
-def _omega_compliant(conf, prob, rr):
-    """Return (actionable, reasons_list) per Omega-100 rule."""
+def _omega_compliant(conf, prob, rr, mtf_aligned=True):
+    """Return (actionable, reasons_list) per Omega-100 Ultra-Strict rule."""
     reasons=[]; ok=True
     if rr < OMEGA_MIN_RR: reasons.append(f"RR<{OMEGA_MIN_RR:.1f} (قانون ۱۰۰ اُمگا)"); ok=False
     if conf < OMEGA_MIN_CONF: reasons.append(f"کانفلونس <{OMEGA_MIN_CONF}"); ok=False
     if prob < OMEGA_MIN_PROB: reasons.append(f"احتمال <{OMEGA_MIN_PROB}%"); ok=False
+    if not mtf_aligned: reasons.append("عدم هم‌راستایی با فریم بالاتر (HTF Bias)"); ok=False
     return ok, reasons
 
 
