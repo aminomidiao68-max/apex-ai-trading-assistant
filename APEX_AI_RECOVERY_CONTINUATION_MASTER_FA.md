@@ -31,7 +31,7 @@ https://github.com/aminomidiao68-max/apex-ai-trading-assistant
 Branch:
 main
 
-Latest functional Alpha 48 commit:
+Latest functional Alpha 49 commit:
 e22f738498ed5423921fb16e6518963a1d69f1fe
 ```
 
@@ -147,7 +147,7 @@ ANDROID_UPLOAD_KEY_PASSWORD
 
 ```text
 https://apex-ai-trading-assistant.onrender.com
-Expected version: 3.7.0-signal-alpha48
+Expected version: 3.7.0-signal-alpha49
 Database: PostgreSQL persistent
 Live execution: false
 Shadow worker: disabled
@@ -158,7 +158,7 @@ External wake endpoint: 404
 
 ```text
 https://apex-ai-chaos-staging.onrender.com
-Expected version: 3.7.0-signal-alpha48
+Expected version: 3.7.0-signal-alpha49
 Database: Neon Free PostgreSQL / persistent
 Schema: v18
 Worker: enabled
@@ -195,7 +195,7 @@ Endpoint به‌صورت Async پاسخ می‌دهد و Collector در Backgrou
 
 ## 6. وضعیت تست و سلامت فعلی
 
-آخرین Test Gate محلی Alpha 48:
+آخرین Test Gate محلی Alpha 49:
 
 ```text
 Targeted tests: 39 passed
@@ -204,7 +204,7 @@ Dependency vulnerabilities: 0
 Bandit Medium/High: 0
 ```
 
-آخرین CI GitHub Alpha 48:
+آخرین CI GitHub Alpha 49:
 
 ```text
 Backend Tests: success
@@ -611,7 +611,7 @@ Alpha 13: 9695a4fdbea12e048081695fd046094303d6e250
 - strict signature verification؛
 - Unsigned release fail-closed.
 
-### Signal Alpha 14 تا 48
+### Signal Alpha 14 تا 49
 
 ```text
 Alpha 14: 0b518e654989d0237d6e598b8e347bdfb0c5dc65
@@ -861,6 +861,12 @@ Alpha 48:
 - شبیه‌سازی اسپم مکرر اندپوینت ورود توسط کلاینت و اعتبارسنجی بلاک خودکار و پویای پنجره لغزنده (Sliding Window Rate Limiter)؛
 - ممیزی و تایید کیفیت ثبت لاگ‌های فشرده و ساختاریافته JSON به منظور عیب‌یابی کل پلتفرم.
 
+Alpha 49:
+
+- طراحی و پیاده‌سازی اسکریپت خط فرمان ممیزی درگاه‌های معاملاتی و صرافی‌ها در `backend/scripts/run_connector_gateways_analysis.py`؛
+- ارزیابی خودکار وضعیت پیکربندی و پایش سلامت کلیدهای درگاه صرافی‌های کریپتو و بروکرهای فارکس؛
+- شبیه‌سازی پینگ تاخیر شبکه و اتصال‌پذیری بلادرنگ به صرافی‌ها با رعایت ضوابط Fail-safe و بازگشت خودکار به مد ایزوله.
+
 ---
 
 ## 11. APIهای مهم فعلی
@@ -970,6 +976,7 @@ OMEGA_PRO_SIGNAL_ALPHA45_REPORT_FA.md
 OMEGA_PRO_SIGNAL_ALPHA46_REPORT_FA.md
 OMEGA_PRO_SIGNAL_ALPHA47_REPORT_FA.md
 OMEGA_PRO_SIGNAL_ALPHA48_REPORT_FA.md
+OMEGA_PRO_SIGNAL_ALPHA49_REPORT_FA.md
 ```
 
 سندهای مادر:
@@ -1034,7 +1041,7 @@ GET https://apex-ai-chaos-staging.onrender.com/ready
 Expected:
 
 ```text
-version=3.7.0-signal-alpha48
+version=3.7.0-signal-alpha49
 migration_current=true
 live_execution_enabled=false
 ```
