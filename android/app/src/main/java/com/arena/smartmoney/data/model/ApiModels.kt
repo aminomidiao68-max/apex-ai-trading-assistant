@@ -1021,7 +1021,8 @@ data class SmcZone(
     val quality: Int = 5,
     val fresh: Boolean = true,
     val vol: Float = 0f,
-    val color: String = ""
+    val color: String = "",
+    @SerializedName("volume_pct") val volumePct: Float? = null
 )
 data class SmcLabel(val kind: String = "", val dir: String = "", val index: Int = 0, val price: Float = 0f)
 data class SmcLine(val kind: String = "", val price: Float = 0f)

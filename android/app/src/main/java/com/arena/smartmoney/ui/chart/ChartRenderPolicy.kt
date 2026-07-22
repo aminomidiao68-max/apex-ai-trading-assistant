@@ -14,7 +14,11 @@ internal object ChartRenderPolicy {
     }
 
     fun compactZoneLabel(zone: SmcZone): String = when (zone.kind) {
-        "OB" -> if (zone.side == "bullish") "Bull OB" else "Bear OB"
+        "OB" -> {
+            val prefix = if (zone.side == "bullish") "Bull OB" else "Bear OB"
+            val pct = zone.volumePct
+            if (pct != null && pct > 0) "$prefix (${pct.toInt()}% Vol)" else prefix
+        }
         "FVG" -> "FVG"
         "iFVG" -> "iFVG"
         "BRK" -> "Breaker"
