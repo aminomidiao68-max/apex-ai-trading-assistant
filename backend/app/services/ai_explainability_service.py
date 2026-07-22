@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import hashlib
 import json
 import re
@@ -386,6 +387,12 @@ class AIExplainabilityService:
     ) -> None:
         self.providers: dict[str, AIProvider] = providers or {
             "openai_compatible": OpenAICompatibleProvider(),
+            "groq": OpenAICompatibleProvider(
+                base_url=os.getenv("AI_GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+                api_key=os.getenv("AI_GROQ_API_KEY", ""),
+                model=os.getenv("AI_GROQ_MODEL", "llama-3.3-70b-versatile"),
+                provider_name="groq",
+            ),
             "gemini": GeminiProvider(),
         }
         self._now = now_fn
