@@ -1335,7 +1335,11 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
         if conf < 8: direction=NEUTRAL
         grade = _grade(conf, setup["probability"], rr)
         # Apply Omega-100 Rule
-        omega_ok, omega_reasons = _omega_compliant(conf, setup["probability"], rr, mtf_aligned=mtf_align)
+        is_kz = bool(sess_w >= 1.1)
+        vol_ok = bool(of.get("volume_spike") or of.get("absorption") or of.get("climax") or of["pressure"] != "neutral")
+        omega_ok, omega_reasons = _omega_compliant(
+            conf, setup["probability"], rr, mtf_aligned=mtf_align, session_killzone=is_kz, volume_ok=vol_ok
+        )
         if not omega_ok:
             # Signal is watch-only, not actionable
             action_label = "WATCH"
@@ -1859,17 +1863,19 @@ def _divergence(cs, indicator_vals, window=20):
 #   * After 3 consecutive losses: recommend half-size
 # ====================================================================
 OMEGA_MIN_RR = 2.0
-OMEGA_MIN_CONF = 40
-OMEGA_MIN_PROB = 60
+OMEGA_MIN_CONF = 65  # Ultra-Strict: Require high institutional confluence
+OMEGA_MIN_PROB = 75  # Ultra-Strict: Require high success probability
 OMEGA_MAX_DAILY_TRADES = 6
 
-def _omega_compliant(conf, prob, rr, mtf_aligned=True):
+def _omega_compliant(conf, prob, rr, mtf_aligned=True, session_killzone=True, volume_ok=True):
     """Return (actionable, reasons_list) per Omega-100 Ultra-Strict rule."""
     reasons=[]; ok=True
     if rr < OMEGA_MIN_RR: reasons.append(f"RR<{OMEGA_MIN_RR:.1f} (قانون ۱۰۰ اُمگا)"); ok=False
     if conf < OMEGA_MIN_CONF: reasons.append(f"کانفلونس <{OMEGA_MIN_CONF}"); ok=False
     if prob < OMEGA_MIN_PROB: reasons.append(f"احتمال <{OMEGA_MIN_PROB}%"); ok=False
     if not mtf_aligned: reasons.append("عدم هم‌راستایی با فریم بالاتر (HTF Bias)"); ok=False
+    if not session_killzone: reasons.append("خارج از کیل‌زون معاملاتی اصلی (لندن/نیویورک)"); ok=False
+    if not volume_ok: reasons.append("نبود حجم نهادی تاییدکننده (Volume Spike)"); ok=False
     return ok, reasons
 
 
