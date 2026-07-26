@@ -1284,6 +1284,8 @@ async def analyze_chart_vision(
         return {"success": False, "analysis": f"❌ خطا در فراخوانی هوش مصنوعی: {str(exc)}"}
 
 
+from pydantic import BaseModel
+
 class AIChatRequest(BaseModel):
     message: str
 

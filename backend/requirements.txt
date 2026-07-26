@@ -8,5 +8,6 @@ google-auth==2.40.3
 requests==2.34.2
 psycopg[binary,pool]==3.2.9
 cryptography==49.0.0
+python-multipart==0.0.19
 
 # news endpoints rebuild trigger
