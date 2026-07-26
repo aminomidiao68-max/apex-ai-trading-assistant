@@ -86,7 +86,7 @@ class Settings(BaseModel):
     database_path: str = os.getenv("DATABASE_PATH", "")
     database_pool_max_size: int = int(os.getenv("DATABASE_POOL_MAX_SIZE", "8"))
     database_connect_timeout_seconds: float = float(
-        os.getenv("DATABASE_CONNECT_TIMEOUT_SECONDS", "8")
+        os.getenv("DATABASE_CONNECT_TIMEOUT_SECONDS", "45.0")
     )
     backup_retention_days: int = int(os.getenv("BACKUP_RETENTION_DAYS", "14"))
     user_secret_master_key: str = os.getenv("USER_SECRET_MASTER_KEY", "").strip()
