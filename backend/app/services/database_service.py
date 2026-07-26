@@ -132,7 +132,10 @@ class DatabaseManager:
                     min_size=0,
                     max_size=max(1, settings.database_pool_max_size),
                     timeout=max(1.0, settings.database_connect_timeout_seconds),
-                    kwargs={"row_factory": dict_row},
+                    kwargs={
+                        "row_factory": dict_row,
+                        "connect_timeout": int(settings.database_connect_timeout_seconds),
+                    },
                     open=False,
                     name="apex-db-pool",
                 )
