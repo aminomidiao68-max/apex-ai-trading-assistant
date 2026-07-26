@@ -1245,6 +1245,11 @@ async def analyze_chart_vision(
     content = await file.read()
     base64_image = base64.b64encode(content).decode("utf-8")
     api_key = settings.ai_openai_api_key.strip()
+    if not api_key:
+        return {
+            "success": True,
+            "analysis": "⚠️ کلیدهای API برای OpenAI یا Groq هنوز در سرور رندر اصلی شما تنظیم نشده‌اند. لطفاً ابتدا کلیدها را در رندر وارد کنید."
+        }
     if api_key.startswith("b'") and api_key.endswith("'"):
         api_key = api_key[2:-1]
     elif api_key.startswith('b"') and api_key.endswith('"'):
@@ -1305,6 +1310,11 @@ async def execute_ai_chat_assistant(request: AIChatRequest):
             "reply": "⚠️ سرویس هوش مصنوعی خارجی غیرفعال است. برای چت زنده، متغیرهای OpenAI یا Groq را در رندر تنظیم کنید."
         }
     api_key = settings.ai_openai_api_key.strip()
+    if not api_key:
+        return {
+            "success": True,
+            "reply": "⚠️ کلیدهای API برای OpenAI یا Groq هنوز در سرور رندر اصلی شما تنظیم نشده‌اند. لطفاً ابتدا کلیدها را در رندر وارد کنید."
+        }
     if api_key.startswith("b'") and api_key.endswith("'"):
         api_key = api_key[2:-1]
     elif api_key.startswith('b"') and api_key.endswith('"'):
