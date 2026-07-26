@@ -26,6 +26,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 private val BgDark = Color(0xFF0B0F14)
 private val CardC = Color(0xFF161C25)
@@ -170,7 +171,13 @@ fun AIChatScreen() {
 
 private suspend fun queryRealAIChatAssistant(message: String): String = withContext(Dispatchers.IO) {
     try {
-        val client = OkHttpClient()
+        // Enforce high-res client timeout of 60 seconds for slow networks / VPNs
+        val client = OkHttpClient.Builder()
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .build()
+
         val mediaType = "application/json".toMediaTypeOrNull()
         val jsonPayload = JSONObject().apply {
             put("message", message)

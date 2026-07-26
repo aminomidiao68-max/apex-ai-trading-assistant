@@ -1,5 +1,7 @@
 package com.arena.smartmoney.ui.analyze
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,6 +37,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.util.concurrent.TimeUnit
 
 private val BgDark = Color(0xFF0B0F14)
 private val CardC = Color(0xFF161C25)
@@ -62,14 +66,25 @@ fun AnalyzeScreen() {
             analysisResult = null
             coroutineScope.launch {
                 try {
-                    val bytes = withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    val compressedBytes = withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { stream ->
+                            val rawBytes = it.readBytes()
+                            // Decode and compress bitmap to 70% quality (reduces size from 4MB to ~150KB)
+                            val bitmap = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size)
+                            if (bitmap != null) {
+                                val outputStream = ByteArrayOutputStream()
+                                bitmap.compress(Bitmap.CompressFormat.JPEG, 70, outputStream)
+                                outputStream.toByteArray()
+                            } else {
+                                null
+                            }
+                        }
                     }
-                    if (bytes != null) {
-                        val resultText = uploadAndAnalyzeImage(bytes)
+                    if (compressedBytes != null) {
+                        val resultText = uploadAndAnalyzeImage(compressedBytes)
                         analysisResult = resultText
                     } else {
-                        analysisResult = if (isFarsi) "❌ خطا در بارگذاری فایل تصویر." else "❌ Error loading image file."
+                        analysisResult = if (isFarsi) "❌ خطا در فشرده‌سازی فایل تصویر." else "❌ Error compressing image file."
                     }
                 } catch (e: Exception) {
                     analysisResult = "❌ Error: ${e.message}"
@@ -275,7 +290,13 @@ fun AnalyzeScreen() {
 
 private suspend fun uploadAndAnalyzeImage(bytes: ByteArray): String = withContext(Dispatchers.IO) {
     try {
-        val client = OkHttpClient()
+        // Enforce high-res client timeout of 60 seconds for slow networks / VPNs
+        val client = OkHttpClient.Builder()
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .build()
+
         val mediaType = "image/jpeg".toMediaTypeOrNull()
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
