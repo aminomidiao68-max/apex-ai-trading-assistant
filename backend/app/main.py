@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import JSONResponse
@@ -1229,6 +1229,105 @@ async def trigger_external_signal_shadow_wake(
         "background_started": True,
         "actionable_for_live": False,
     }
+
+
+@app.post("/api/v1/analysis/vision")
+async def analyze_chart_vision(
+    file: UploadFile = File(...),
+):
+    import base64
+    import httpx
+    if not settings.ai_external_enabled:
+        return {
+            "success": True,
+            "analysis": "⚠️ سرویس هوش مصنوعی خارجی غیرفعال است. برای استفاده زنده، متغیرهای OpenAI یا Groq را در رندر تنظیم کنید."
+        }
+    content = await file.read()
+    base64_image = base64.b64encode(content).decode("utf-8")
+    headers = {
+        "Authorization": f"Bearer {settings.ai_openai_api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": "gpt-4o-mini" if "vision" not in settings.ai_openai_model.lower() and "gpt-4" not in settings.ai_openai_model.lower() else settings.ai_openai_model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "به عنوان یک مفسر چارت معاملاتی اسمارت مانی (SMC) و ICT، این چارت اسکرین‌شات را به زبان فارسی و با جزئیات کامل مهندسی تحلیل کن. روند کلی، سطوح مهم نقدینگی و اهداف قیمتی را ذکر کن."
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}"
+                        }
+                    }
+                ]
+            }
+        ],
+        "max_tokens": 1000
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{settings.ai_openai_base_url}/chat/completions",
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+            data = response.json()
+            analysis_text = data["choices"][0]["message"]["content"]
+            return {"success": True, "analysis": analysis_text}
+    except Exception as exc:
+        return {"success": False, "analysis": f"❌ خطا در فراخوانی هوش مصنوعی: {str(exc)}"}
+
+
+class AIChatRequest(BaseModel):
+    message: str
+
+
+@app.post("/api/v1/aichat")
+async def execute_ai_chat_assistant(request: AIChatRequest):
+    import httpx
+    if not settings.ai_external_enabled:
+        return {
+            "success": True,
+            "reply": "⚠️ سرویس هوش مصنوعی خارجی غیرفعال است. برای چت زنده، متغیرهای OpenAI یا Groq را در رندر تنظیم کنید."
+        }
+    headers = {
+        "Authorization": f"Bearer {settings.ai_openai_api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": settings.ai_openai_model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "شما دستیار ارشد معاملاتی اسمارت مانی (SMC) و آی‌سی‌تی (ICT) پلتفرم APEX هستید. به کاربر کمک کنید تا ساختار چارت، سطوح نقدینگی، فیبوناچی و مفاهیم ریسک را تحلیل کند. پاسخ‌ها را با کمال دقت، صمیمانه و به زبان فارسی صادر کنید."
+            },
+            {
+                "role": "user",
+                "content": request.message
+            }
+        ],
+        "temperature": 0.7,
+        "max_tokens": 800
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{settings.ai_openai_base_url}/chat/completions",
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+            data = response.json()
+            reply = data["choices"][0]["message"]["content"]
+            return {"success": True, "reply": reply}
+    except Exception as exc:
+        return {"success": False, "reply": f"❌ خطا در اتصال به هوش مصنوعی: {str(exc)}"}
 
 
 @app.post("/api/v1/analysis/intraday-fusion/shadow", response_model=SignalShadowCaptureResponse)

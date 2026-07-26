@@ -16,7 +16,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.arena.smartmoney.data.network.AppConfig
 import com.arena.smartmoney.ui.i18n.AppLanguageState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 
 private val BgDark = Color(0xFF0B0F14)
 private val CardC = Color(0xFF161C25)
@@ -30,7 +39,9 @@ data class ChatMessage(val text: String, val isUser: Boolean)
 @Composable
 fun AIChatScreen() {
     val isFarsi = AppLanguageState.current == "fa"
+    val coroutineScope = rememberCoroutineScope()
     var textState by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
     
     val messages = remember {
         mutableStateListOf(
@@ -69,6 +80,7 @@ fun AIChatScreen() {
                 TextField(
                     value = textState,
                     onValueChange = { textState = it },
+                    enabled = !sending,
                     placeholder = {
                         Text(
                             if (isFarsi) "یک سوال بپرسید..." else "Ask a question...",
@@ -90,28 +102,36 @@ fun AIChatScreen() {
                 Spacer(modifier = Modifier.width(8.dp))
                 IconButton(
                     onClick = {
-                        if (textState.isNotBlank()) {
-                            messages.add(ChatMessage(textState, isUser = true))
-                            
-                            // Simulate smart responsive AI answer in Persian
-                            val response = if (textState.contains("سلام")) {
-                                "سلام! اگر نماد، بازار، یا تصویر چارت دارید ارسال کنید تا تحلیل ساختاری و سطوح کلیدی را بررسی کنم."
-                            } else {
-                                "مفهوم اسمارت مانی تایید شد. در حال حاضر بازار طلا (XAUUSD) در کیل‌زون نیویورک با نوسان مثبت قرار دارد. ریسک پوزیشن‌ها را مدیریت کنید."
-                            }
-                            messages.add(ChatMessage(response, isUser = false))
+                        val query = textState.trim()
+                        if (query.isNotBlank() && !sending) {
+                            messages.add(ChatMessage(query, isUser = true))
                             textState = ""
+                            sending = true
+                            coroutineScope.launch {
+                                try {
+                                    val responseText = queryRealAIChatAssistant(query)
+                                    messages.add(ChatMessage(responseText, isUser = false))
+                                } catch (e: Exception) {
+                                    messages.add(ChatMessage("❌ Error: ${e.message}", isUser = false))
+                                } finally {
+                                    sending = false
+                                }
+                            }
                         }
                     },
                     modifier = Modifier
                         .background(Blue, shape = RoundedCornerShape(50))
                         .size(48.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Send,
-                        contentDescription = "Send",
-                        tint = Color.White
-                    )
+                    if (sending) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Send",
+                            tint = Color.White
+                        )
+                    }
                 }
             }
         },
@@ -145,5 +165,32 @@ fun AIChatScreen() {
                 }
             }
         }
+    }
+}
+
+private suspend fun queryRealAIChatAssistant(message: String): String = withContext(Dispatchers.IO) {
+    try {
+        val client = OkHttpClient()
+        val mediaType = "application/json".toMediaTypeOrNull()
+        val jsonPayload = JSONObject().apply {
+            put("message", message)
+        }.toString()
+
+        val requestBody = jsonPayload.toRequestBody(mediaType)
+        val request = Request.Builder()
+            .url(AppConfig.apiBaseUrl + "api/v1/aichat")
+            .post(requestBody)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                return@withContext "❌ API Error: HTTP ${response.code}"
+            }
+            val bodyString = response.body?.string() ?: ""
+            val json = JSONObject(bodyString)
+            return@withContext json.optString("reply", "❌ Failed to parse response.")
+        }
+    } catch (e: Exception) {
+        return@withContext "❌ Connection Error: ${e.message}"
     }
 }
