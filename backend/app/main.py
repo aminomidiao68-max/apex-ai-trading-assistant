@@ -1244,8 +1244,14 @@ async def analyze_chart_vision(
         }
     content = await file.read()
     base64_image = base64.b64encode(content).decode("utf-8")
+    api_key = settings.ai_openai_api_key.strip()
+    if api_key.startswith("b'") and api_key.endswith("'"):
+        api_key = api_key[2:-1]
+    elif api_key.startswith('b"') and api_key.endswith('"'):
+        api_key = api_key[2:-1]
+    api_key = api_key.strip("'\"")
     headers = {
-        "Authorization": f"Bearer {settings.ai_openai_api_key}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
     payload = {
@@ -1298,8 +1304,14 @@ async def execute_ai_chat_assistant(request: AIChatRequest):
             "success": True,
             "reply": "⚠️ سرویس هوش مصنوعی خارجی غیرفعال است. برای چت زنده، متغیرهای OpenAI یا Groq را در رندر تنظیم کنید."
         }
+    api_key = settings.ai_openai_api_key.strip()
+    if api_key.startswith("b'") and api_key.endswith("'"):
+        api_key = api_key[2:-1]
+    elif api_key.startswith('b"') and api_key.endswith('"'):
+        api_key = api_key[2:-1]
+    api_key = api_key.strip("'\"")
     headers = {
-        "Authorization": f"Bearer {settings.ai_openai_api_key}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
     payload = {

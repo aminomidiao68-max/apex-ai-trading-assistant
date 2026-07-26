@@ -107,8 +107,14 @@ class OpenAICompatibleProvider:
         return bool(self.base_url and self.api_key and self.model)
 
     async def generate(self, prompt: str) -> str:
+        api_key = self.api_key.strip()
+        if api_key.startswith("b'") and api_key.endswith("'"):
+            api_key = api_key[2:-1]
+        elif api_key.startswith('b"') and api_key.endswith('"'):
+            api_key = api_key[2:-1]
+        api_key = api_key.strip("'\"")
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
         payload = {
