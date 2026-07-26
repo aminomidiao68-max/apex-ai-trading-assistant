@@ -131,17 +131,17 @@ class DatabaseManager:
                     conninfo=self.database_url,
                     min_size=0,
                     max_size=max(1, settings.database_pool_max_size),
-                    timeout=max(1.0, settings.database_connect_timeout_seconds),
+                    timeout=max(45.0, settings.database_connect_timeout_seconds),
                     kwargs={
                         "row_factory": dict_row,
-                        "connect_timeout": int(settings.database_connect_timeout_seconds),
+                        "connect_timeout": int(max(45.0, settings.database_connect_timeout_seconds)),
                     },
                     open=False,
                     name="apex-db-pool",
                 )
                 pool.open(
                     wait=True,
-                    timeout=max(1.0, settings.database_connect_timeout_seconds),
+                    timeout=max(45.0, settings.database_connect_timeout_seconds),
                 )
                 self._pools[self.database_url] = pool
             return pool
@@ -152,7 +152,7 @@ class DatabaseManager:
             assert self.sqlite_path is not None
             raw = sqlite3.connect(
                 self.sqlite_path,
-                timeout=max(1.0, settings.database_connect_timeout_seconds),
+                timeout=max(45.0, settings.database_connect_timeout_seconds),
             )
             raw.row_factory = sqlite3.Row
             raw.execute("PRAGMA foreign_keys = ON")
@@ -169,7 +169,7 @@ class DatabaseManager:
         pool = self._pool()
         assert pool is not None
         with pool.connection(
-            timeout=max(1.0, settings.database_connect_timeout_seconds)
+            timeout=max(45.0, settings.database_connect_timeout_seconds)
         ) as raw:
             yield ConnectionAdapter(raw, "postgresql")
 
