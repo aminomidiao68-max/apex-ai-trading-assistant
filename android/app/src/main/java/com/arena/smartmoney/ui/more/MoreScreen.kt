@@ -88,12 +88,12 @@ fun MoreScreen(
                 )
             }
 
-            // Tool item: Price Alerts
+            // Tool item: Price Alerts (Repurposed as System Readiness & Audit Drills)
             item {
                 MoreItemRow(
-                    title = if (isFarsi) "هشدارهای قیمت من" else "My Price Alerts",
-                    subtitle = if (isFarsi) "هنگام لمس اهداف قیمتی مطلع شوید" else "Get notified when a pair hits your target",
-                    icon = Icons.Default.Notifications,
+                    title = if (isFarsi) "ممیزی آمادگی و راستی‌آزمایی سیستم" else "System Readiness & Audit Drills",
+                    subtitle = if (isFarsi) "پایش زنده اتصال دیتابیس، امنیت ترافیک، لایه مارجین صرافی و هوش مصنوعی" else "Live monitor of database, security, margin gates and AI providers",
+                    icon = Icons.Default.VerifiedUser,
                     iconColor = Gold,
                     onClick = { onNavigate("readiness") }
                 )
