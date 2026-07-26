@@ -16,7 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.arena.smartmoney.data.network.AppLanguageState
+import com.arena.smartmoney.ui.i18n.AppLanguageState
 
 private val BgDark = Color(0xFF0B0F14)
 private val CardC = Color(0xFF161C25)

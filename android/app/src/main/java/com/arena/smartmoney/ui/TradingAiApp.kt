@@ -161,13 +161,13 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
 
                 items.forEach { route ->
                     val icon = when (route) {
-                        AppRoute.Dashboard -> Icons.Default.QueryStats
-                        AppRoute.Signals -> Icons.Default.Forum
+                        AppRoute.Dashboard -> Icons.Default.Search
+                        AppRoute.Signals -> Icons.Default.Star
                         AppRoute.Chart -> Icons.Default.ShowChart
                         AppRoute.Setups -> Icons.Default.AutoAwesome
                         AppRoute.Risk -> Icons.Default.Calculate
                         AppRoute.Broker -> Icons.Default.Settings
-                        AppRoute.Profile -> Icons.Default.Menu
+                        AppRoute.Profile -> Icons.Default.Settings
                         AppRoute.Journal -> Icons.Default.Analytics
                         AppRoute.Backtest -> Icons.Default.Analytics
                         AppRoute.Analytics -> Icons.Default.Analytics

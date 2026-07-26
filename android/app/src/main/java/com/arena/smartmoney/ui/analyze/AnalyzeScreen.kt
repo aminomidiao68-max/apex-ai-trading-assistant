@@ -18,7 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.arena.smartmoney.data.network.AppLanguageState
+import com.arena.smartmoney.ui.i18n.AppLanguageState
 
 private val BgDark = Color(0xFF0B0F14)
 private val CardC = Color(0xFF161C25)
@@ -114,8 +114,8 @@ fun AnalyzeScreen() {
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Text(
                         text = if (isFarsi) "آزاد کردن ویژگی‌های ویژه" else "Unlock Pro Features",
@@ -146,7 +146,7 @@ fun AnalyzeScreen() {
                 contentAlignment = Alignment.Center
             ) {
                 Column(
-                    horizontalAlignment = Alignment.CenterVertically,
+                    horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
                     Icon(

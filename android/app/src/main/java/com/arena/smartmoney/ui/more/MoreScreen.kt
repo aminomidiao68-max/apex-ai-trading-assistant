@@ -17,7 +17,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.arena.smartmoney.data.network.AppLanguageState
+import com.arena.smartmoney.ui.i18n.AppLanguageState
 
 private val BgDark = Color(0xFF0B0F14)
 private val CardC = Color(0xFF161C25)
@@ -93,7 +93,7 @@ fun MoreScreen(
                 MoreItemRow(
                     title = if (isFarsi) "ممیزی آمادگی و راستی‌آزمایی سیستم" else "System Readiness & Audit Drills",
                     subtitle = if (isFarsi) "پایش زنده اتصال دیتابیس، امنیت ترافیک، لایه مارجین صرافی و هوش مصنوعی" else "Live monitor of database, security, margin gates and AI providers",
-                    icon = Icons.Default.VerifiedUser,
+                    icon = Icons.Default.Verified,
                     iconColor = Gold,
                     onClick = { onNavigate("readiness") }
                 )
