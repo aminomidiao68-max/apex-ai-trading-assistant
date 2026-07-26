@@ -32,8 +32,8 @@ class Settings(BaseModel):
 
     # External AI is opt-in. The deterministic evidence explainer is always
     # available and remains the default decision-safe provider.
-    ai_provider: str = os.getenv("AI_PROVIDER", "deterministic").strip().lower()
-    ai_external_enabled: bool = _to_bool(os.getenv("AI_EXTERNAL_ENABLED"), False)
+    ai_provider: str = os.getenv("AI_PROVIDER", "openai_compatible").strip().lower()
+    ai_external_enabled: bool = _to_bool(os.getenv("AI_EXTERNAL_ENABLED"), True)
     ai_openai_base_url: str = os.getenv("AI_OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
     ai_openai_api_key: str = os.getenv("AI_OPENAI_API_KEY", "")
     ai_openai_model: str = os.getenv("AI_OPENAI_MODEL", "gpt-4.1-mini")
