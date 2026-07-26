@@ -48,6 +48,9 @@ import com.arena.smartmoney.ui.auth.AuthScreen
 import com.arena.smartmoney.ui.backtest.BacktestScreen
 import com.arena.smartmoney.ui.broker.BrokerScreen
 import com.arena.smartmoney.ui.chart.ChartScreen
+import com.arena.smartmoney.ui.analyze.AnalyzeScreen
+import com.arena.smartmoney.ui.aichat.AIChatScreen
+import com.arena.smartmoney.ui.more.MoreScreen
 import com.arena.smartmoney.ui.dashboard.DashboardScreen
 import com.arena.smartmoney.ui.news.NewsScreen
 import com.arena.smartmoney.ui.i18n.AppLanguageState
@@ -144,9 +147,9 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
     val t = rememberTranslator()
     val items = listOf(
         AppRoute.Dashboard,
+        AppRoute.Chart,
         AppRoute.Setups,
-        AppRoute.Risk,
-        AppRoute.Broker,
+        AppRoute.Signals,
         AppRoute.Profile
     )
 
@@ -158,13 +161,13 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
 
                 items.forEach { route ->
                     val icon = when (route) {
-                        AppRoute.Dashboard -> Icons.Default.Dashboard
-                        AppRoute.Signals -> Icons.Default.Analytics
+                        AppRoute.Dashboard -> Icons.Default.QueryStats
+                        AppRoute.Signals -> Icons.Default.Forum
                         AppRoute.Chart -> Icons.Default.ShowChart
                         AppRoute.Setups -> Icons.Default.AutoAwesome
                         AppRoute.Risk -> Icons.Default.Calculate
                         AppRoute.Broker -> Icons.Default.Settings
-                        AppRoute.Profile -> Icons.Default.Person
+                        AppRoute.Profile -> Icons.Default.Menu
                         AppRoute.Journal -> Icons.Default.Analytics
                         AppRoute.Backtest -> Icons.Default.Analytics
                         AppRoute.Analytics -> Icons.Default.Analytics
@@ -173,13 +176,13 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
                         AppRoute.Readiness -> Icons.Default.Settings
                     }
                     val localizedLabel = when (route) {
-                        AppRoute.Dashboard -> t("Dashboard", "داشبورد")
-                        AppRoute.Signals -> t("Signals", "سیگنال‌ها")
-                        AppRoute.Chart -> t("Chart", "نمودار")
+                        AppRoute.Dashboard -> t("Analyze", "آنالیز")
+                        AppRoute.Signals -> t("AI Chat", "چت هوشمند")
+                        AppRoute.Chart -> t("Charts", "چارت‌ها")
                         AppRoute.Setups -> t("Setups", "ستاپ‌ها")
                         AppRoute.Risk -> t("Risk", "ریسک")
                         AppRoute.Broker -> t("Broker", "بروکر")
-                        AppRoute.Profile -> t("Profile", "پروفایل")
+                        AppRoute.Profile -> t("More", "بیشتر")
                         AppRoute.Journal -> t("Journal", "ژورنال")
                         AppRoute.Backtest -> t("Backtest", "بک‌تست")
                         AppRoute.Analytics -> t("Analytics", "آنالیتیکس")
@@ -212,23 +215,14 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(AppRoute.Dashboard.route) {
-                DashboardScreen(
-                    onOpenBacktest = { navController.navigate(AppRoute.Backtest.route) },
-                    onOpenAnalytics = { navController.navigate(AppRoute.Analytics.route) },
-                    onOpenMarketAnalysis = { navController.navigate(AppRoute.MarketAnalysis.route) },
-                    onOpenNews = { navController.navigate("news") },
-                    onOpenJournal = { navController.navigate(AppRoute.Journal.route) },
-                    onOpenSignals = { navController.navigate(AppRoute.Signals.route) },
-                    onOpenChart = { navController.navigate(AppRoute.Chart.route) },
-                    onOpenSetups = { navController.navigate(AppRoute.Setups.route) }
-                )
+                AnalyzeScreen()
             }
 
                 composable("news") {
                     NewsScreen(onBack = { navController.popBackStack() })
                 }
             composable(AppRoute.Signals.route) {
-                SignalsScreen(onOpenJournal = { navController.navigate(AppRoute.Journal.route) })
+                AIChatScreen()
             }
             composable(AppRoute.Chart.route) { ChartScreen() }
             composable(AppRoute.Setups.route) {
@@ -256,10 +250,7 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
             composable(AppRoute.Risk.route) { RiskCalculatorScreen() }
             composable(AppRoute.Broker.route) { BrokerScreen() }
             composable(AppRoute.Profile.route) {
-                ProfileScreen(
-                    onLogout = onLogout,
-                    onOpenSettings = { navController.navigate(AppRoute.Settings.route) }
-                )
+                MoreScreen(onNavigate = { navController.navigate(it) })
             }
             composable(AppRoute.Journal.route) { JournalScreen() }
             composable(AppRoute.Backtest.route) { BacktestScreen() }
