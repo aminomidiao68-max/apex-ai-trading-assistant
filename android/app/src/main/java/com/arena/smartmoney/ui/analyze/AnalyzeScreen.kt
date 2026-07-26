@@ -68,7 +68,7 @@ fun AnalyzeScreen() {
                 try {
                     val compressedBytes = withContext(Dispatchers.IO) {
                         context.contentResolver.openInputStream(uri)?.use { stream ->
-                            val rawBytes = it.readBytes()
+                            val rawBytes = stream.readBytes()
                             // Decode and compress bitmap to 70% quality (reduces size from 4MB to ~150KB)
                             val bitmap = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size)
                             if (bitmap != null) {
