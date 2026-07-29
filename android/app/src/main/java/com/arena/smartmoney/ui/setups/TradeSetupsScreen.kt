@@ -34,6 +34,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -42,6 +45,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arena.smartmoney.data.model.TradeSetupDto
 import com.arena.smartmoney.ui.components.PremiumGlassCard
@@ -249,6 +253,7 @@ fun TradeSetupsScreen(
 
 @Composable
 private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
+    var aiExpanded by remember { mutableStateOf(false) }
     val directionColor = if (setup.direction == "long") SetupGreen else SetupRed
     val directionLabel = if (setup.direction == "long") "LONG • خرید" else "SHORT • فروش"
     val lifecycleColor = when (setup.lifecycleState) {
@@ -369,11 +374,61 @@ private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Default.ShowChart, contentDescription = null, tint = SetupBlue)
-                Text("  مشاهده روی چارت زنده", color = SetupBlue, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.clickable { aiExpanded = !aiExpanded },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, tint = SetupGold)
+                    Text(
+                        if (aiExpanded) "  بستن آنالیز" else "  آنالیز هوش مصنوعی",
+                        color = SetupGold,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Row(
+                    modifier = Modifier.clickable(onClick = onOpenChart),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.ShowChart, contentDescription = null, tint = SetupBlue)
+                    Text("  مشاهده روی چارت", color = SetupBlue, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            if (aiExpanded) {
+                PremiumGlassCard(borderColor = SetupGold.copy(alpha = 0.5f)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "✨ مفسر بومی هوش مصنوعی APEX:",
+                            color = SetupGold,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = setup.note,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                        if (setup.factors.isNotEmpty()) {
+                            Text(
+                                text = "🔍 شواهد و تاییده‌های ریاضی (Confluence):",
+                                color = SetupBlue,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
+                            )
+                            setup.factors.forEach { factor ->
+                                Text(
+                                    text = "• $factor",
+                                    color = Color.White,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
