@@ -1298,8 +1298,15 @@ async def analyze_chart_vision(
             data = response.json()
             analysis_text = data["choices"][0]["message"]["content"]
             return {"success": True, "analysis": analysis_text}
+    except httpx.HTTPStatusError as exc:
+        try:
+            err_data = exc.response.json()
+            err_msg = err_data.get("error", {}).get("message", str(exc))
+        except Exception:
+            err_msg = exc.response.text or str(exc)
+        return {"success": False, "analysis": f"❌ خطا در فراخوانی هوش مصنوعی: {err_msg}"}
     except Exception as exc:
-        return {"success": False, "analysis": f"❌ خطا در فراخوانی هوش مصنوعی: {str(exc)}"}
+        return {"success": False, "analysis": f"❌ خطا در اتصال به هوش مصنوعی: {str(exc)}"}
 
 
 from pydantic import BaseModel
@@ -1362,6 +1369,13 @@ async def execute_ai_chat_assistant(request: AIChatRequest):
             data = response.json()
             reply = data["choices"][0]["message"]["content"]
             return {"success": True, "reply": reply}
+    except httpx.HTTPStatusError as exc:
+        try:
+            err_data = exc.response.json()
+            err_msg = err_data.get("error", {}).get("message", str(exc))
+        except Exception:
+            err_msg = exc.response.text or str(exc)
+        return {"success": False, "reply": f"❌ خطا در فراخوانی هوش مصنوعی: {err_msg}"}
     except Exception as exc:
         return {"success": False, "reply": f"❌ خطا در اتصال به هوش مصنوعی: {str(exc)}"}
 
