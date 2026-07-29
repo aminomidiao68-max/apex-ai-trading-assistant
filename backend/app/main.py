@@ -1245,6 +1245,11 @@ async def analyze_chart_vision(
     content = await file.read()
     base64_image = base64.b64encode(content).decode("utf-8")
     api_key = settings.ai_openai_api_key.strip()
+    is_groq = "groq" in settings.ai_openai_base_url.lower()
+    if is_groq:
+        groq_key = os.getenv("AI_GROQ_API_KEY", "").strip()
+        if groq_key:
+            api_key = groq_key
     if not api_key:
         return {
             "success": True,
@@ -1259,8 +1264,10 @@ async def analyze_chart_vision(
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    is_groq = "groq" in settings.ai_openai_base_url.lower()
+    default_model = "llama-3.2-11b-vision-preview" if is_groq else "gpt-4o-mini"
     payload = {
-        "model": "gpt-4o-mini" if "vision" not in settings.ai_openai_model.lower() and "gpt-4" not in settings.ai_openai_model.lower() else settings.ai_openai_model,
+        "model": settings.ai_openai_model if ("vision" in settings.ai_openai_model.lower() or "gpt-4" in settings.ai_openai_model.lower()) else default_model,
         "messages": [
             {
                 "role": "user",
@@ -1310,6 +1317,11 @@ async def execute_ai_chat_assistant(request: AIChatRequest):
             "reply": "⚠️ سرویس هوش مصنوعی خارجی غیرفعال است. برای چت زنده، متغیرهای OpenAI یا Groq را در رندر تنظیم کنید."
         }
     api_key = settings.ai_openai_api_key.strip()
+    is_groq = "groq" in settings.ai_openai_base_url.lower()
+    if is_groq:
+        groq_key = os.getenv("AI_GROQ_API_KEY", "").strip()
+        if groq_key:
+            api_key = groq_key
     if not api_key:
         return {
             "success": True,
