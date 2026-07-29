@@ -1265,9 +1265,12 @@ async def analyze_chart_vision(
         "Content-Type": "application/json",
     }
     is_groq = "groq" in settings.ai_openai_base_url.lower()
+    model_name = settings.ai_openai_model
+    if "llama-3.2" in model_name.lower() and "vision" in model_name.lower():
+        model_name = "qwen/qwen3.6-27b"
     default_model = "qwen/qwen3.6-27b" if is_groq else "gpt-4o-mini"
     payload = {
-        "model": settings.ai_openai_model if ("vision" in settings.ai_openai_model.lower() or "gpt-4" in settings.ai_openai_model.lower()) else default_model,
+        "model": model_name if ("vision" in model_name.lower() or "gpt-4" in model_name.lower()) else default_model,
         "messages": [
             {
                 "role": "user",
