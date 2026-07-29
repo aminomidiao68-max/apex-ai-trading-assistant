@@ -1324,7 +1324,7 @@ async def execute_ai_chat_assistant(request: AIChatRequest):
     if not settings.ai_external_enabled:
         return {
             "success": True,
-            "reply": "⚠️ سرویس هوش مصنوعی خارجی غیرفعال است. برای چت زنده، متغیرهای OpenAI یا Groq را در رندر تنظیم کنید."
+            "reply": "⚠️ سرویس هوش مصنوعی خارجی غیرفعال است. برای چت زنده, متغیرهای OpenAI یا Groq را در رندر تنظیم کنید."
         }
     api_key = settings.ai_openai_api_key.strip()
     is_groq = "groq" in settings.ai_openai_base_url.lower()
@@ -1346,8 +1346,11 @@ async def execute_ai_chat_assistant(request: AIChatRequest):
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
+    chat_model = settings.ai_openai_model
+    if "vision" in chat_model.lower() or "llama-3.2" in chat_model.lower():
+        chat_model = "llama-3.3-70b-versatile" if is_groq else "gpt-4o-mini"
     payload = {
-        "model": settings.ai_openai_model,
+        "model": chat_model,
         "messages": [
             {
                 "role": "system",
