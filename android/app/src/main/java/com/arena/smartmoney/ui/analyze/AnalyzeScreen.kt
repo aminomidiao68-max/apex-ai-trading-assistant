@@ -69,11 +69,26 @@ fun AnalyzeScreen() {
                     val compressedBytes = withContext(Dispatchers.IO) {
                         context.contentResolver.openInputStream(uri)?.use { stream ->
                             val rawBytes = stream.readBytes()
-                            // Decode and compress bitmap to 70% quality (reduces size from 4MB to ~150KB)
                             val bitmap = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size)
                             if (bitmap != null) {
+                                // Downscale image to max 1024px to prevent Groq 2048px limit 400 Bad Request
+                                val maxDimension = 1024
+                                val originalWidth = bitmap.width
+                                val originalHeight = bitmap.height
+                                val scaledBitmap = if (originalWidth > maxDimension || originalHeight > maxDimension) {
+                                    val aspectRatio = originalWidth.toFloat() / originalHeight.toFloat()
+                                    val (newWidth, newHeight) = if (originalWidth > originalHeight) {
+                                        maxDimension to (maxDimension / aspectRatio).toInt()
+                                    } else {
+                                        (maxDimension * aspectRatio).toInt() to maxDimension
+                                    }
+                                    Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+                                } else {
+                                    bitmap
+                                }
+                                
                                 val outputStream = ByteArrayOutputStream()
-                                bitmap.compress(Bitmap.CompressFormat.JPEG, 70, outputStream)
+                                scaledBitmap.compress(Bitmap.CompressFormat.JPEG, 70, outputStream)
                                 outputStream.toByteArray()
                             } else {
                                 null
