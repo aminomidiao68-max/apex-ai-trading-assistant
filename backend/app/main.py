@@ -1234,82 +1234,156 @@ async def trigger_external_signal_shadow_wake(
 @app.post("/api/v1/analysis/vision")
 async def analyze_chart_vision(
     file: UploadFile = File(...),
+    user=Depends(optional_current_user),
 ):
     import base64
     import httpx
+    import logging
+    logger = logging.getLogger("apex.api.vision")
+
     if not settings.ai_external_enabled:
         return {
             "success": True,
             "analysis": "⚠️ سرویس هوش مصنوعی خارجی غیرفعال است. برای استفاده زنده، متغیرهای OpenAI یا Groq را در رندر تنظیم کنید."
         }
+
     content = await file.read()
     base64_image = base64.b64encode(content).decode("utf-8")
-    api_key = settings.ai_openai_api_key.strip()
-    is_groq = "groq" in settings.ai_openai_base_url.lower()
-    if is_groq:
-        groq_key = os.getenv("AI_GROQ_API_KEY", "").strip()
-        if groq_key:
-            api_key = groq_key
-    if not api_key:
+
+    # Build candidates list for Vision (OpenAI is preferred for vision accuracy, Groq is backup)
+    candidates = []
+
+    # 1. User BYOK OpenAI (Best for Vision)
+    if user:
+        try:
+            openai_material = provider_secret_service.get_material(user.id, "openai")
+            if openai_material and openai_material.api_key:
+                candidates.append({
+                    "provider": "OpenAI (User BYOK)",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key": openai_material.api_key.strip(),
+                    "model": openai_material.model or "gpt-4o-mini",
+                    "is_groq": False,
+                })
+        except Exception as e:
+            logger.warning(f"Error reading user openai material: {e}")
+
+    # 2. User BYOK Groq
+    if user:
+        try:
+            groq_material = provider_secret_service.get_material(user.id, "groq")
+            if groq_material and groq_material.api_key:
+                candidates.append({
+                    "provider": "Groq (User BYOK)",
+                    "base_url": "https://api.groq.com/openai/v1",
+                    "api_key": groq_material.api_key.strip(),
+                    "model": "qwen/qwen3.6-27b",
+                    "is_groq": True,
+                })
+        except Exception as e:
+            logger.warning(f"Error reading user groq material: {e}")
+
+    # 3. System OpenAI (From settings)
+    sys_openai_key = settings.ai_openai_api_key.strip() if settings.ai_openai_api_key else ""
+    if sys_openai_key:
+        sys_base = settings.ai_openai_base_url or "https://api.openai.com/v1"
+        is_groq_base = "groq" in sys_base.lower()
+        candidates.append({
+            "provider": "OpenAI (System Default)" if not is_groq_base else "Groq (System Base)",
+            "base_url": sys_base,
+            "api_key": sys_openai_key,
+            "model": "qwen/qwen3.6-27b" if is_groq_base else "gpt-4o-mini",
+            "is_groq": is_groq_base,
+        })
+
+    # 4. System Groq (From Env)
+    sys_groq_key = os.getenv("AI_GROQ_API_KEY", "").strip()
+    if sys_groq_key:
+        candidates.append({
+            "provider": "Groq (System Default)",
+            "base_url": os.getenv("AI_GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+            "api_key": sys_groq_key,
+            "model": "qwen/qwen3.6-27b",
+            "is_groq": True,
+        })
+
+    if not candidates:
         return {
             "success": True,
-            "analysis": "⚠️ کلیدهای API برای OpenAI یا Groq هنوز در سرور رندر اصلی شما تنظیم نشده‌اند. لطفاً ابتدا کلیدها را در رندر وارد کنید."
+            "analysis": "⚠️ کلیدهای API برای OpenAI یا Groq هنوز تنظیم نشده‌اند. لطفاً ابتدا کلیدها را در تنظیمات وارد کنید."
         }
-    if api_key.startswith("b'") and api_key.endswith("'"):
-        api_key = api_key[2:-1]
-    elif api_key.startswith('b"') and api_key.endswith('"'):
-        api_key = api_key[2:-1]
-    api_key = api_key.strip("'\"")
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    is_groq = "groq" in settings.ai_openai_base_url.lower()
-    model_name = settings.ai_openai_model
-    if "llama-3.2" in model_name.lower() and "vision" in model_name.lower():
-        model_name = "qwen/qwen3.6-27b"
-    default_model = "qwen/qwen3.6-27b" if is_groq else "gpt-4o-mini"
-    payload = {
-        "model": model_name if ("vision" in model_name.lower() or "gpt-4" in model_name.lower()) else default_model,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": "به عنوان یک مفسر چارت معاملاتی اسمارت مانی (SMC) و ICT، این چارت اسکرین‌شات را به زبان فارسی و با جزئیات کامل مهندسی تحلیل کن. روند کلی، سطوح مهم نقدینگی و اهداف قیمتی را ذکر کن."
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/jpeg;base64,{base64_image}"
+
+    errors = []
+    # Execute with fallback logic
+    for cand in candidates:
+        api_key = cand["api_key"]
+        if api_key.startswith("b'") and api_key.endswith("'"):
+            api_key = api_key[2:-1]
+        elif api_key.startswith('b"') and api_key.endswith('"'):
+            api_key = api_key[2:-1]
+        api_key = api_key.strip("'\"")
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        # Select model
+        model = cand["model"]
+        if "llama-3.2" in model.lower() and "vision" in model.lower():
+            model = "qwen/qwen3.6-27b"
+
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "به عنوان یک مفسر چارت معاملاتی اسمارت مانی (SMC) و ICT، این چارت اسکرین‌شات را به زبان فارسی و با جزئیات کامل مهندسی تحلیل کن. روند کلی، سطوح مهم نقدینگی و اهداف قیمتی را ذکر کن."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}"
+                            }
                         }
-                    }
-                ]
-            }
-        ],
-        "max_tokens": 1000
-    }
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"{settings.ai_openai_base_url}/chat/completions",
-                headers=headers,
-                json=payload
-            )
-            response.raise_for_status()
-            data = response.json()
-            analysis_text = data["choices"][0]["message"]["content"]
-            return {"success": True, "analysis": analysis_text}
-    except httpx.HTTPStatusError as exc:
+                    ]
+                }
+            ],
+            "max_tokens": 1000
+        }
+
         try:
-            err_data = exc.response.json()
-            err_msg = err_data.get("error", {}).get("message", str(exc))
-        except Exception:
-            err_msg = exc.response.text or str(exc)
-        return {"success": False, "analysis": f"❌ خطا در فراخوانی هوش مصنوعی: {err_msg}"}
-    except Exception as exc:
-        return {"success": False, "analysis": f"❌ خطا در اتصال به هوش مصنوعی: {str(exc)}"}
+            url = f"{cand['base_url']}/chat/completions"
+            logger.info(f"Trying vision analysis with {cand['provider']} ({model})")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                analysis_text = data["choices"][0]["message"]["content"]
+                return {
+                    "success": True,
+                    "analysis": analysis_text,
+                    "provider_used": cand["provider"],
+                    "model": model,
+                    "errors_overcome": errors
+                }
+        except Exception as exc:
+            err_msg = str(exc)
+            if hasattr(exc, "response") and exc.response is not None:
+                try:
+                    err_msg = exc.response.json().get("error", {}).get("message", exc.response.text)
+                except Exception:
+                    err_msg = exc.response.text or str(exc)
+            logger.warning(f"Vision provider {cand['provider']} failed: {err_msg}")
+            errors.append(f"{cand['provider']}: {err_msg}")
+
+    return {
+        "success": False,
+        "analysis": f"❌ خطا در تمام تلاش‌های هوش مصنوعی:\n" + "\n".join(errors)
+    }
 
 
 from pydantic import BaseModel
@@ -1319,71 +1393,148 @@ class AIChatRequest(BaseModel):
 
 
 @app.post("/api/v1/aichat")
-async def execute_ai_chat_assistant(request: AIChatRequest):
+async def execute_ai_chat_assistant(
+    request: AIChatRequest,
+    user=Depends(optional_current_user),
+):
     import httpx
+    import logging
+    logger = logging.getLogger("apex.api.chat")
+
     if not settings.ai_external_enabled:
         return {
             "success": True,
             "reply": "⚠️ سرویس هوش مصنوعی خارجی غیرفعال است. برای چت زنده, متغیرهای OpenAI یا Groq را در رندر تنظیم کنید."
         }
-    api_key = settings.ai_openai_api_key.strip()
-    is_groq = "groq" in settings.ai_openai_base_url.lower()
-    if is_groq:
-        groq_key = os.getenv("AI_GROQ_API_KEY", "").strip()
-        if groq_key:
-            api_key = groq_key
-    if not api_key:
+
+    # Build candidates list for Chat (Groq is preferred for chat speed, OpenAI is backup)
+    candidates = []
+
+    # 1. User BYOK Groq (Best for Chat speed!)
+    if user:
+        try:
+            groq_material = provider_secret_service.get_material(user.id, "groq")
+            if groq_material and groq_material.api_key:
+                candidates.append({
+                    "provider": "Groq (User BYOK)",
+                    "base_url": "https://api.groq.com/openai/v1",
+                    "api_key": groq_material.api_key.strip(),
+                    "model": groq_material.model or "llama-3.3-70b-versatile",
+                    "is_groq": True,
+                })
+        except Exception as e:
+            logger.warning(f"Error reading user groq material for chat: {e}")
+
+    # 2. User BYOK OpenAI
+    if user:
+        try:
+            openai_material = provider_secret_service.get_material(user.id, "openai")
+            if openai_material and openai_material.api_key:
+                candidates.append({
+                    "provider": "OpenAI (User BYOK)",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key": openai_material.api_key.strip(),
+                    "model": openai_material.model or "gpt-4o-mini",
+                    "is_groq": False,
+                })
+        except Exception as e:
+            logger.warning(f"Error reading user openai material for chat: {e}")
+
+    # 3. System Groq (From Env)
+    sys_groq_key = os.getenv("AI_GROQ_API_KEY", "").strip()
+    if sys_groq_key:
+        candidates.append({
+            "provider": "Groq (System Default)",
+            "base_url": os.getenv("AI_GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+            "api_key": sys_groq_key,
+            "model": "llama-3.3-70b-versatile",
+            "is_groq": True,
+        })
+
+    # 4. System OpenAI (From settings)
+    sys_openai_key = settings.ai_openai_api_key.strip() if settings.ai_openai_api_key else ""
+    if sys_openai_key:
+        sys_base = settings.ai_openai_base_url or "https://api.openai.com/v1"
+        is_groq_base = "groq" in sys_base.lower()
+        candidates.append({
+            "provider": "OpenAI (System Default)" if not is_groq_base else "Groq (System Base)",
+            "base_url": sys_base,
+            "api_key": sys_openai_key,
+            "model": "llama-3.3-70b-versatile" if is_groq_base else "gpt-4o-mini",
+            "is_groq": is_groq_base,
+        })
+
+    if not candidates:
         return {
             "success": True,
-            "reply": "⚠️ کلیدهای API برای OpenAI یا Groq هنوز در سرور رندر اصلی شما تنظیم نشده‌اند. لطفاً ابتدا کلیدها را در رندر وارد کنید."
+            "reply": "⚠️ کلیدهای API برای OpenAI یا Groq هنوز تنظیم نشده‌اند. لطفاً ابتدا کلیدها را در تنظیمات وارد کنید."
         }
-    if api_key.startswith("b'") and api_key.endswith("'"):
-        api_key = api_key[2:-1]
-    elif api_key.startswith('b"') and api_key.endswith('"'):
-        api_key = api_key[2:-1]
-    api_key = api_key.strip("'\"")
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    chat_model = settings.ai_openai_model
-    if "vision" in chat_model.lower() or "llama-3.2" in chat_model.lower():
-        chat_model = "llama-3.3-70b-versatile" if is_groq else "gpt-4o-mini"
-    payload = {
-        "model": chat_model,
-        "messages": [
-            {
-                "role": "system",
-                "content": "شما دستیار ارشد معاملاتی اسمارت مانی (SMC) و آی‌سی‌تی (ICT) پلتفرم APEX هستید. به کاربر کمک کنید تا ساختار چارت، سطوح نقدینگی، فیبوناچی و مفاهیم ریسک را تحلیل کند. پاسخ‌ها را با کمال دقت، صمیمانه و به زبان فارسی صادر کنید."
-            },
-            {
-                "role": "user",
-                "content": request.message
-            }
-        ],
-        "temperature": 0.7,
-        "max_tokens": 800
-    }
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                f"{settings.ai_openai_base_url}/chat/completions",
-                headers=headers,
-                json=payload
-            )
-            response.raise_for_status()
-            data = response.json()
-            reply = data["choices"][0]["message"]["content"]
-            return {"success": True, "reply": reply}
-    except httpx.HTTPStatusError as exc:
+
+    errors = []
+    # Execute with fallback logic
+    for cand in candidates:
+        api_key = cand["api_key"]
+        if api_key.startswith("b'") and api_key.endswith("'"):
+            api_key = api_key[2:-1]
+        elif api_key.startswith('b"') and api_key.endswith('"'):
+            api_key = api_key[2:-1]
+        api_key = api_key.strip("'\"")
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        # Select model
+        model = cand["model"]
+        if "vision" in model.lower() or "llama-3.2" in model.lower():
+            model = "llama-3.3-70b-versatile" if cand["is_groq"] else "gpt-4o-mini"
+
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "شما دستیار ارشد معاملاتی اسمارت مانی (SMC) و آی‌سی‌تی (ICT) پلتفرم APEX هستید. به کاربر کمک کنید تا ساختار چارت، سطوح نقدینگی، فیبوناچی و مفاهیم ریسک را تحلیل کند. پاسخ‌ها را با کمال دقت، صمیمانه و به زبان فارسی صادر کنید."
+                },
+                {
+                    "role": "user",
+                    "content": request.message
+                }
+            ],
+            "temperature": 0.7,
+            "max_tokens": 800
+        }
+
         try:
-            err_data = exc.response.json()
-            err_msg = err_data.get("error", {}).get("message", str(exc))
-        except Exception:
-            err_msg = exc.response.text or str(exc)
-        return {"success": False, "reply": f"❌ خطا در فراخوانی هوش مصنوعی: {err_msg}"}
-    except Exception as exc:
-        return {"success": False, "reply": f"❌ خطا در اتصال به هوش مصنوعی: {str(exc)}"}
+            url = f"{cand['base_url']}/chat/completions"
+            logger.info(f"Trying AI chat with {cand['provider']} ({model})")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                reply = data["choices"][0]["message"]["content"]
+                return {
+                    "success": True,
+                    "reply": reply,
+                    "provider_used": cand["provider"],
+                    "model": model,
+                    "errors_overcome": errors
+                }
+        except Exception as exc:
+            err_msg = str(exc)
+            if hasattr(exc, "response") and exc.response is not None:
+                try:
+                    err_msg = exc.response.json().get("error", {}).get("message", exc.response.text)
+                except Exception:
+                    err_msg = exc.response.text or str(exc)
+            logger.warning(f"Chat provider {cand['provider']} failed: {err_msg}")
+            errors.append(f"{cand['provider']}: {err_msg}")
+
+    return {
+        "success": False,
+        "reply": f"❌ خطا در تمام تلاش‌های هوش مصنوعی:\n" + "\n".join(errors)
+    }
 
 
 @app.post("/api/v1/analysis/intraday-fusion/shadow", response_model=SignalShadowCaptureResponse)
