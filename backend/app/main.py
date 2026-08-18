@@ -129,6 +129,7 @@ from app.models import (
     TradeJournalStats,
 )
 from app.services.ai_explainability_service import OpenAICompatibleProvider, ai_explainability_service
+from app.services.strategy_grounded_helper import StrategyGroundedHelper
 from app.services.auth_service import AuthService
 from app.services.automated_panel_service import AutomatedPanelError, AutomatedPanelResearchService
 from app.services.backtest_service import BacktestService
@@ -1341,7 +1342,7 @@ async def analyze_chart_vision(
                     "content": [
                         {
                             "type": "text",
-                            "text": "به عنوان یک مفسر چارت معاملاتی اسمارت مانی (SMC) و ICT، این چارت اسکرین‌شات را به زبان فارسی و با جزئیات کامل مهندسی تحلیل کن. روند کلی، سطوح مهم نقدینگی و اهداف قیمتی را ذکر کن."
+                            "text": "به عنوان یک مفسر چارت معاملاتی اسمارت مانی (SMC) و ICT بر اساس دستورالعمل‌های زیر، این چارت اسکرین‌شات را به زبان فارسی و با جزئیات کامل مهندسی تحلیل کن. روند کلی، سطوح مهم نقدینگی و اهداف قیمتی را ذکر کن:\n" + StrategyGroundedHelper.get_grounding_system_prompt_addon()
                         },
                         {
                             "type": "image_url",
@@ -1495,7 +1496,7 @@ async def execute_ai_chat_assistant(
             "messages": [
                 {
                     "role": "system",
-                    "content": "شما دستیار ارشد معاملاتی اسمارت مانی (SMC) و آی‌سی‌تی (ICT) پلتفرم APEX هستید. به کاربر کمک کنید تا ساختار چارت، سطوح نقدینگی، فیبوناچی و مفاهیم ریسک را تحلیل کند. پاسخ‌ها را با کمال دقت، صمیمانه و به زبان فارسی صادر کنید."
+                    "content": "شما دستیار ارشد معاملاتی اسمارت مانی (SMC) و آی‌سی‌تی (ICT) پلتفرم APEX هستید. به کاربر کمک کنید تا ساختار چارت، سطوح نقدینگی، فیبوناچی و مفاهیم ریسک را تحلیل کند. پاسخ‌ها را با کمال دقت، صمیمانه و به زبان فارسی بر اساس دستورالعمل‌های زیر صادر کنید:\n" + StrategyGroundedHelper.get_grounding_system_prompt_addon()
                 },
                 {
                     "role": "user",
@@ -1503,7 +1504,7 @@ async def execute_ai_chat_assistant(
                 }
             ],
             "temperature": 0.7,
-            "max_tokens": 800
+            "max_tokens": 1200
         }
 
         try:
