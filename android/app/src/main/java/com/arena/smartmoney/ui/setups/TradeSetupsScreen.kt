@@ -400,6 +400,40 @@ private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
             if (aiExpanded) {
                 PremiumGlassCard(borderColor = SetupGold.copy(alpha = 0.5f)) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        setup.handbookDetails?.let { hb ->
+                            Text(
+                                text = "📖 استراتژی شماره ${hb.number}: ${hb.name} (${hb.school})",
+                                color = SetupGold,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF0F1420), RoundedCornerShape(8.dp))
+                                    .padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    Text("وین ریت واقعی: ", color = SetupMuted, fontSize = 12.sp)
+                                    Text(hb.winRate, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    Text("ریسک به ریوارد: ", color = SetupMuted, fontSize = 12.sp)
+                                    Text(hb.rr, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    Text("تایم‌فریم طلایی: ", color = SetupMuted, fontSize = 12.sp)
+                                    Text(hb.timeframe, color = Color.White, fontSize = 12.sp)
+                                }
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    Text("بهترین نمادها: ", color = SetupMuted, fontSize = 12.sp)
+                                    Text(hb.symbols, color = SetupBlue, fontSize = 12.sp)
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                        }
+
                         Text(
                             text = "✨ مفسر بومی هوش مصنوعی APEX:",
                             color = SetupGold,

@@ -2260,6 +2260,7 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
         reasons.append("Waiting for structure/entry confirmation")
 
     setup_type = report.get("setup_type") or "-"
+    handbook_details = StrategyGroundedHelper.map_setup_to_handbook(setup_type, direction)
     return {
         "id": f"{symbol}:{timeframe}:{direction}:{setup_type}",
         "symbol": symbol,
@@ -2297,6 +2298,7 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
         "decision": report.get("decision") or {},
         "data_quality": report.get("data_quality") or {},
         "market_regime": report.get("market_regime") or {},
+        "handbook_details": handbook_details,
     }
 
 

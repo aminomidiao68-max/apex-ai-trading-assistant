@@ -1154,6 +1154,16 @@ data class SmcScanResponse(
     @SerializedName("created_by") val createdBy: String = "Amin Omidi"
 )
 
+data class TradeSetupHandbookDetails(
+    @SerializedName("name") val name: String = "",
+    @SerializedName("number") val number: Int = 0,
+    @SerializedName("win_rate") val winRate: String = "",
+    @SerializedName("rr") val rr: String = "",
+    @SerializedName("timeframe") val timeframe: String = "",
+    @SerializedName("symbols") val symbols: String = "",
+    @SerializedName("school") val school: String = ""
+)
+
 data class TradeSetupDto(
     val id: String = "",
     val symbol: String = "",
@@ -1199,7 +1209,8 @@ data class TradeSetupDto(
     @SerializedName("cooldown_until") val cooldownUntil: String? = null,
     @SerializedName("transition_reason") val transitionReason: String = "",
     @SerializedName("scan_count") val scanCount: Int = 0,
-    @SerializedName("missing_scans") val missingScans: Int = 0
+    @SerializedName("missing_scans") val missingScans: Int = 0,
+    @SerializedName("handbook_details") val handbookDetails: TradeSetupHandbookDetails? = null
 )
 
 data class TradeSetupsResponseDto(
