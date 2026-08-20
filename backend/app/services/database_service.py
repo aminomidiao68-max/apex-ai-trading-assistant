@@ -5,12 +5,15 @@ import re
 import sqlite3
 import threading
 import time
+import logging
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
 from app.config import settings
+
+logger = logging.getLogger("apex.database")
 
 
 LATEST_SCHEMA_VERSION = 21
@@ -97,16 +100,32 @@ class DatabaseManager:
                 or os.getenv("DATABASE_PATH", "").strip()
                 or settings.database_path.strip()
             )
-        if configured.startswith(("postgresql://", "postgres://")):
-            self.backend = "postgresql"
-            self.database_url = configured
-            self.sqlite_path = None
-            self.persistent = True
+
+        # Default SQLite settings
+        default_sqlite_path = db_path if db_path is not None else (configured or str(data_dir / "smartmoney.db"))
+
+        if configured.startswith(("postgresql://", "postgres://")) and db_path is None:
+            try:
+                self.backend = "postgresql"
+                self.database_url = configured
+                self.sqlite_path = None
+                self.persistent = True
+                self.migrate()
+                logger.info("Successfully initialized PostgreSQL database and ran migrations.")
+                return
+            except Exception as e:
+                logger.warning(f"PostgreSQL initialization failed: {e}. Falling back to SQLite.")
+                # Reset to SQLite on any PostgreSQL connection/migration error
+                self.backend = "sqlite"
+                self.database_url = None
+                self.sqlite_path = default_sqlite_path
+                self.persistent = True
         else:
             self.backend = "sqlite"
             self.database_url = None
-            self.sqlite_path = configured or str(data_dir / "smartmoney.db")
-            self.persistent = bool(configured)
+            self.sqlite_path = default_sqlite_path
+            self.persistent = bool(db_path is not None or configured)
+
         self.migrate()
 
     @property
@@ -139,10 +158,14 @@ class DatabaseManager:
                     open=False,
                     name="apex-db-pool",
                 )
-                pool.open(
-                    wait=True,
-                    timeout=max(45.0, settings.database_connect_timeout_seconds),
-                )
+                try:
+                    pool.open(
+                        wait=True,
+                        timeout=max(45.0, settings.database_connect_timeout_seconds),
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to open PostgreSQL pool, raising to trigger SQLite fallback: {e}")
+                    raise e
                 self._pools[self.database_url] = pool
             return pool
 
