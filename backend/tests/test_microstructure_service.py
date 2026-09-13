@@ -279,3 +279,23 @@ def test_database_fallback_uses_local_sqlite_path(monkeypatch, tmp_path):
     assert manager.sqlite_path is not None
     assert manager.sqlite_path.endswith("smartmoney.db")
     assert not manager.sqlite_path.startswith("postgresql")
+
+
+# ------------------------------------------------------ reasoning strip (fa UI)
+def test_strip_reasoning_blocks_removes_think_chain():
+    from app.main import _strip_reasoning_blocks
+
+    leaked = "<think>\nHere's a thinking process in English...\n</think>\n\n✨ تحلیل نهایی فارسی چارت"
+    assert _strip_reasoning_blocks(leaked) == "✨ تحلیل نهایی فارسی چارت"
+    assert _strip_reasoning_blocks("<think>truncated without close") == ""
+    assert _strip_reasoning_blocks("پاسخ معمولی") == "پاسخ معمولی"
+    assert _strip_reasoning_blocks(None) == ""
+
+
+def test_ai_payload_extra_hides_reasoning_only_for_reasoning_models():
+    from app.main import _ai_payload_extra
+
+    assert _ai_payload_extra("qwen/qwen3.6-27b") == {"reasoning_format": "hidden"}
+    assert _ai_payload_extra("openai/gpt-oss-120b") == {"reasoning_format": "hidden"}
+    assert _ai_payload_extra("llama-3.3-70b-versatile") == {}
+    assert _ai_payload_extra("meta-llama/llama-4-scout-17b-16e-instruct") == {}

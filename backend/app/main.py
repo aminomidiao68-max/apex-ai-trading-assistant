@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 import asyncio
 import hmac
@@ -494,6 +495,26 @@ def _cache_ttl(timeframe: str) -> int:
         "4h": 1800,
         "1d": 3600,
     }.get(_canonical_timeframe(timeframe), 180)
+
+
+def _strip_reasoning_blocks(text: str | None) -> str:
+    """Remove <think>...</think> reasoning chains leaked by thinking models."""
+    if not text:
+        return ""
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE)
+    cleaned = re.sub(r"<\|?channel\|?>\s*analysis\s*<\|message\|>", "", cleaned, flags=re.IGNORECASE)
+    unterminated = re.search(r"<think>", cleaned, flags=re.IGNORECASE)
+    if unterminated:
+        cleaned = cleaned[:unterminated.start()]
+    return cleaned.strip()
+
+
+def _ai_payload_extra(model: str) -> dict:
+    """Groq reasoning models (qwen/gpt-oss) must not leak their thinking."""
+    lowered = (model or "").lower()
+    if "qwen" in lowered or "gpt-oss" in lowered:
+        return {"reasoning_format": "hidden"}
+    return {}
 
 
 def _auto_market(symbol: str, market: str | None) -> str:
@@ -1320,7 +1341,7 @@ async def analyze_chart_vision(
                     "provider": "Groq (User BYOK)",
                     "base_url": "https://api.groq.com/openai/v1",
                     "api_key": groq_material.api_key.strip(),
-                    "model": "qwen/qwen3.6-27b",
+                    "model": "meta-llama/llama-4-scout-17b-16e-instruct",
                     "is_groq": True,
                 })
         except Exception as e:
@@ -1335,7 +1356,7 @@ async def analyze_chart_vision(
             "provider": "OpenAI (System Default)" if not is_groq_base else "Groq (System Base)",
             "base_url": sys_base,
             "api_key": sys_openai_key,
-            "model": "qwen/qwen3.6-27b" if is_groq_base else "gpt-4o-mini",
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct" if is_groq_base else "gpt-4o-mini",
             "is_groq": is_groq_base,
         })
 
@@ -1346,7 +1367,7 @@ async def analyze_chart_vision(
             "provider": "Groq (System Default)",
             "base_url": os.getenv("AI_GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
             "api_key": sys_groq_key,
-            "model": "qwen/qwen3.6-27b",
+            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
             "is_groq": True,
         })
 
@@ -1373,12 +1394,13 @@ async def analyze_chart_vision(
 
         # Select model
         model = cand["model"]
-        if "llama-3.2" in model.lower() and "vision" in model.lower():
-            model = "qwen/qwen3.6-27b"
+        if "vision" in model.lower() or "llama-3.2" in model.lower():
+            model = "meta-llama/llama-4-scout-17b-16e-instruct" if cand["is_groq"] else "gpt-4o-mini"
 
         prompt_text = (
             "به عنوان یک مفسر ارشد و زبده چارت‌های مالی سبک SMC/ICT و کوانت، این چارت اسکرین‌شات را بر اساس دستورالعمل‌های طلایی زیر تحلیل کن. "
             "پاسخ شما باید بسیار دقیق، مهندسی، بدون توهم (Hallucination) و کاملاً ساختاریافته به زبان فارسی با ساختار زیر باشد:\n\n"
+            "⚠️ قوانین صریح خروجی: کل پاسخ فقط و فقط فارسی باشد. هیچ بخش انگلیسی، هیچ تگ <think>، هیچ زنجیره فکر یا توضیح فرایند تحلیل‌ات منتشر نکن؛ فقط متن نهایی تحلیل را بنویس.\n\n"
             "۱. 🌀 تشخیص ساختار و رژیم بازار (Market Structure & Regime Detection):\n"
             "   - روند کلی بازار (نزولی، صعودی، رنج تعادلی، یا تراکم شدید Bollinger Bands).\n"
             "   - نواحی شکست معتبر (BoS/CHoCH با بدنه کندل پر).\n\n"
@@ -1433,7 +1455,8 @@ async def analyze_chart_vision(
                     ]
                 }
             ],
-            "max_tokens": 1000
+            "max_tokens": 2048,
+            **_ai_payload_extra(model),
         }
 
         try:
@@ -1443,7 +1466,9 @@ async def analyze_chart_vision(
                 response = await client.post(url, headers=headers, json=payload)
                 response.raise_for_status()
                 data = response.json()
-                analysis_text = data["choices"][0]["message"]["content"]
+                analysis_text = _strip_reasoning_blocks(data["choices"][0]["message"]["content"])
+                if not analysis_text:
+                    raise RuntimeError("empty analysis after stripping reasoning chain")
                 return {
                     "success": True,
                     "analysis": analysis_text,
@@ -1580,7 +1605,8 @@ async def execute_ai_chat_assistant(
             "۱. همیشه پاسخ‌ها را به زبان فارسی روان، علمی، صمیمانه، بسیار متمرکز بر مدیریت ریسک و بدون ادعاهای تضمین سود کاذب صادر کنید.\n"
             "۲. اصطلاحات فنی بازار را به درستی به کار ببرید و ترجیحاً پاسخ‌ها را با بخش‌بندی‌های منظم مجهز به ایموجی‌های تخصصی ارسال کنید.\n"
             "۳. هر زمان کاربر درباره ستاپ‌ها، جهت بازار، یا اصول ولوم پروفایل سوال کرد، پاسخ را مستقیماً به فریمورک ۶ ستون اصلی پیوند دهید.\n"
-            "۴. از قوانین و جزئیات ۲۰ استراتژی مرجع دانشنامه برای تحلیل سناریوهای کاربر استفاده کنید.\n\n"
+            "۴. از قوانین و جزئیات ۲۰ استراتژی مرجع دانشنامه برای تحلیل سناریوهای کاربر استفاده کنید.\n"
+            "۵. پاسخ نهایی فقط و فقط فارسی باشد؛ هیچ تگ <think>، هیچ زنجیره فکر و هیچ متن انگلیسی خام در خروجی منتشر نکن.\n\n"
             "ماتریس طلایی ۶ ستون و ۲۰ استراتژی مبنای شما:\n" + StrategyGroundedHelper.get_grounding_system_prompt_addon()
         )
 
@@ -1612,7 +1638,8 @@ async def execute_ai_chat_assistant(
                 }
             ],
             "temperature": 0.7,
-            "max_tokens": 1200
+            "max_tokens": 1600,
+            **_ai_payload_extra(model),
         }
 
         try:
@@ -1622,7 +1649,9 @@ async def execute_ai_chat_assistant(
                 response = await client.post(url, headers=headers, json=payload)
                 response.raise_for_status()
                 data = response.json()
-                reply = data["choices"][0]["message"]["content"]
+                reply = _strip_reasoning_blocks(data["choices"][0]["message"]["content"])
+                if not reply:
+                    raise RuntimeError("empty reply after stripping reasoning chain")
                 return {
                     "success": True,
                     "reply": reply,
