@@ -101,8 +101,17 @@ class DatabaseManager:
                 or settings.database_path.strip()
             )
 
-        # Default SQLite settings
-        default_sqlite_path = db_path if db_path is not None else (configured or str(data_dir / "smartmoney.db"))
+        # Default SQLite location; never reuse a PostgreSQL URL as a file path.
+        fallback_sqlite_path = str(data_dir / "smartmoney.db")
+        default_sqlite_path = (
+            db_path
+            if db_path is not None
+            else (
+                configured
+                if configured and not configured.startswith(("postgresql://", "postgres://"))
+                else fallback_sqlite_path
+            )
+        )
 
         if configured.startswith(("postgresql://", "postgres://")) and db_path is None:
             try:
@@ -118,7 +127,7 @@ class DatabaseManager:
                 # Reset to SQLite on any PostgreSQL connection/migration error
                 self.backend = "sqlite"
                 self.database_url = None
-                self.sqlite_path = default_sqlite_path
+                self.sqlite_path = fallback_sqlite_path
                 self.persistent = True
         else:
             self.backend = "sqlite"

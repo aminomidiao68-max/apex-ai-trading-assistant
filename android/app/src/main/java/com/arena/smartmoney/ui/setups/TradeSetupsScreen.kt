@@ -338,6 +338,20 @@ private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
                     "OFQ ${"%.0f".format(setup.decision.orderflow.confidence * 100)}",
                     SetupBlue,
                 )
+                setup.decision.orderflow.micro?.takeIf { it.isReal }?.filters?.let { f ->
+                    SetupChip(
+                        when (f.netBias) {
+                            "bullish" -> "µ-NET ▲"
+                            "bearish" -> "µ-NET ▼"
+                            else -> "µ-NET •"
+                        },
+                        when (f.netBias) {
+                            "bullish" -> SetupGreen
+                            "bearish" -> SetupRed
+                            else -> SetupGold
+                        },
+                    )
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PriceBox("Entry", setup.entry, SetupGold, Modifier.weight(1f))

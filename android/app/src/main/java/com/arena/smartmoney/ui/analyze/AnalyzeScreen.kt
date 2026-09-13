@@ -319,6 +319,9 @@ private suspend fun uploadAndAnalyzeImage(bytes: ByteArray): String = withContex
                 "file", "chart.jpg",
                 bytes.toRequestBody(mediaType)
             )
+            // Ground the AI vision analysis in real microstructure (L2/footprint/VP/order flow)
+            .addFormDataPart("symbol", "XAUUSD")
+            .addFormDataPart("timeframe", "15m")
             .build()
 
         val request = Request.Builder()

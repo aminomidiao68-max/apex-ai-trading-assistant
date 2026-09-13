@@ -1052,7 +1052,70 @@ data class SmcOrderFlow(
     @SerializedName("open_interest_usd") val openInterestUsd: Double? = null,
     @SerializedName("open_interest_change_pct") val openInterestChangePct: Float? = null,
     @SerializedName("funding_rate") val fundingRate: Float? = null,
-    val disclaimer: String = ""
+    val disclaimer: String = "",
+    val micro: MicroStructureInfo? = null
+)
+data class MicroInstrument(
+    @SerializedName("inst_id") val instId: String = "",
+    @SerializedName("inst_type") val instType: String = "",
+    @SerializedName("proxy_for") val proxyFor: String? = null,
+    val note: String? = null
+)
+data class MicroFlow(
+    val delta: Float? = null,
+    val pressure: String = "neutral",
+    val cvd: Float? = null,
+    val absorption: Boolean = false,
+    val climax: Boolean = false,
+    @SerializedName("cvd_divergence") val cvdDivergence: String? = null
+)
+data class MicroVp(
+    val poc: Float? = null,
+    val vah: Float? = null,
+    @SerializedName("val") val valueLow: Float? = null,
+    val hvn: List<Float> = emptyList(),
+    val lvn: List<Float> = emptyList()
+)
+data class MicroFootprint(
+    @SerializedName("candles_covered") val candlesCovered: Int? = null,
+    @SerializedName("last_delta") val lastDelta: Float? = null,
+    @SerializedName("last_poc") val lastPoc: Float? = null,
+    @SerializedName("stacked_buy") val stackedBuy: Int? = null,
+    @SerializedName("stacked_sell") val stackedSell: Int? = null,
+    @SerializedName("unfinished_high") val unfinishedHigh: Boolean? = null,
+    @SerializedName("unfinished_low") val unfinishedLow: Boolean? = null
+)
+data class MicroWall(
+    val price: Float? = null,
+    val notional: Double? = null,
+    @SerializedName("x_median") val xMedian: Float? = null
+)
+data class MicroL2(
+    val mid: Float? = null,
+    @SerializedName("spread_bps") val spreadBps: Float? = null,
+    @SerializedName("imbalance_top25") val imbalanceTop25: Float? = null,
+    @SerializedName("bid_wall") val bidWall: MicroWall? = null,
+    @SerializedName("ask_wall") val askWall: MicroWall? = null
+)
+data class MicroFilters(
+    @SerializedName("net_bias") val netBias: String = "neutral",
+    val score: Float = 0f,
+    val signals: List<String> = emptyList()
+)
+data class MicroStructureInfo(
+    @SerializedName("is_real") val isReal: Boolean = false,
+    val source: String = "",
+    val confidence: Float = 0f,
+    val timeframe: String = "15m",
+    val instrument: MicroInstrument? = null,
+    @SerializedName("window_trades") val windowTrades: Int? = null,
+    @SerializedName("covered_seconds") val coveredSeconds: Int? = null,
+    @SerializedName("full_coverage") val fullCoverage: Boolean? = null,
+    val flow: MicroFlow? = null,
+    val vp: MicroVp? = null,
+    val footprint: MicroFootprint? = null,
+    val l2: MicroL2? = null,
+    val filters: MicroFilters? = null
 )
 data class SmcVisibleRange(
     val low: Float = 0f,
@@ -1263,7 +1326,8 @@ data class SmcDecisionOrderFlow(
     @SerializedName("spread_bps") val spreadBps: Float? = null,
     @SerializedName("depth_imbalance") val depthImbalance: Float? = null,
     @SerializedName("funding_rate") val fundingRate: Float? = null,
-    @SerializedName("open_interest_change_pct") val openInterestChangePct: Float? = null
+    @SerializedName("open_interest_change_pct") val openInterestChangePct: Float? = null,
+    val micro: MicroStructureInfo? = null
 )
 
 data class SmcStrictDecision(

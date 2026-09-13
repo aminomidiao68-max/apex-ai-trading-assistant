@@ -957,7 +957,10 @@ def test_rc_health_readiness_metrics_and_request_id_contract(monkeypatch):
 
     monkeypatch.setattr(main.settings, "app_env", "production")
     production_ready = client.get("/ready")
-    assert production_ready.status_code == 503
+    # Production on the SQLite fallback serves traffic but is flagged degraded,
+    # so a sleeping Neon database can no longer take the whole service down.
+    assert production_ready.status_code == 200
+    assert production_ready.json()["degraded"] is True
     assert production_ready.json()["database"]["production_database_ready"] is False
 
 

@@ -198,6 +198,9 @@ def apply_strict_decision(
             "depth_imbalance": depth_imbalance,
             "funding_rate": funding_rate,
             "open_interest_change_pct": flow.get("open_interest_change_pct"),
+            # Informational passthrough of real microstructure (L2/footprint/VP);
+            # read-only facts, never used to override the deterministic gates.
+            "micro": flow.get("micro"),
         },
         "hard_gates_total": len([item for item in gates if item["hard"]]),
         "hard_gates_passed": len(passed_hard),

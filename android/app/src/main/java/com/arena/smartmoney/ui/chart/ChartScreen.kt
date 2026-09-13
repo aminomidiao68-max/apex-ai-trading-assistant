@@ -376,6 +376,50 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
                         )
                     }
                 }
+                r.orderflow.micro?.let { micro ->
+                    if (micro.isReal) {
+                        micro.filters?.let { f ->
+                            item {
+                                val biasArrow = when (f.netBias) { "bullish" -> "▲"; "bearish" -> "▼"; else -> "•" }
+                                val biasColor = when (f.netBias) { "bullish" -> UpC; "bearish" -> DnC; else -> TL }
+                                ChipS("NET$biasArrow ${"%.2f".format(f.score)}", biasColor)
+                            }
+                        }
+                        micro.vp?.poc?.let { poc ->
+                            item { ChipS("POC ${"%.2f".format(poc)}", GoldDim) }
+                        }
+                        micro.l2?.imbalanceTop25?.let { imb ->
+                            item {
+                                ChipS(
+                                    "L2 ${if (imb >= 0) "+" else ""}${"%.2f".format(imb)}",
+                                    if (imb >= 0.15f) UpC else if (imb <= -0.15f) DnC else TL,
+                                )
+                            }
+                        }
+                        micro.footprint?.lastDelta?.let { delta ->
+                            item {
+                                ChipS(
+                                    "FPΔ ${if (delta >= 0) "+" else ""}${"%.2f".format(delta)}",
+                                    if (delta >= 0) UpC else DnC,
+                                )
+                            }
+                        }
+                        micro.footprint?.stackedBuy?.takeIf { it >= 3 }?.let { stk ->
+                            item { ChipS("STK▲$stk", UpC) }
+                        }
+                        micro.footprint?.stackedSell?.takeIf { it >= 3 }?.let { stk ->
+                            item { ChipS("STK▼$stk", DnC) }
+                        }
+                        micro.l2?.bidWall?.price?.let { wallPrice ->
+                            item { ChipS("BW ${"%.2f".format(wallPrice)}", GoldDim) }
+                        }
+                        micro.l2?.askWall?.price?.let { wallPrice ->
+                            item { ChipS("SW ${"%.2f".format(wallPrice)}", GoldDim) }
+                        }
+                    } else {
+                        item { ChipS("µ-PROXY", TL) }
+                    }
+                }
                 item { ChipS(when(r.premiumZone){"premium"->"پرِمیوم";"discount"->"دیسکانت";else->"تعادل"}, GoldDim) }
                 if (r.newsBlocked) item { ChipS("⚠️اخبار", DnC) }
                 if (r.mtfAligned) item { ChipS("MTF✓", UpC) }

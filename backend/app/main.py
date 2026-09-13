@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, File, UploadFile
+from fastapi import Depends, FastAPI, Form, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import JSONResponse
@@ -141,6 +141,12 @@ from app.services.execution_engine import ExecutionEngine
 from app.services.historical_data_service import HistoricalDataError, HistoricalDataService
 from app.services.intraday_fusion_service import IntradayFusionService
 from app.services.market_data_service import MarketDataService
+from app.services.microstructure_service import (
+    MicrostructureService,
+    build_ai_context_text,
+    detect_symbol_from_text,
+    norm_timeframe,
+)
 from app.services.news_engine import mock_news
 from app.services.notification_service import NotificationService
 from app.services.orderflow_service import OrderFlowService
@@ -290,6 +296,7 @@ automated_panel_service = AutomatedPanelResearchService(
 notification_service = NotificationService(storage)
 readiness_service = ReadinessService(storage.database)
 orderflow_service = OrderFlowService(ttl_seconds=20)
+microstructure_service = MicrostructureService(ttl_seconds=45)
 intraday_fusion_service = IntradayFusionService()
 signal_shadow_service = SignalShadowService(storage.database)
 setup_state_engine = SetupStateEngine()
@@ -592,10 +599,39 @@ async def build_multi_timeframe_context(symbol: str, market: str, timeframe: str
     }
 
 
-async def enrich_orderflow(report: dict, symbol: str, market: str, items: list[dict]) -> dict:
+async def get_micro_summary(
+    symbol: str,
+    market: str,
+    timeframe: str | None,
+    timeout_s: float = 6.0,
+    compact: bool = True,
+) -> dict | None:
+    """Best-effort real microstructure snapshot (L2/footprint/VP/flow); None on failure."""
+    try:
+        return await asyncio.wait_for(
+            microstructure_service.get_microstructure(
+                symbol, market, timeframe or "15m", compact=compact
+            ),
+            timeout=timeout_s,
+        )
+    except Exception:
+        return None
+
+
+async def enrich_orderflow(
+    report: dict,
+    symbol: str,
+    market: str,
+    items: list[dict],
+    timeframe: str | None = None,
+) -> dict:
     snapshot = await orderflow_service.get_snapshot(symbol, market, items)
     candle_proxy = dict(report.get("orderflow") or {})
     merged = {"candle_proxy": candle_proxy, **snapshot}
+    micro = await get_micro_summary(symbol, market, timeframe, compact=True)
+    if micro is not None:
+        merged["micro"] = micro
+        report["microstructure"] = micro
     report["orderflow"] = merged
     return snapshot
 
@@ -617,15 +653,19 @@ def ready():
         settings.app_env.lower() != "production"
         or (database["backend"] == "postgresql" and database["persistent"])
     )
-    ready_now = bool(
-        database["connected"]
-        and database["migration_current"]
-        and production_database_ready
+    # Serve traffic as long as the active backend is connected and migrated.
+    # A production SQLite fallback is reported as "degraded" instead of failing
+    # the Render health check (which would keep the whole service down).
+    ready_now = bool(database["connected"] and database["migration_current"])
+    degraded = bool(
+        settings.app_env.lower() == "production"
+        and database["backend"] != "postgresql"
     )
     return JSONResponse(
         status_code=200 if ready_now else 503,
         content={
             "status": "ready" if ready_now else "not_ready",
+            "degraded": degraded,
             "database": {
                 "connected": database["connected"],
                 "backend": database["backend"],
@@ -967,7 +1007,7 @@ async def get_smc_analysis(
         )
         report["market"] = market_eff
         report["htf"] = {"timeframe": htf_used, "bias": htf_bias}
-        flow = await enrich_orderflow(report, symbol, market_eff, items)
+        flow = await enrich_orderflow(report, symbol, market_eff, items, timeframe=_canonical_timeframe(interval))
         report = apply_strict_decision(
             report,
             items,
@@ -1041,7 +1081,7 @@ async def get_intraday_fusion(
         report = analyze(items_by_tf[tf], symbol=symbol, timeframe=tf, htf_bias=htf_bias)
         report["market"] = market_eff
         report["frame_freshness"] = _frame_freshness(items_by_tf[tf], tf)
-        flow = await enrich_orderflow(report, symbol, market_eff, items_by_tf[tf])
+        flow = await enrich_orderflow(report, symbol, market_eff, items_by_tf[tf], timeframe=tf)
         report = apply_strict_decision(
             report,
             items_by_tf[tf],
@@ -1235,6 +1275,8 @@ async def trigger_external_signal_shadow_wake(
 @app.post("/api/v1/analysis/vision")
 async def analyze_chart_vision(
     file: UploadFile = File(...),
+    symbol: str = Form(default=""),
+    timeframe: str = Form(default="15m"),
     user=Depends(optional_current_user),
 ):
     import base64
@@ -1357,6 +1399,21 @@ async def analyze_chart_vision(
             "قوانین طلایی برای اعمال:\n" + StrategyGroundedHelper.get_grounding_system_prompt_addon()
         )
 
+        # Ground the vision analysis in REAL microstructure (L2/footprint/VP/flow).
+        micro_block = ""
+        vision_symbol = (symbol or "").strip().upper() or detect_symbol_from_text(file.filename or "")
+        if vision_symbol:
+            micro = await get_micro_summary(
+                vision_symbol, "auto", timeframe, timeout_s=8.0, compact=False
+            )
+            if micro:
+                micro_block = (
+                    f"\n\n📡 داده‌های زنده و واقعی خردساختار بازار برای {vision_symbol} "
+                    f"(سیستم به‌صورت قطعی از صرافی محاسبه کرده؛ این اعداد را مبنا قرار بده، "
+                    "در تحلیل به همین سطوح ارجاع بده و هیچ عددی از خودت نساز):\n"
+                    + build_ai_context_text(micro)
+                )
+
         payload = {
             "model": model,
             "messages": [
@@ -1365,7 +1422,7 @@ async def analyze_chart_vision(
                     "content": [
                         {
                             "type": "text",
-                            "text": prompt_text
+                            "text": prompt_text + micro_block
                         },
                         {
                             "type": "image_url",
@@ -1414,6 +1471,8 @@ from pydantic import BaseModel
 
 class AIChatRequest(BaseModel):
     message: str
+    symbol: str = ""
+    timeframe: str = "15m"
 
 
 @app.post("/api/v1/aichat")
@@ -1525,6 +1584,21 @@ async def execute_ai_chat_assistant(
             "ماتریس طلایی ۶ ستون و ۲۰ استراتژی مبنای شما:\n" + StrategyGroundedHelper.get_grounding_system_prompt_addon()
         )
 
+        # Ground the chat in REAL microstructure when a symbol is present.
+        live_context = ""
+        chat_symbol = (request.symbol or "").strip().upper() or detect_symbol_from_text(request.message)
+        if chat_symbol:
+            micro = await get_micro_summary(
+                chat_symbol, "auto", request.timeframe or "15m", timeout_s=8.0, compact=False
+            )
+            if micro:
+                live_context = (
+                    f"📊 داده‌های زنده و واقعی بازار برای {chat_symbol} (سیستم به‌صورت قطعی از صرافی محاسبه کرده؛ "
+                    "این اعداد را معتبر فرض کن، در پاسخ به همین سطوح ارجاع بده و هیچ عددی از خودت نساز):\n"
+                    + build_ai_context_text(micro)
+                    + "\n\n"
+                )
+
         payload = {
             "model": model,
             "messages": [
@@ -1534,7 +1608,7 @@ async def execute_ai_chat_assistant(
                 },
                 {
                     "role": "user",
-                    "content": request.message
+                    "content": live_context + request.message
                 }
             ],
             "temperature": 0.7,
@@ -2204,7 +2278,7 @@ async def scan_signals(min_confluence: int = Query(default=40, ge=0, le=100)):
                         htf_bias = hrep.get("bias")
             except Exception: pass
             r = analyze(items, symbol=sym, timeframe=tf, htf_bias=htf_bias, news_blocked=_news_blocked)
-            flow = await enrich_orderflow(r, sym, mkt_eff, items)
+            flow = await enrich_orderflow(r, sym, mkt_eff, items, timeframe=tf)
             r = apply_strict_decision(
                 r,
                 items,
@@ -2403,7 +2477,7 @@ async def scan_trade_setups(force: bool = Query(default=False)):
                         news_blocked=news_blocked,
                     )
                     report["htf_bias"] = htf_bias
-                    flow = await enrich_orderflow(report, symbol, market, items)
+                    flow = await enrich_orderflow(report, symbol, market, items, timeframe=timeframe)
                     report = apply_strict_decision(
                         report,
                         items,
@@ -2503,6 +2577,33 @@ async def get_orderflow_snapshot(
         "market": market,
         "timeframe": timeframe,
         "snapshot": snapshot,
+    }
+
+
+@app.get("/api/v1/microstructure/{symbol}")
+async def get_microstructure_snapshot(
+    symbol: str,
+    market: str = Query(default="auto", pattern="^(auto|crypto|forex)$"),
+    timeframe: str = Query(default="15m"),
+    compact: bool = Query(default=False),
+):
+    """Real L2 depth + footprint + volume profile + order flow (deterministic)."""
+    tf = norm_timeframe(timeframe)
+    items: list[dict] = []
+    try:
+        market_for_candles = _auto_market(symbol, None if market == "auto" else market)
+        candles = await fetch_live_candles(symbol, market_for_candles, tf)
+        items = _norm_candles(candles)
+    except Exception:
+        items = []
+    payload = await microstructure_service.get_microstructure(
+        symbol.upper(), market, tf, candles=items, compact=compact
+    )
+    return {
+        "symbol": symbol.upper(),
+        "market": market,
+        "timeframe": tf,
+        "microstructure": payload,
     }
 
 
