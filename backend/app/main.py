@@ -1515,34 +1515,42 @@ async def analyze_chart_vision(
             ],
             "max_tokens": 2048,
         }
+        token_budgets = [2048] if not cand["is_groq"] else [900, 600]
         for model in model_options:
-            payload = {**base_payload, "model": model, **_ai_payload_extra(model)}
-            try:
-                url = f"{cand['base_url']}/chat/completions"
-                logger.info(f"Trying vision analysis with {cand['provider']} ({model})")
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.post(url, headers=headers, json=payload)
-                    response.raise_for_status()
-                    data = response.json()
-                    analysis_text = _strip_reasoning_blocks(data["choices"][0]["message"]["content"])
-                    if not analysis_text:
-                        raise RuntimeError("empty analysis after stripping reasoning chain")
-                    return {
-                        "success": True,
-                        "analysis": analysis_text,
-                        "provider_used": cand["provider"],
-                        "model": model,
-                        "errors_overcome": errors
-                    }
-            except Exception as exc:
-                err_msg = str(exc)
-                if hasattr(exc, "response") and exc.response is not None:
-                    try:
-                        err_msg = exc.response.json().get("error", {}).get("message", exc.response.text)
-                    except Exception:
-                        err_msg = exc.response.text or str(exc)
-                logger.warning(f"Vision provider {cand['provider']} ({model}) failed: {err_msg}")
-                errors.append(f"{cand['provider']} [{model}]: {err_msg}")
+            for budget in token_budgets:
+                payload = {**base_payload, "model": model, "max_tokens": budget, **_ai_payload_extra(model)}
+                try:
+                    url = f"{cand['base_url']}/chat/completions"
+                    logger.info(f"Trying vision analysis with {cand['provider']} ({model}, max_tokens={budget})")
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.post(url, headers=headers, json=payload)
+                        response.raise_for_status()
+                        data = response.json()
+                        analysis_text = _strip_reasoning_blocks(data["choices"][0]["message"]["content"])
+                        if not analysis_text:
+                            raise RuntimeError("empty analysis after stripping reasoning chain")
+                        return {
+                            "success": True,
+                            "analysis": analysis_text,
+                            "provider_used": cand["provider"],
+                            "model": model,
+                            "errors_overcome": errors
+                        }
+                except Exception as exc:
+                    err_msg = str(exc)
+                    if hasattr(exc, "response") and exc.response is not None:
+                        try:
+                            err_msg = exc.response.json().get("error", {}).get("message", exc.response.text)
+                        except Exception:
+                            err_msg = exc.response.text or str(exc)
+                    lowered = err_msg.lower()
+                    rate_limited = "otpm" in lowered or "tokens per minute" in lowered or "request too large" in lowered
+                    if rate_limited and budget != token_budgets[-1]:
+                        logger.warning(f"Vision {cand['provider']} ({model}) rate-limited; retrying with lower budget")
+                        continue
+                    logger.warning(f"Vision provider {cand['provider']} ({model}) failed: {err_msg}")
+                    errors.append(f"{cand['provider']} [{model}]: {err_msg}")
+                    break
 
     return {
         "success": False,
@@ -1695,34 +1703,42 @@ async def execute_ai_chat_assistant(
             "temperature": 0.7,
             "max_tokens": 1600,
         }
+        token_budgets = [1600] if not cand["is_groq"] else [1200, 700]
         for model in model_options:
-            payload = {**base_payload, "model": model, **_ai_payload_extra(model)}
-            try:
-                url = f"{cand['base_url']}/chat/completions"
-                logger.info(f"Trying AI chat with {cand['provider']} ({model})")
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.post(url, headers=headers, json=payload)
-                    response.raise_for_status()
-                    data = response.json()
-                    reply = _strip_reasoning_blocks(data["choices"][0]["message"]["content"])
-                    if not reply:
-                        raise RuntimeError("empty reply after stripping reasoning chain")
-                    return {
-                        "success": True,
-                        "reply": reply,
-                        "provider_used": cand["provider"],
-                        "model": model,
-                        "errors_overcome": errors
-                    }
-            except Exception as exc:
-                err_msg = str(exc)
-                if hasattr(exc, "response") and exc.response is not None:
-                    try:
-                        err_msg = exc.response.json().get("error", {}).get("message", exc.response.text)
-                    except Exception:
-                        err_msg = exc.response.text or str(exc)
-                logger.warning(f"Chat provider {cand['provider']} ({model}) failed: {err_msg}")
-                errors.append(f"{cand['provider']} [{model}]: {err_msg}")
+            for budget in token_budgets:
+                payload = {**base_payload, "model": model, "max_tokens": budget, **_ai_payload_extra(model)}
+                try:
+                    url = f"{cand['base_url']}/chat/completions"
+                    logger.info(f"Trying AI chat with {cand['provider']} ({model}, max_tokens={budget})")
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.post(url, headers=headers, json=payload)
+                        response.raise_for_status()
+                        data = response.json()
+                        reply = _strip_reasoning_blocks(data["choices"][0]["message"]["content"])
+                        if not reply:
+                            raise RuntimeError("empty reply after stripping reasoning chain")
+                        return {
+                            "success": True,
+                            "reply": reply,
+                            "provider_used": cand["provider"],
+                            "model": model,
+                            "errors_overcome": errors
+                        }
+                except Exception as exc:
+                    err_msg = str(exc)
+                    if hasattr(exc, "response") and exc.response is not None:
+                        try:
+                            err_msg = exc.response.json().get("error", {}).get("message", exc.response.text)
+                        except Exception:
+                            err_msg = exc.response.text or str(exc)
+                    lowered = err_msg.lower()
+                    rate_limited = "otpm" in lowered or "tokens per minute" in lowered or "request too large" in lowered
+                    if rate_limited and budget != token_budgets[-1]:
+                        logger.warning(f"Chat {cand['provider']} ({model}) rate-limited; retrying with lower budget")
+                        continue
+                    logger.warning(f"Chat provider {cand['provider']} ({model}) failed: {err_msg}")
+                    errors.append(f"{cand['provider']} [{model}]: {err_msg}")
+                    break
 
     return {
         "success": False,
