@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -24,10 +25,15 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -47,12 +54,20 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.arena.smartmoney.data.network.AppConfig
 import com.arena.smartmoney.data.model.TradeSetupDto
 import com.arena.smartmoney.ui.components.PremiumGlassCard
 import com.arena.smartmoney.ui.components.PremiumScreenBackground
 import com.arena.smartmoney.ui.components.PremiumSectionHeader
 import com.arena.smartmoney.ui.i18n.formatDisplayTimestamp
 import com.arena.smartmoney.ui.i18n.rememberTranslator
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 private val SetupGold = Color(0xFFD4AF37)
 private val SetupGreen = Color(0xFF26A69A)
@@ -448,6 +463,127 @@ private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
                             Spacer(Modifier.height(4.dp))
                         }
 
+                        // 🛰️ پنل خردساختار واقعی بازار (L2 / فوت‌پرینت / والوم پروفایل)
+                        val micro = setup.decision.orderflow.micro
+                        if (micro?.isReal == true) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF0F1420), RoundedCornerShape(8.dp))
+                                    .padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    "🛰️ خردساختار واقعی بازار (دیتای زنده صرافی)",
+                                    color = SetupBlue, fontWeight = FontWeight.Bold, fontSize = 13.sp
+                                )
+                                micro.vp?.let { vp ->
+                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                        Text("POC: ", color = SetupMuted, fontSize = 12.sp)
+                                        Text(
+                                            "${vp.poc ?: "-"}   |   VAH: ${vp.vah ?: "-"}   |   VAL: ${vp.valueLow ?: "-"}",
+                                            color = Color.White, fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                                micro.footprint?.let { fp ->
+                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                        Text("دلتای فوت‌پرینت: ", color = SetupMuted, fontSize = 12.sp)
+                                        Text(
+                                            "${fp.lastDelta ?: "-"}   |   Stacked: ▲${fp.stackedBuy ?: 0} ▼${fp.stackedSell ?: 0}",
+                                            color = Color.White, fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                                micro.l2?.let { l2 ->
+                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                        Text("دیوار خرید: ", color = SetupMuted, fontSize = 12.sp)
+                                        Text(
+                                            "${l2.bidWall?.price ?: "-"}   |   دیوار فروش: ${l2.askWall?.price ?: "-"}",
+                                            color = Color.White, fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                                micro.filters?.let { f ->
+                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                        Text("بایاس خالص سیستم: ", color = SetupMuted, fontSize = 12.sp)
+                                        Text(
+                                            "${f.netBias} (${f.score})",
+                                            color = when (f.netBias) {
+                                                "bullish" -> SetupGreen
+                                                "bearish" -> SetupRed
+                                                else -> SetupGold
+                                            },
+                                            fontWeight = FontWeight.Bold, fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                                if (setup.microConfluence > 0) {
+                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                        Text("هم‌راستایی µ با جهت ستاپ: ", color = SetupMuted, fontSize = 12.sp)
+                                        Text(
+                                            "+${setup.microConfluence} از ۱۵",
+                                            color = SetupGreen, fontWeight = FontWeight.Bold, fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 🧠 تحلیل عمیق نهادی (deterministic + AI advisory)
+                        var deepText by remember { mutableStateOf<String?>(null) }
+                        var deepLoading by remember { mutableStateOf(false) }
+                        val deepScope = rememberCoroutineScope()
+                        Button(
+                            onClick = {
+                                deepLoading = true
+                                deepScope.launch {
+                                    deepText = fetchDeepInstitutionalAnalysis(setup.symbol, setup.timeframe)
+                                    deepLoading = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = SetupGold.copy(alpha = 0.15f)),
+                            enabled = !deepLoading
+                        ) {
+                            if (deepLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.height(18.dp).width(18.dp),
+                                    strokeWidth = 2.dp, color = SetupGold
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("در حال تحلیل عمیق...", color = SetupGold, fontSize = 13.sp)
+                            } else {
+                                Text(
+                                    "🧠 تحلیل عمیق هوش مصنوعی (نهادی)",
+                                    color = SetupGold, fontWeight = FontWeight.Bold, fontSize = 13.sp
+                                )
+                            }
+                        }
+                        deepText?.let { txt ->
+                            AlertDialog(
+                                onDismissRequest = { deepText = null },
+                                confirmButton = {
+                                    TextButton(onClick = { deepText = null }) { Text("بستن", color = SetupGold) }
+                                },
+                                title = {
+                                    Text(
+                                        "🧠 تحلیل عمیق ${setup.symbol}",
+                                        color = SetupGold, fontWeight = FontWeight.Bold, fontSize = 16.sp
+                                    )
+                                },
+                                text = {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .verticalScroll(rememberScrollState())
+                                    ) {
+                                        Text(txt, color = Color.White, fontSize = 13.sp, lineHeight = 19.sp)
+                                    }
+                                }
+                            )
+                        }
+
                         Text(
                             text = "✨ مفسر بومی هوش مصنوعی APEX:",
                             color = SetupGold,
@@ -555,3 +691,38 @@ private fun formatSetupPrice(value: Float): String = when {
     value >= 100f -> "%.3f".format(value)
     else -> "%.5f".format(value)
 }
+
+
+private suspend fun fetchDeepInstitutionalAnalysis(symbol: String, timeframe: String): String =
+    withContext(Dispatchers.IO) {
+        try {
+            val client = OkHttpClient.Builder()
+                .connectTimeout(60, TimeUnit.SECONDS)
+                .readTimeout(150, TimeUnit.SECONDS)
+                .build()
+            val request = Request.Builder()
+                .url(AppConfig.apiBaseUrl + "api/v1/analysis/deep?symbol=" + symbol + "&timeframe=" + timeframe)
+                .get()
+                .build()
+            client.newCall(request).execute().use { response ->
+                val bodyString = response.body?.string() ?: ""
+                val json = JSONObject(bodyString)
+                if (!response.isSuccessful) {
+                    return@use "❌ خطای سرور: HTTP ${response.code}"
+                }
+                if (json.optBoolean("success", false)) {
+                    val det = json.optJSONObject("deterministic")
+                    val head = if (det != null) {
+                        "🎯 حکم قطعی سیستم: ${det.optString("action_label")} | گرید: ${det.optString("grade")}\n" +
+                            "جهت: ${det.optString("direction")} | RR: ${det.optString("rr")} | هم‌راستایی µ: +${det.optInt("micro_confluence")}\n" +
+                            "📖 استراتژی مرجع: ${det.optJSONObject("handbook")?.optString("name") ?: "-"}\n\n"
+                    } else ""
+                    head + json.optString("narrative", "روایتی دریافت نشد.")
+                } else {
+                    json.optString("detail", "❌ تحلیل عمیق موقتاً در دسترس نیست.")
+                }
+            }
+        } catch (e: Exception) {
+            "❌ خطای اتصال: ${e.message}"
+        }
+    }

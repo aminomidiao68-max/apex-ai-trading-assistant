@@ -1273,7 +1273,9 @@ data class TradeSetupDto(
     @SerializedName("transition_reason") val transitionReason: String = "",
     @SerializedName("scan_count") val scanCount: Int = 0,
     @SerializedName("missing_scans") val missingScans: Int = 0,
-    @SerializedName("handbook_details") val handbookDetails: TradeSetupHandbookDetails? = null
+    @SerializedName("handbook_details") val handbookDetails: TradeSetupHandbookDetails? = null,
+    @SerializedName("micro_confluence") val microConfluence: Int = 0,
+    @SerializedName("micro_net") val microNet: String = "neutral"
 )
 
 data class TradeSetupsResponseDto(
@@ -1345,6 +1347,11 @@ data class SmcStrictDecision(
     val orderflow: SmcDecisionOrderFlow = SmcDecisionOrderFlow()
 )
 
+data class SmcMicroLevel(
+    val kind: String = "",
+    val price: Float = 0f,
+    val label: String = ""
+)
 data class SmcReport(
     val symbol: String = "",
     val timeframe: String = "",
@@ -1369,6 +1376,7 @@ data class SmcReport(
     val invalidation: Float? = null,
     @SerializedName("entry_zone") val entryZone: SmcEntryZone? = null,
     @SerializedName("plan_lines") val planLines: List<SmcLine> = emptyList(),
+    @SerializedName("micro_levels") val microLevels: List<SmcMicroLevel> = emptyList(),
     @SerializedName("premium_zone") val premiumZone: String = "eq",
     @SerializedName("mtf_aligned") val mtfAligned: Boolean = false,
     @SerializedName("htf_bias") val htfBias: String? = null,

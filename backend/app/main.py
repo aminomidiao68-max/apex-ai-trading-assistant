@@ -700,6 +700,74 @@ async def get_micro_summary(
         return None
 
 
+def _micro_confluence_points(micro: dict | None, direction: str) -> int:
+    """Deterministic additive confluence (0..15) from REAL microstructure.
+
+    Read-only: it never mutates the strict engine's gates or verdicts; it only
+    quantifies how aligned the live tape/book is with the setup direction.
+    """
+    if not micro or not micro.get("is_real"):
+        return 0
+    filters = micro.get("filters") or {}
+    bias = str(filters.get("net_bias") or "neutral")
+    score = float(filters.get("score") or 0.0)
+    flow = micro.get("flow") or {}
+    fp = micro.get("footprint") or {}
+    points = 0
+    if direction == "long":
+        if bias == "bullish":
+            points += 6
+        elif bias == "bearish":
+            points -= 5
+        if int(fp.get("stacked_buy") or 0) >= 3:
+            points += 3
+        if flow.get("cvd_divergence") == "bearish":
+            points -= 2
+        elif flow.get("cvd_divergence") == "bullish":
+            points += 1
+        if score > 0:
+            points += int(min(3, round(abs(score) * 3)))
+    elif direction == "short":
+        if bias == "bearish":
+            points += 6
+        elif bias == "bullish":
+            points -= 5
+        if int(fp.get("stacked_sell") or 0) >= 3:
+            points += 3
+        if flow.get("cvd_divergence") == "bullish":
+            points -= 2
+        elif flow.get("cvd_divergence") == "bearish":
+            points += 1
+        if score < 0:
+            points += int(min(3, round(abs(score) * 3)))
+    if micro.get("full_coverage") is False:
+        points = min(points, 10)
+    return max(0, min(15, points))
+
+
+def _micro_level_lines(micro: dict | None) -> list[dict]:
+    """Real micro levels (POC/VAH/VAL/walls) as chart line descriptors."""
+    if not micro or not micro.get("is_real"):
+        return []
+    vp = micro.get("vp") or {}
+    l2 = micro.get("l2") or {}
+    levels: list[dict] = []
+    for kind, value, label in (
+        ("POC", vp.get("poc"), "POC"),
+        ("VAH", vp.get("vah"), "VAH"),
+        ("VAL", vp.get("val"), "VAL"),
+        ("BIDWALL", (l2.get("bid_wall") or {}).get("price"), "Bid Wall"),
+        ("ASKWALL", (l2.get("ask_wall") or {}).get("price"), "Ask Wall"),
+    ):
+        try:
+            price = float(value) if value is not None else 0.0
+        except (TypeError, ValueError):
+            price = 0.0
+        if price > 0:
+            levels.append({"kind": kind, "price": price, "label": label})
+    return levels
+
+
 async def enrich_orderflow(
     report: dict,
     symbol: str,
@@ -714,6 +782,7 @@ async def enrich_orderflow(
     if micro is not None:
         merged["micro"] = micro
         report["microstructure"] = micro
+        report["micro_levels"] = _micro_level_lines(micro)
     report["orderflow"] = merged
     return snapshot
 
@@ -1560,10 +1629,27 @@ async def analyze_chart_vision(
 
 from pydantic import BaseModel
 
+class ChatTurn(BaseModel):
+    role: str = "user"
+    content: str = ""
+
+
 class AIChatRequest(BaseModel):
     message: str
     symbol: str = ""
     timeframe: str = "15m"
+    history: list[ChatTurn] = []
+
+
+def _chat_history_messages(history: list[ChatTurn] | None) -> list[dict]:
+    """Sanitize conversation history: last 8 turns, max 2000 chars each."""
+    messages: list[dict] = []
+    for turn in (history or [])[-8:]:
+        role = "assistant" if str(turn.role or "").lower().startswith("a") else "user"
+        content = str(turn.content or "").strip()[:2000]
+        if content:
+            messages.append({"role": role, "content": content})
+    return messages
 
 
 @app.post("/api/v1/aichat")
@@ -1689,12 +1775,16 @@ async def execute_ai_chat_assistant(
                     + "\n\n"
                 )
 
+        history_messages = _chat_history_messages(request.history)
         base_payload = {
             "messages": [
                 {
                     "role": "system",
                     "content": system_prompt
-                },
+                }
+            ]
+            + history_messages
+            + [
                 {
                     "role": "user",
                     "content": live_context + request.message
@@ -1743,6 +1833,266 @@ async def execute_ai_chat_assistant(
     return {
         "success": False,
         "reply": f"❌ خطا در تمام تلاش‌های هوش مصنوعی:\n" + "\n".join(errors)
+    }
+
+
+_DEEP_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+@app.get("/api/v1/analysis/deep")
+async def deep_institutional_analysis(
+    symbol: str = Query(..., min_length=2, max_length=24),
+    timeframe: str = Query("15m"),
+    market: str = Query("", pattern="^(|crypto|forex|auto)$"),
+    user=Depends(optional_current_user),
+):
+    """Institutional deep analysis: deterministic core verdict + advisory AI narrative.
+
+    The strict engine's verdict is the single source of truth; the AI narrative
+    is advisory-only and must explicitly flag any disagreement with the core.
+    """
+    import json as _json
+    import logging
+    logger = logging.getLogger("apex.api.deep")
+    symbol = symbol.upper()
+    tf = _canonical_timeframe(timeframe)
+    cache_key = f"{symbol}|{tf}"
+    now = _time.time()
+    cached = _DEEP_CACHE.get(cache_key)
+    if cached and now - cached[0] < 90:
+        return {**cached[1], "cached": True, "cache_age_seconds": round(now - cached[0], 1)}
+
+    if not settings.ai_external_enabled:
+        return {
+            "success": False,
+            "detail": "سرویس هوش مصنوعی خارجی غیرفعال است.",
+            "cached": False,
+        }
+
+    market_eff = _auto_market(symbol, market or None)
+    from app.services.smc_engine import analyze
+    try:
+        raw = await fetch_live_candles(symbol=symbol, market=market_eff, timeframe=tf)
+    except Exception:
+        return {"success": False, "detail": "داده بازار موقتاً در دسترس نیست.", "cached": False}
+    items = _norm_candles(raw[-220:])
+    if len(items) < 30:
+        return {"success": False, "detail": "داده کافی نیست.", "cached": False}
+
+    htf_bias = None
+    try:
+        hm = {"1m": "5m", "5m": "15m", "15m": "1h", "30m": "4h", "1h": "4h"}.get(tf)
+        if hm:
+            hitems = _norm_candles(_resample_candles(raw, hm))
+            if len(hitems) >= 30:
+                hrep = analyze(hitems, symbol=symbol, timeframe=hm)
+                htf_bias = hrep.get("bias")
+    except Exception:
+        htf_bias = None
+
+    _news_blocked = False
+    try:
+        from app.news_engine_v2 import build_news_brief as _nb
+        _nbrief = await _nb()
+        _news_blocked = bool((_nbrief.get("block") or {}).get("blocked"))
+    except Exception:
+        pass
+
+    report = analyze(items, symbol=symbol, timeframe=tf, htf_bias=htf_bias, news_blocked=_news_blocked)
+    report["market"] = market_eff
+    flow = await enrich_orderflow(report, symbol, market_eff, items, timeframe=tf)
+    report = apply_strict_decision(
+        report,
+        items,
+        market=market_eff,
+        timeframe=tf,
+        orderflow_source=str(flow.get("source") or "unknown"),
+        orderflow_confidence=float(flow.get("confidence") or 0),
+        orderflow_snapshot=flow,
+    )
+
+    micro_obj = report.get("microstructure") or {}
+    direction = report.get("direction", "neutral")
+    setup_type = report.get("setup_type") or "-"
+    handbook = StrategyGroundedHelper.map_setup_to_handbook(setup_type, direction)
+    decision = report.get("decision") or {}
+    deterministic = {
+        "symbol": symbol,
+        "timeframe": tf,
+        "market": market_eff,
+        "bias": report.get("bias"),
+        "direction": direction,
+        "grade": report.get("grade"),
+        "action_label": report.get("action_label"),
+        "setup_type": setup_type,
+        "confluence": report.get("confluence"),
+        "probability": report.get("probability"),
+        "rr": report.get("rr"),
+        "price": report.get("price"),
+        "levels": report.get("levels"),
+        "entry_zone": report.get("entry_zone"),
+        "htf": report.get("htf"),
+        "micro_net": (micro_obj.get("filters") or {}).get("net_bias") or "neutral",
+        "micro_confluence": _micro_confluence_points(micro_obj, direction),
+        "no_trade_reason": decision.get("no_trade_reason"),
+        "handbook": handbook,
+    }
+
+    if micro_obj.get("is_real"):
+        micro_block = build_ai_context_text(micro_obj)
+    else:
+        micro_block = "داده خردساختار واقعی (L2/فوت‌پرینت) برای این نماد در دسترس نیست."
+
+    deep_system_prompt = (
+        "شما مدیر تحلیل ارشد میز معاملات نهادی (Institutional Desk) در پلتفرم APEX PRO v3.1 هستید. "
+        "یک یادداشت تحلیلی عمیق، مهندسی، بدون توهم و کاملاً فارسی ارائه کنید.\n\n"
+        "⚠️ قواعد الزامی:\n"
+        "۱. خروجی قطعی سیستم (action_label و grade) مرجع نهایی و غیرقابل تغییر است؛ اگر تحلیل کارشناسی شما با آن متفاوت است، فقط در بخش «⚖️ تعارض با سیستم» صریحاً بنویسید و دلیل بیاورید.\n"
+        "۲. فقط از اعداد داده‌شده استفاده کنید؛ هیچ عددی از خودتان نسازید.\n"
+        "۳. کل پاسخ فقط فارسی باشد؛ بدون هیچ تگ <think> و بدون زنجیره فکر.\n\n"
+        "ساختار الزامی پاسخ:\n"
+        "🧭 خلاصه اجرایی (حداکثر ۳ خط)\n"
+        "🌀 ساختار و رژیم بازار\n"
+        "💧 نقدینگی و سوییپ‌ها\n"
+        "📊 پروفایل حجم (POC/VAH/VAL)\n"
+        "🕯️ سیلان سفارشات و فوت‌پرینت\n"
+        "🛰️ هم‌راستایی خردساختار (µ)\n"
+        "📖 تطبیق با استراتژی مرجع کتابچه\n"
+        "🎯 سناریو اصلی و سناریوی جایگزین (با محرک ورود)\n"
+        "🛡️ برنامه ریسک (Entry/SL/TP1-TP3 بر اساس سطوح سیستم)\n"
+        "⚖️ تعارض یا تأیید تصمیم قطعی سیستم\n\n"
+        + StrategyGroundedHelper.get_grounding_system_prompt_addon()
+    )
+    user_block = (
+        f"خروجی قطعی سیستم (مرجع نهایی):\n"
+        f"{_json.dumps(deterministic, ensure_ascii=False, default=str)}\n\n"
+        f"دیتای زنده خردساختار بازار:\n{micro_block}\n\n"
+        f"حالا یادداشت تحلیل عمیق نهادی برای {symbol} در تایم‌فریم {tf} را طبق ساختار الزامی بنویس."
+    )
+
+    candidates = []
+    if user:
+        try:
+            groq_material = provider_secret_service.get_material(user.id, "groq")
+            if groq_material and groq_material.api_key:
+                candidates.append({
+                    "provider": "Groq (User BYOK)",
+                    "base_url": "https://api.groq.com/openai/v1",
+                    "api_key": groq_material.api_key.strip(),
+                    "model": "openai/gpt-oss-120b",
+                    "is_groq": True,
+                })
+        except Exception as e:
+            logger.warning(f"deep: user groq material error: {e}")
+        try:
+            openai_material = provider_secret_service.get_material(user.id, "openai")
+            if openai_material and openai_material.api_key:
+                candidates.append({
+                    "provider": "OpenAI (User BYOK)",
+                    "base_url": "https://api.openai.com/v1",
+                    "api_key": openai_material.api_key.strip(),
+                    "model": openai_material.model or "gpt-4o-mini",
+                    "is_groq": False,
+                })
+        except Exception as e:
+            logger.warning(f"deep: user openai material error: {e}")
+    sys_groq_key = os.getenv("AI_GROQ_API_KEY", "").strip()
+    if sys_groq_key:
+        candidates.append({
+            "provider": "Groq (System Default)",
+            "base_url": os.getenv("AI_GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+            "api_key": sys_groq_key,
+            "model": "openai/gpt-oss-120b",
+            "is_groq": True,
+        })
+    sys_openai_key = settings.ai_openai_api_key.strip() if settings.ai_openai_api_key else ""
+    if sys_openai_key:
+        candidates.append({
+            "provider": "OpenAI (System Default)",
+            "base_url": settings.ai_openai_base_url or "https://api.openai.com/v1",
+            "api_key": sys_openai_key,
+            "model": "gpt-4o-mini",
+            "is_groq": False,
+        })
+
+    if not candidates:
+        return {
+            "success": False,
+            "detail": "⚠️ کلیدهای API برای OpenAI یا Groq تنظیم نشده‌اند.",
+            "deterministic": deterministic,
+            "cached": False,
+        }
+
+    errors = []
+    import httpx
+    for cand in candidates:
+        api_key = cand["api_key"]
+        if api_key.startswith("b'") and api_key.endswith("'"):
+            api_key = api_key[2:-1]
+        elif api_key.startswith('b"') and api_key.endswith('"'):
+            api_key = api_key[2:-1]
+        api_key = api_key.strip("'\"")
+        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        model_options = await _model_options_for(cand, kind="chat")
+        token_budgets = [1600] if not cand["is_groq"] else [1200, 700]
+        for model in model_options:
+            for budget in token_budgets:
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": deep_system_prompt},
+                        {"role": "user", "content": user_block},
+                    ],
+                    "temperature": 0.5,
+                    "max_tokens": budget,
+                    **_ai_payload_extra(model),
+                }
+                try:
+                    url = f"{cand['base_url']}/chat/completions"
+                    logger.info(f"Deep analysis with {cand['provider']} ({model}, max_tokens={budget})")
+                    async with httpx.AsyncClient(timeout=45.0) as client:
+                        response = await client.post(url, headers=headers, json=payload)
+                        response.raise_for_status()
+                        data = response.json()
+                        narrative = _strip_reasoning_blocks(data["choices"][0]["message"]["content"])
+                        if not narrative:
+                            raise RuntimeError("empty narrative after stripping reasoning chain")
+                        result = {
+                            "success": True,
+                            "symbol": symbol,
+                            "timeframe": tf,
+                            "deterministic": deterministic,
+                            "narrative": narrative,
+                            "provider_used": cand["provider"],
+                            "model": model,
+                            "advisory_only": True,
+                            "disclaimer": "روایت AI فقط مشاوره‌ای است؛ حکم قطعی با موتور determinstic سیستم است.",
+                            "errors_overcome": errors,
+                            "cached": False,
+                            "cache_age_seconds": 0.0,
+                        }
+                        _DEEP_CACHE[cache_key] = (_time.time(), result)
+                        return result
+                except Exception as exc:
+                    err_msg = str(exc)
+                    if hasattr(exc, "response") and exc.response is not None:
+                        try:
+                            err_msg = exc.response.json().get("error", {}).get("message", exc.response.text)
+                        except Exception:
+                            err_msg = exc.response.text or str(exc)
+                    lowered = err_msg.lower()
+                    rate_limited = "otpm" in lowered or "tokens per minute" in lowered or "request too large" in lowered
+                    if rate_limited and budget != token_budgets[-1]:
+                        continue
+                    logger.warning(f"Deep provider {cand['provider']} ({model}) failed: {err_msg}")
+                    errors.append(f"{cand['provider']} [{model}]: {err_msg}")
+                    break
+
+    return {
+        "success": False,
+        "detail": "❌ خطا در تمام تلاش‌های هوش مصنوعی:\n" + "\n".join(errors),
+        "deterministic": deterministic,
+        "cached": False,
     }
 
 
@@ -2394,6 +2744,8 @@ async def scan_signals(min_confluence: int = Query(default=40, ge=0, le=100)):
                     "probability":r.get("probability",0),
                     "setup_type":r.get("setup_type","-"),"setupType":r.get("setup_type","-"),
                     "grade":r.get("grade","-"),
+                    "micro_confluence": _micro_confluence_points(r.get("microstructure"), r.get("direction","neutral")),
+                    "micro_net":((r.get("microstructure") or {}).get("filters") or {}).get("net_bias") or "neutral",
                     "omega_compliant":r.get("omega_compliant",False),
                     "omega_reasons":r.get("omega_reasons",[]),
                     "action_label":r.get("action_label","WAIT"),
@@ -2469,6 +2821,7 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
 
     setup_type = report.get("setup_type") or "-"
     handbook_details = StrategyGroundedHelper.map_setup_to_handbook(setup_type, direction)
+    micro_obj = report.get("microstructure") or {}
     return {
         "id": f"{symbol}:{timeframe}:{direction}:{setup_type}",
         "symbol": symbol,
@@ -2504,6 +2857,8 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
             if item.get("name")
         ],
         "decision": report.get("decision") or {},
+        "micro_confluence": _micro_confluence_points(micro_obj, direction),
+        "micro_net": (micro_obj.get("filters") or {}).get("net_bias") or "neutral",
         "data_quality": report.get("data_quality") or {},
         "market_regime": report.get("market_regime") or {},
         "handbook_details": handbook_details,

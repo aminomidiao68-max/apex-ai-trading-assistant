@@ -985,6 +985,32 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             }
         }
 
+        // ======== سطوح واقعی خردساختار (POC/VAH/VAL/دیوارهای خرید و فروش) ========
+        for (ml in report.microLevels) {
+            val y = priceY(ml.price)
+            if (y < chartT - 2f || y > chartB + 2f) continue
+            val (c, label, dashed) = when (ml.kind) {
+                "POC" -> Triple(Gold, "POC", false)
+                "VAH" -> Triple(GoldDim, "VAH", true)
+                "VAL" -> Triple(GoldDim, "VAL", true)
+                "BIDWALL" -> Triple(UpC, "Bid Wall", true)
+                "ASKWALL" -> Triple(DnC, "Ask Wall", true)
+                else -> continue
+            }
+            drawLine(
+                c.copy(alpha = 0.7f), Offset(chartL, y), Offset(chartR, y), strokeWidth = 0.9f,
+                pathEffect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(4f, 5f)) else null
+            )
+            val lp = NativePaint().apply { color = c.toArgb(); textSize = 10f; isAntiAlias = true; isFakeBoldText = true }
+            val br = Rect(); lp.getTextBounds(label, 0, label.length, br)
+            val pad = 3f
+            val bx = chartR + 2f
+            val by = y - br.height() / 2f - pad
+            val bg = NativePaint().apply { color = android.graphics.Color.argb(200, 10, 12, 18) }
+            drawContext.canvas.nativeCanvas.drawRect(bx, by, bx + br.width() + pad * 2, by + br.height() + pad * 2, bg)
+            drawContext.canvas.nativeCanvas.drawText(label, bx + pad, y + br.height() / 2f - 1f, lp)
+        }
+
         // ======== قیمت لحظه‌ای (last price tag) مثل TV: برچسب روی محور راست ========
         val yPrice = priceY(report.price).coerceIn(chartT, chartB)
         val lastCol = if (candles.lastOrNull()?.let { it.c >= it.o } == true) UpC else DnC

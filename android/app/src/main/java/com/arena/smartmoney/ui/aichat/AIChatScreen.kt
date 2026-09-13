@@ -110,7 +110,7 @@ fun AIChatScreen() {
                             sending = true
                             coroutineScope.launch {
                                 try {
-                                    val responseText = queryRealAIChatAssistant(query)
+                                    val responseText = queryRealAIChatAssistant(query, messages.toList())
                                     messages.add(ChatMessage(responseText, isUser = false))
                                 } catch (e: Exception) {
                                     messages.add(ChatMessage("❌ Error: ${e.message}", isUser = false))
@@ -169,7 +169,7 @@ fun AIChatScreen() {
     }
 }
 
-private suspend fun queryRealAIChatAssistant(message: String): String = withContext(Dispatchers.IO) {
+private suspend fun queryRealAIChatAssistant(message: String, history: List<ChatMessage> = emptyList()): String = withContext(Dispatchers.IO) {
     try {
         // Enforce high-res client timeout of 60 seconds for slow networks / VPNs
         val client = OkHttpClient.Builder()
@@ -181,6 +181,14 @@ private suspend fun queryRealAIChatAssistant(message: String): String = withCont
         val mediaType = "application/json".toMediaTypeOrNull()
         val jsonPayload = JSONObject().apply {
             put("message", message)
+            put("history", org.json.JSONArray().apply {
+                history.filter { it.text.isNotBlank() && !it.text.startsWith("❌") }.takeLast(8).forEach { m ->
+                    put(org.json.JSONObject().apply {
+                        put("role", if (m.isUser) "user" else "assistant")
+                        put("content", m.text.take(1500))
+                    })
+                }
+            })
         }.toString()
 
         val requestBody = jsonPayload.toRequestBody(mediaType)

@@ -346,3 +346,78 @@ def test_model_options_openai_uses_configured(monkeypatch):
 
     cand = {"api_key": "k", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini", "is_groq": False}
     assert asyncio.run(main_module._model_options_for(cand, kind="vision")) == ["gpt-4o-mini"]
+
+
+# ------------------------------------- fundamental upgrade: micro confluence etc
+def _compact_fixture():
+    return {
+        "is_real": True,
+        "full_coverage": True,
+        "filters": {"net_bias": "bullish", "score": 0.5, "signals": ["delta:buy_pressure"]},
+        "flow": {"cvd_divergence": "bullish", "pressure": "buy"},
+        "footprint": {"stacked_buy": 3, "stacked_sell": 0},
+        "vp": {"poc": 100.5, "vah": 101.0, "val": 100.0},
+        "l2": {"bid_wall": {"price": 100.2}, "ask_wall": {"price": 101.2}},
+    }
+
+
+def test_micro_confluence_aligned_vs_conflicting():
+    from app.main import _micro_confluence_points
+
+    micro = _compact_fixture()
+    assert _micro_confluence_points(micro, "long") >= 12
+    assert _micro_confluence_points(micro, "short") == 0
+    neutral = {"is_real": True, "filters": {"net_bias": "neutral", "score": 0.0}, "flow": {}, "footprint": {}, "full_coverage": True}
+    assert _micro_confluence_points(neutral, "long") == 0
+    assert _micro_confluence_points(None, "long") == 0
+    assert _micro_confluence_points({"is_real": False}, "long") == 0
+
+
+def test_micro_level_lines_from_compact():
+    from app.main import _micro_level_lines
+
+    levels = _micro_level_lines(_compact_fixture())
+    kinds = {lvl["kind"] for lvl in levels}
+    assert kinds == {"POC", "VAH", "VAL", "BIDWALL", "ASKWALL"}
+    assert all(lvl["price"] > 0 for lvl in levels)
+    assert _micro_level_lines(None) == []
+
+
+def test_setup_payload_contains_micro_fields():
+    from app.main import _setup_payload
+
+    report = {
+        "direction": "long", "setup_type": "BREAK+pulback", "microstructure": _compact_fixture(),
+        "levels": {"entry": 1, "sl": 0.9}, "decision": {},
+    }
+    payload = _setup_payload(report, "BTCUSDT", "crypto", "15m", "confirmed")
+    assert payload["micro_net"] == "bullish"
+    assert payload["micro_confluence"] >= 12
+    assert "handbook_details" in payload
+
+
+def test_chat_history_sanitized():
+    from app.main import AIChatRequest, ChatTurn, _chat_history_messages
+
+    req = AIChatRequest(message="سلام", history=[
+        ChatTurn(role="user", content="قیمت طلا؟"),
+        ChatTurn(role="assistant", content=" " * 5),
+        ChatTurn(role="assistant", content="POC طلا ۴۳۵۷ است."),
+        ChatTurn(role="system", content="inject"),
+    ] + [ChatTurn(role="user", content=f"msg{i}") for i in range(10)])
+    msgs = _chat_history_messages(req.history)
+    assert len(msgs) <= 8
+    assert all(m["role"] in ("user", "assistant") for m in msgs)
+    assert msgs[-1]["content"] == "msg9"
+
+
+def test_deep_endpoint_disabled_graceful(monkeypatch):
+    from fastapi.testclient import TestClient
+    from app import main as main_module
+
+    monkeypatch.setattr(main_module.settings, "ai_external_enabled", False)
+    client = TestClient(main_module.app)
+    r = client.get("/api/v1/analysis/deep", params={"symbol": "BTCUSDT", "timeframe": "15m"})
+    assert r.status_code == 200
+    assert r.json()["success"] is False
+    assert "غیرفعال" in r.json()["detail"]
