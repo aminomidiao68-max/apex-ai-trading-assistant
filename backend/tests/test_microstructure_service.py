@@ -299,3 +299,50 @@ def test_ai_payload_extra_hides_reasoning_only_for_reasoning_models():
     assert _ai_payload_extra("openai/gpt-oss-120b") == {"reasoning_format": "hidden"}
     assert _ai_payload_extra("llama-3.3-70b-versatile") == {}
     assert _ai_payload_extra("meta-llama/llama-4-scout-17b-16e-instruct") == {}
+
+
+# ------------------------------------------- self-adaptive Groq model selection
+def test_model_options_groq_prefers_live_models(monkeypatch):
+    import asyncio
+    from app import main as main_module
+
+    async def fake_live(api_key, base_url):
+        return [
+            "whisper-large-v3",
+            "llama-3.1-8b-instant",
+            "openai/gpt-oss-120b",
+            "qwen/qwen3.6-27b",
+            "qwen/qwen3.8-27b",
+        ]
+
+    monkeypatch.setattr(main_module, "_groq_available_models", fake_live)
+    cand = {"api_key": "k", "base_url": "https://api.groq.com/openai/v1", "model": "", "is_groq": True}
+    vision = asyncio.run(main_module._model_options_for(cand, kind="vision"))
+    assert vision[0] == "qwen/qwen3.8-27b"
+    assert all("gpt-oss" not in m for m in vision)  # text-only filtered out for vision
+    chat = asyncio.run(main_module._model_options_for(cand, kind="chat"))
+    assert chat[0] == "openai/gpt-oss-120b"
+    assert "whisper-large-v3" not in chat
+
+
+def test_model_options_fallback_when_discovery_empty(monkeypatch):
+    import asyncio
+    from app import main as main_module
+
+    async def fake_live(api_key, base_url):
+        return []
+
+    monkeypatch.setattr(main_module, "_groq_available_models", fake_live)
+    cand = {"api_key": "k", "base_url": "u", "model": "", "is_groq": True}
+    vision = asyncio.run(main_module._model_options_for(cand, kind="vision"))
+    assert vision == ["qwen/qwen3.8-27b", "qwen/qwen3.6-27b"]
+    chat = asyncio.run(main_module._model_options_for(cand, kind="chat"))
+    assert chat[0] == "openai/gpt-oss-120b"
+
+
+def test_model_options_openai_uses_configured(monkeypatch):
+    import asyncio
+    from app import main as main_module
+
+    cand = {"api_key": "k", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini", "is_groq": False}
+    assert asyncio.run(main_module._model_options_for(cand, kind="vision")) == ["gpt-4o-mini"]

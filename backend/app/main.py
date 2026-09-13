@@ -454,7 +454,7 @@ def _runtime_ai_provider_for_user(user_id: int, requested: str = "auto"):
             return OpenAICompatibleProvider(
                 base_url="https://api.groq.com/openai/v1",
                 api_key=material.api_key,
-                model=material.model or "llama-3.3-70b-versatile",
+                model=material.model or "openai/gpt-oss-120b",
                 provider_name="groq",
             )
     if selected == "openai_compatible":
@@ -515,6 +515,67 @@ def _ai_payload_extra(model: str) -> dict:
     if "qwen" in lowered or "gpt-oss" in lowered:
         return {"reasoning_format": "hidden"}
     return {}
+
+
+# Groq rotates/deprecates models frequently; pick from the LIVE model list
+# instead of hardcoding IDs so deprecations never break the service.
+_GROQ_VISION_PREFERENCE = ("qwen3.8", "qwen3.6", "vision", "scout", "maverick")
+_GROQ_CHAT_PREFERENCE = ("gpt-oss-120b", "gpt-oss-20b", "qwen3.8", "qwen3.6", "70b", "8b")
+_GROQ_VISION_FALLBACK = ["qwen/qwen3.8-27b", "qwen/qwen3.6-27b"]
+_GROQ_CHAT_FALLBACK = [
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.6-27b",
+    "llama-3.1-8b-instant",
+]
+_GROQ_MODELS_CACHE: dict[str, tuple[float, list[str]]] = {}
+
+
+async def _groq_available_models(api_key: str, base_url: str) -> list[str]:
+    cache_key = f"{base_url}|{api_key[:12]}"
+    now = time.monotonic()
+    cached = _GROQ_MODELS_CACHE.get(cache_key)
+    if cached and now - cached[0] < 600:
+        return cached[1]
+    try:
+        async with httpx.AsyncClient(timeout=8.0, headers={"Authorization": f"Bearer {api_key}"}) as client:
+            response = await client.get(f"{base_url}/models")
+            response.raise_for_status()
+            ids = [m.get("id") for m in response.json().get("data", []) if m.get("id")]
+        _GROQ_MODELS_CACHE[cache_key] = (now, ids)
+        return ids
+    except Exception:
+        return []
+
+
+def _groq_kind_compatible(model_lower: str, kind: str) -> bool:
+    if kind != "vision":
+        return True
+    return any(tag in model_lower for tag in ("qwen3", "vision", "scout", "maverick"))
+
+
+async def _model_options_for(cand: dict, kind: str) -> list[str]:
+    configured = (cand.get("model") or "").strip()
+    if not cand.get("is_groq"):
+        return [configured or "gpt-4o-mini"]
+    options: list[str] = [configured] if configured else []
+    live = await _groq_available_models(cand["api_key"], cand["base_url"])
+    lowered_live = {m.lower(): m for m in live}
+    for pref in (_GROQ_VISION_PREFERENCE if kind == "vision" else _GROQ_CHAT_PREFERENCE):
+        for model_lower, model_id in lowered_live.items():
+            if pref in model_lower and model_id not in options and _groq_kind_compatible(model_lower, kind):
+                options.append(model_id)
+        if len(options) >= 3:
+            break
+    if not live:
+        # Discovery failed (network/invalid key): configured default first, then
+        # known-good fallbacks so one dead model never kills the request.
+        for fb in (_GROQ_VISION_FALLBACK if kind == "vision" else _GROQ_CHAT_FALLBACK):
+            if fb not in options:
+                options.append(fb)
+            if len(options) >= 3:
+                break
+    return options[:3]
 
 
 def _auto_market(symbol: str, market: str | None) -> str:
@@ -1341,7 +1402,7 @@ async def analyze_chart_vision(
                     "provider": "Groq (User BYOK)",
                     "base_url": "https://api.groq.com/openai/v1",
                     "api_key": groq_material.api_key.strip(),
-                    "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+                    "model": "qwen/qwen3.8-27b",
                     "is_groq": True,
                 })
         except Exception as e:
@@ -1356,7 +1417,7 @@ async def analyze_chart_vision(
             "provider": "OpenAI (System Default)" if not is_groq_base else "Groq (System Base)",
             "base_url": sys_base,
             "api_key": sys_openai_key,
-            "model": "meta-llama/llama-4-scout-17b-16e-instruct" if is_groq_base else "gpt-4o-mini",
+            "model": "qwen/qwen3.8-27b" if is_groq_base else "gpt-4o-mini",
             "is_groq": is_groq_base,
         })
 
@@ -1367,7 +1428,7 @@ async def analyze_chart_vision(
             "provider": "Groq (System Default)",
             "base_url": os.getenv("AI_GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
             "api_key": sys_groq_key,
-            "model": "meta-llama/llama-4-scout-17b-16e-instruct",
+            "model": "qwen/qwen3.8-27b",
             "is_groq": True,
         })
 
@@ -1392,10 +1453,8 @@ async def analyze_chart_vision(
             "Content-Type": "application/json",
         }
 
-        # Select model
-        model = cand["model"]
-        if "vision" in model.lower() or "llama-3.2" in model.lower():
-            model = "meta-llama/llama-4-scout-17b-16e-instruct" if cand["is_groq"] else "gpt-4o-mini"
+        # Self-adaptive model selection (live Groq list, deprecation-proof)
+        model_options = await _model_options_for(cand, kind="vision")
 
         prompt_text = (
             "به عنوان یک مفسر ارشد و زبده چارت‌های مالی سبک SMC/ICT و کوانت، این چارت اسکرین‌شات را بر اساس دستورالعمل‌های طلایی زیر تحلیل کن. "
@@ -1436,8 +1495,7 @@ async def analyze_chart_vision(
                     + build_ai_context_text(micro)
                 )
 
-        payload = {
-            "model": model,
+        base_payload = {
             "messages": [
                 {
                     "role": "user",
@@ -1456,35 +1514,35 @@ async def analyze_chart_vision(
                 }
             ],
             "max_tokens": 2048,
-            **_ai_payload_extra(model),
         }
-
-        try:
-            url = f"{cand['base_url']}/chat/completions"
-            logger.info(f"Trying vision analysis with {cand['provider']} ({model})")
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                response.raise_for_status()
-                data = response.json()
-                analysis_text = _strip_reasoning_blocks(data["choices"][0]["message"]["content"])
-                if not analysis_text:
-                    raise RuntimeError("empty analysis after stripping reasoning chain")
-                return {
-                    "success": True,
-                    "analysis": analysis_text,
-                    "provider_used": cand["provider"],
-                    "model": model,
-                    "errors_overcome": errors
-                }
-        except Exception as exc:
-            err_msg = str(exc)
-            if hasattr(exc, "response") and exc.response is not None:
-                try:
-                    err_msg = exc.response.json().get("error", {}).get("message", exc.response.text)
-                except Exception:
-                    err_msg = exc.response.text or str(exc)
-            logger.warning(f"Vision provider {cand['provider']} failed: {err_msg}")
-            errors.append(f"{cand['provider']}: {err_msg}")
+        for model in model_options:
+            payload = {**base_payload, "model": model, **_ai_payload_extra(model)}
+            try:
+                url = f"{cand['base_url']}/chat/completions"
+                logger.info(f"Trying vision analysis with {cand['provider']} ({model})")
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(url, headers=headers, json=payload)
+                    response.raise_for_status()
+                    data = response.json()
+                    analysis_text = _strip_reasoning_blocks(data["choices"][0]["message"]["content"])
+                    if not analysis_text:
+                        raise RuntimeError("empty analysis after stripping reasoning chain")
+                    return {
+                        "success": True,
+                        "analysis": analysis_text,
+                        "provider_used": cand["provider"],
+                        "model": model,
+                        "errors_overcome": errors
+                    }
+            except Exception as exc:
+                err_msg = str(exc)
+                if hasattr(exc, "response") and exc.response is not None:
+                    try:
+                        err_msg = exc.response.json().get("error", {}).get("message", exc.response.text)
+                    except Exception:
+                        err_msg = exc.response.text or str(exc)
+                logger.warning(f"Vision provider {cand['provider']} ({model}) failed: {err_msg}")
+                errors.append(f"{cand['provider']} [{model}]: {err_msg}")
 
     return {
         "success": False,
@@ -1527,7 +1585,7 @@ async def execute_ai_chat_assistant(
                     "provider": "Groq (User BYOK)",
                     "base_url": "https://api.groq.com/openai/v1",
                     "api_key": groq_material.api_key.strip(),
-                    "model": groq_material.model or "llama-3.3-70b-versatile",
+                    "model": groq_material.model or "openai/gpt-oss-120b",
                     "is_groq": True,
                 })
         except Exception as e:
@@ -1555,7 +1613,7 @@ async def execute_ai_chat_assistant(
             "provider": "Groq (System Default)",
             "base_url": os.getenv("AI_GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
             "api_key": sys_groq_key,
-            "model": "llama-3.3-70b-versatile",
+            "model": "openai/gpt-oss-120b",
             "is_groq": True,
         })
 
@@ -1568,7 +1626,7 @@ async def execute_ai_chat_assistant(
             "provider": "OpenAI (System Default)" if not is_groq_base else "Groq (System Base)",
             "base_url": sys_base,
             "api_key": sys_openai_key,
-            "model": "llama-3.3-70b-versatile" if is_groq_base else "gpt-4o-mini",
+            "model": "openai/gpt-oss-120b" if is_groq_base else "gpt-4o-mini",
             "is_groq": is_groq_base,
         })
 
@@ -1593,10 +1651,8 @@ async def execute_ai_chat_assistant(
             "Content-Type": "application/json",
         }
 
-        # Select model
-        model = cand["model"]
-        if "vision" in model.lower() or "llama-3.2" in model.lower():
-            model = "llama-3.3-70b-versatile" if cand["is_groq"] else "gpt-4o-mini"
+        # Self-adaptive model selection (live Groq list, deprecation-proof)
+        model_options = await _model_options_for(cand, kind="chat")
 
         system_prompt = (
             "شما دستیار ارشد، زبده و ریاضیدان ترید اسمارت مانی (SMC)، آی‌سی‌تی (ICT) و جریان سفارشات (Order Flow) پلتفرم APEX PRO v3.1 هستید. "
@@ -1625,8 +1681,7 @@ async def execute_ai_chat_assistant(
                     + "\n\n"
                 )
 
-        payload = {
-            "model": model,
+        base_payload = {
             "messages": [
                 {
                     "role": "system",
@@ -1639,35 +1694,35 @@ async def execute_ai_chat_assistant(
             ],
             "temperature": 0.7,
             "max_tokens": 1600,
-            **_ai_payload_extra(model),
         }
-
-        try:
-            url = f"{cand['base_url']}/chat/completions"
-            logger.info(f"Trying AI chat with {cand['provider']} ({model})")
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(url, headers=headers, json=payload)
-                response.raise_for_status()
-                data = response.json()
-                reply = _strip_reasoning_blocks(data["choices"][0]["message"]["content"])
-                if not reply:
-                    raise RuntimeError("empty reply after stripping reasoning chain")
-                return {
-                    "success": True,
-                    "reply": reply,
-                    "provider_used": cand["provider"],
-                    "model": model,
-                    "errors_overcome": errors
-                }
-        except Exception as exc:
-            err_msg = str(exc)
-            if hasattr(exc, "response") and exc.response is not None:
-                try:
-                    err_msg = exc.response.json().get("error", {}).get("message", exc.response.text)
-                except Exception:
-                    err_msg = exc.response.text or str(exc)
-            logger.warning(f"Chat provider {cand['provider']} failed: {err_msg}")
-            errors.append(f"{cand['provider']}: {err_msg}")
+        for model in model_options:
+            payload = {**base_payload, "model": model, **_ai_payload_extra(model)}
+            try:
+                url = f"{cand['base_url']}/chat/completions"
+                logger.info(f"Trying AI chat with {cand['provider']} ({model})")
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(url, headers=headers, json=payload)
+                    response.raise_for_status()
+                    data = response.json()
+                    reply = _strip_reasoning_blocks(data["choices"][0]["message"]["content"])
+                    if not reply:
+                        raise RuntimeError("empty reply after stripping reasoning chain")
+                    return {
+                        "success": True,
+                        "reply": reply,
+                        "provider_used": cand["provider"],
+                        "model": model,
+                        "errors_overcome": errors
+                    }
+            except Exception as exc:
+                err_msg = str(exc)
+                if hasattr(exc, "response") and exc.response is not None:
+                    try:
+                        err_msg = exc.response.json().get("error", {}).get("message", exc.response.text)
+                    except Exception:
+                        err_msg = exc.response.text or str(exc)
+                logger.warning(f"Chat provider {cand['provider']} ({model}) failed: {err_msg}")
+                errors.append(f"{cand['provider']} [{model}]: {err_msg}")
 
     return {
         "success": False,
