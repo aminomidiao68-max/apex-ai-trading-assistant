@@ -324,6 +324,12 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
                     ChipS("درجه ${r.grade}", gradeC)
                 }
                 item { ChipS("conf ${r.confluence}", when { r.confluence>=70->Gold; r.confluence>=40->GoldDim; else->TL }) }
+                r.force?.let { f ->
+                    item {
+                        val col = if (f.buyersPct >= 58f) UpC else if (f.buyersPct <= 42f) DnC else TL
+                        ChipS("🐂${"%.0f".format(f.buyersPct)} 🐻${"%.0f".format(f.sellersPct)}", col)
+                    }
+                }
                 item { ChipS(if(r.probability>0) "%${r.probability}" else "احتمال -", when { r.probability>=75->UpC; r.probability>=55->GoldDim; else->TL }) }
                 item { ChipS(if (r.rr > 0f) "RR 1:%.1f".format(r.rr) else "RR -", if(r.rr>=2f) UpC else TL) }
                 item { ChipS("TS ${r.trendStrength}", when{r.trendStrength>=60->UpC;r.trendStrength<30->DnC;else->TL}) }

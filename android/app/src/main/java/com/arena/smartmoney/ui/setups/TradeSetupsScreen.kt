@@ -341,6 +341,17 @@ private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (setup.isPrime) {
+                    SetupChip("⭐ PRIME", SetupGold)
+                }
+                SetupChip(
+                    "امتیاز ${"%.0f".format(setup.valueScore)}",
+                    when {
+                        setup.valueScore >= 70f -> SetupGreen
+                        setup.valueScore >= 50f -> SetupGold
+                        else -> SetupMuted
+                    },
+                )
                 SetupChip(
                     if (setup.decision.orderflow.isReal) "REAL OF" else "PROXY OF",
                     if (setup.decision.orderflow.isReal) SetupGreen else SetupGold,

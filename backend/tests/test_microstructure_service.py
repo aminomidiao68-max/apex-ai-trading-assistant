@@ -421,3 +421,79 @@ def test_deep_endpoint_disabled_graceful(monkeypatch):
     assert r.status_code == 200
     assert r.json()["success"] is False
     assert "غیرفعال" in r.json()["detail"]
+
+
+# ---------------------------------------- strict dossier / force / value score
+def test_oscillator_snapshot_deterministic():
+    from app.main import _oscillator_snapshot
+
+    items = []
+    price = 100.0
+    for i in range(80):
+        o = price
+        c = o + (0.3 if i % 3 else -0.15)
+        items.append({"t": 1700000000 + i * 60, "o": o, "c": c, "h": max(o, c) + 0.2, "l": min(o, c) - 0.2, "v": 10})
+        price = c
+    snap = _oscillator_snapshot(items)
+    assert 0 <= snap["rsi14"] <= 100
+    assert snap["ema20"] and snap["ema50"]
+    assert snap["atr14"] > 0
+    assert snap["ema_stack"] in ("bullish", "bearish", "mixed")
+    assert _oscillator_snapshot(items[:10]) == {}
+
+
+def test_buyer_seller_force_bullish_and_bearish():
+    from app.main import _buyer_seller_force
+
+    bull_micro = {"flow": {"delta": 0.6, "cvd_divergence": "bullish"}, "filters": {"net_bias": "bullish"},
+                  "footprint": {"stacked_buy": 3, "stacked_sell": 0}, "l2": {"imbalance_top25": 0.4}}
+    force = _buyer_seller_force({}, bull_micro)
+    assert force["buyers_pct"] >= 70 and force["label"] == "buyers_dominant"
+    assert abs(force["buyers_pct"] + force["sellers_pct"] - 100) < 0.01
+
+    bear_micro = {"flow": {"delta": -0.7, "cvd_divergence": "bearish"}, "filters": {"net_bias": "bearish"},
+                  "footprint": {"stacked_buy": 0, "stacked_sell": 4}, "l2": {"imbalance_top25": -0.5}}
+    assert _buyer_seller_force({}, bear_micro)["buyers_pct"] <= 30
+
+
+def test_liquidity_gaps_and_dossier():
+    from app.main import build_market_dossier, _numbered_liquidity, _gap_list, _top_order_blocks
+
+    report = {
+        "bias": "bearish", "htf": {"bias": "bearish"}, "premium_zone": "premium",
+        "price": 4350.0, "inducements": [{"kind": "eqh", "price": 4360.5, "dir": "sell"}],
+        "fvg": [{"top": 4355.0, "bottom": 4352.0, "side": "bearish", "fresh": True}],
+        "order_blocks": [{"top": 4358.0, "bottom": 4356.0, "side": "bearish", "quality": 7}],
+        "events": [{"kind": "choch", "price": 4351.0}], "action_label": "NO_TRADE", "grade": "F",
+        "direction": "neutral", "confluence": 30, "probability": 35, "rr": 0,
+        "levels": {"entry": None, "sl": None}, "force": {"buyers_pct": 40, "sellers_pct": 60, "label": "sellers_dominant"},
+    }
+    micro = {"is_real": True, "vp": {"poc": 4357.0, "vah": 4359.0, "val": 4355.0}, "flow": {"delta": -0.2},
+             "footprint": {"stacked_buy": 0, "stacked_sell": 2}, "l2": {"imbalance_top25": -0.2},
+             "filters": {"net_bias": "bearish", "score": -0.3}, "timeframe": "15m",
+             "instrument": {"inst_id": "PAXG-USDT"}, "window": {"trades": 500}}
+    assert _numbered_liquidity(report)[0]["price"] == 4360.5
+    assert _gap_list(report)[0]["top"] == 4355.0
+    assert _top_order_blocks(report)[0]["quality"] == 7
+
+    dossier = build_market_dossier(report, micro, [])
+    for token in ("نقدینگی", "FVG", "خریدار=", "NO_TRADE", "اندیکاتورها", "4360.5", "4355"):
+        assert token in dossier, token
+    assert "اجازه ورود نداده" in dossier
+
+
+def test_setup_value_score_and_prime():
+    from app.main import _setup_payload
+
+    report = {
+        "direction": "long", "setup_type": "BREAK+pulback", "grade": "A+",
+        "confluence": 80, "probability": 70, "rr": 2.5,
+        "microstructure": _compact_fixture(),
+        "levels": {"entry": 1, "sl": 0.9}, "decision": {},
+    }
+    payload = _setup_payload(report, "BTCUSDT", "crypto", "15m", "confirmed")
+    assert payload["is_prime"] is True
+    assert payload["value_score"] >= 70
+    weak = _setup_payload({**report, "grade": "C", "confluence": 45, "rr": 1.0, "microstructure": {"is_real": False}},
+                          "BTCUSDT", "crypto", "15m", "forming")
+    assert weak["is_prime"] is False and weak["value_score"] < payload["value_score"]

@@ -700,6 +700,209 @@ async def get_micro_summary(
         return None
 
 
+def _oscillator_snapshot(items: list[dict]) -> dict:
+    """Deterministic indicator snapshot (RSI / EMA stack / ATR / momentum / BB width)."""
+    try:
+        from app.services.indicators import atr as _atr, ema as _ema, momentum_histogram as _mom, rsi as _rsi
+        closes = [float(c["c"]) for c in items if c.get("c")]
+        highs = [float(c["h"]) for c in items if c.get("h")]
+        lows = [float(c["l"]) for c in items if c.get("l")]
+        if len(closes) < 30:
+            return {}
+        rsi_v = round(_rsi(closes), 1)
+        ema20 = _ema(closes, 20)
+        ema50 = _ema(closes, 50) if len(closes) >= 50 else None
+        ema200 = _ema(closes, 200) if len(closes) >= 200 else None
+        atr_v = _atr(highs, lows, closes)
+        mom = round(_mom(closes), 4)
+        price = closes[-1]
+        stack = "bullish" if price > ema20 and (ema50 is None or ema20 >= ema50) else "bearish" if price < ema20 and (ema50 is None or ema20 <= ema50) else "mixed"
+        # Bollinger bandwidth proxy (20, 2)
+        window = closes[-20:]
+        mean = sum(window) / len(window)
+        var = sum((x - mean) ** 2 for x in window) / len(window)
+        sd = var ** 0.5
+        bb_width_pct = round((4 * sd) / mean * 100, 2) if mean else None
+        return {
+            "rsi14": rsi_v,
+            "price": price,
+            "ema20": round(ema20, 6),
+            "ema50": round(ema50, 6) if ema50 else None,
+            "ema200": round(ema200, 6) if ema200 else None,
+            "ema_stack": stack,
+            "atr14": round(atr_v, 6),
+            "momentum_histogram": mom,
+            "bb_width_pct": bb_width_pct,
+            "rsi_zone": "overbought" if rsi_v >= 70 else "oversold" if rsi_v <= 30 else "neutral",
+        }
+    except Exception:
+        return {}
+
+
+def _buyer_seller_force(report: dict, micro: dict | None) -> dict:
+    """Deterministic buyers-vs-sellers gauge (0-100) from REAL tape/book only."""
+    buyers = 50.0
+    flow = (micro or {}).get("flow") or {}
+    filters = (micro or {}).get("filters") or {}
+    fp = (micro or {}).get("footprint") or {}
+    l2 = (micro or {}).get("l2") or {}
+    delta = float(flow.get("delta") or 0.0)
+    buyers += max(-1.0, min(1.0, delta)) * 25
+    imb = float((l2.get("imbalance_top25") if isinstance(l2.get("imbalance_top25"), (int, float)) else 0.0) or 0.0)
+    buyers += max(-1.0, min(1.0, imb)) * 15
+    stacked_buy = int(fp.get("stacked_buy") or 0)
+    stacked_sell = int(fp.get("stacked_sell") or 0)
+    buyers += min(6, (stacked_buy - stacked_sell) * 2)
+    divergence = flow.get("cvd_divergence")
+    if divergence == "bullish":
+        buyers += 4
+    elif divergence == "bearish":
+        buyers -= 4
+    if flow.get("absorption"):
+        buyers = 50 + (buyers - 50) * 0.85
+    bias = str(filters.get("net_bias") or "neutral")
+    if bias == "bullish":
+        buyers += 3
+    elif bias == "bearish":
+        buyers -= 3
+    buyers = max(5.0, min(95.0, buyers))
+    label = "buyers_dominant" if buyers >= 58 else "sellers_dominant" if buyers <= 42 else "balanced"
+    return {
+        "buyers_pct": round(buyers, 1),
+        "sellers_pct": round(100.0 - buyers, 1),
+        "label": label,
+        "basis": "real_delta_depth_stacked_cvd",
+    }
+
+
+def _numbered_liquidity(report: dict) -> list[dict]:
+    pools = []
+    for item in (report.get("inducements") or [])[:8]:
+        price = item.get("price")
+        try:
+            price = float(price)
+        except (TypeError, ValueError):
+            continue
+        if price <= 0:
+            continue
+        pools.append({
+            "kind": str(item.get("kind") or "liq"),
+            "price": price,
+            "side": str(item.get("dir") or item.get("side") or ""),
+        })
+    return pools
+
+
+def _gap_list(report: dict) -> list[dict]:
+    gaps = []
+    for zone in (report.get("fvg") or [])[:8]:
+        try:
+            top = float(zone.get("top"))
+            bottom = float(zone.get("bottom"))
+        except (TypeError, ValueError):
+            continue
+        if top <= 0 or bottom <= 0:
+            continue
+        gaps.append({
+            "top": top,
+            "bottom": bottom,
+            "side": str(zone.get("side") or zone.get("kind") or ""),
+            "fresh": bool(zone.get("fresh", False)),
+        })
+    return gaps
+
+
+def _top_order_blocks(report: dict) -> list[dict]:
+    obs = []
+    for zone in (report.get("order_blocks") or [])[:4]:
+        try:
+            top = float(zone.get("top"))
+            bottom = float(zone.get("bottom"))
+        except (TypeError, ValueError):
+            continue
+        if top <= 0 or bottom <= 0:
+            continue
+        obs.append({
+            "top": top,
+            "bottom": bottom,
+            "side": str(zone.get("side") or zone.get("kind") or ""),
+            "quality": int(zone.get("quality") or 0),
+        })
+    return obs
+
+
+def build_market_dossier(report: dict, micro: dict | None, items: list[dict]) -> str:
+    """Dense Persian dossier of ALL real, deterministic market facts for AI prompts."""
+    osc = _oscillator_snapshot(items)
+    force = report.get("force") or _buyer_seller_force(report, micro)
+    liq = _numbered_liquidity(report)
+    gaps = _gap_list(report)
+    obs = _top_order_blocks(report)
+    events = (report.get("events") or [])[-4:]
+    micro_line = build_ai_context_text(micro) if micro and micro.get("is_real") else (
+        "⚠️ داده خردساختار واقعی (L2/فوت‌پرینت) در دسترس نیست؛ نباید عددی از خودت بسازی."
+    )
+
+    def fmt(v) -> str:
+        return f"{v:g}" if isinstance(v, (int, float)) else str(v)
+
+    lines: list[str] = ["📁 پرونده کامل بازار (فقط اعداد واقعی سیستم؛ ساخت عدد ممنوع):"]
+
+    lines.append("1) ساختار: bias=" + fmt(report.get("bias")) +
+                 " | HTF=" + fmt((report.get("htf") or {}).get("bias")) +
+                 " | premium_zone=" + fmt(report.get("premium_zone")) +
+                 " | price=" + fmt(report.get("price")))
+    if events:
+        ev_txt = "؛ ".join(f"{e.get('kind')}@{fmt(e.get('price'))}" for e in events if e.get("price"))
+        if ev_txt:
+            lines.append("2) رویدادهای ساختاری: " + ev_txt)
+    if liq:
+        lines.append("3) نقدینگی‌های شماره‌دار: " + "؛ ".join(
+            f"{i+1}) {item['kind']} در قیمت {item['price']:g}" for i, item in enumerate(liq)
+        ))
+    if gaps:
+        lines.append("4) گپ‌ها/نواحی ناهم‌قیمت (FVG): " + "؛ ".join(
+            f"{i+1}) {g['side']} از {g['bottom']:g} تا {g['top']:g}" + (" (تازه)" if g["fresh"] else "")
+            for i, g in enumerate(gaps)
+        ))
+    if obs:
+        lines.append("5) بلوک‌های سفارش (OB): " + "؛ ".join(
+            f"{o['side']} از {o['bottom']:g} تا {o['top']:g} (کیفیت {o['quality']})" for o in obs
+        ))
+    if not osc:
+        lines.append("6) اندیکاتورها: داده کافی نیست")
+    if osc:
+        lines.append(
+            "6) اندیکاتورها: RSI14=" + fmt(osc.get("rsi14")) + " (" + fmt(osc.get("rsi_zone")) + ")"
+            + " | EMA stack=" + fmt(osc.get("ema_stack"))
+            + " | EMA20=" + fmt(osc.get("ema20"))
+            + " | EMA50=" + fmt(osc.get("ema50"))
+            + " | EMA200=" + fmt(osc.get("ema200"))
+            + " | ATR14=" + fmt(osc.get("atr14"))
+            + " | MACD-hist=" + fmt(osc.get("momentum_histogram"))
+            + " | BB-width%=" + fmt(osc.get("bb_width_pct"))
+        )
+    lines.append("7) نیروی واقعی خریدار/فروشنده: خریدار=" + fmt(force.get("buyers_pct")) + "%"
+                 + " | فروشنده=" + fmt(force.get("sellers_pct")) + "% (" + fmt(force.get("label")) + ")")
+    lines.append("8) خردساختار زنده: " + micro_line.replace("\n", " | "))
+    lines.append("9) حکم قطعی سیستم: action_label=" + fmt(report.get("action_label"))
+                 + " | grade=" + fmt(report.get("grade"))
+                 + " | direction=" + fmt(report.get("direction"))
+                 + " | confluence=" + fmt(report.get("confluence"))
+                 + " | probability=" + fmt(report.get("probability"))
+                 + " | RR=" + fmt(report.get("rr")))
+    levels = report.get("levels") or {}
+    if report.get("action_label") not in (None, "NO_TRADE", "WAIT", "WATCH") and levels.get("entry"):
+        lines.append("10) سطوح قطعی سیستم: Entry=" + fmt(levels.get("entry"))
+                     + " | SafeSL=" + fmt(levels.get("sl"))
+                     + " | TP1=" + fmt(report.get("tp1"))
+                     + " | TP2=" + fmt(report.get("tp2"))
+                     + " | TP3=" + fmt(report.get("tp3")))
+    else:
+        lines.append("10) سطوح ورود: سیستم اجازه ورود نداده (NO_TRADE/WAIT)؛ نباید برنامه ورود جعل شود.")
+    return "\n".join(lines)
+
+
 def _micro_confluence_points(micro: dict | None, direction: str) -> int:
     """Deterministic additive confluence (0..15) from REAL microstructure.
 
@@ -1168,6 +1371,7 @@ async def get_smc_analysis(
             orderflow_confidence=float(flow.get("confidence") or 0),
             orderflow_snapshot=flow,
         )
+        report["force"] = _buyer_seller_force(report, report.get("microstructure"))
         try:
             report = await ai_explainability_service.enrich_report(
                 report,
@@ -1526,9 +1730,21 @@ async def analyze_chart_vision(
         model_options = await _model_options_for(cand, kind="vision")
 
         prompt_text = (
-            "به عنوان یک مفسر ارشد و زبده چارت‌های مالی سبک SMC/ICT و کوانت، این چارت اسکرین‌شات را بر اساس دستورالعمل‌های طلایی زیر تحلیل کن. "
-            "پاسخ شما باید بسیار دقیق، مهندسی، بدون توهم (Hallucination) و کاملاً ساختاریافته به زبان فارسی با ساختار زیر باشد:\n\n"
-            "⚠️ قوانین صریح خروجی: کل پاسخ فقط و فقط فارسی باشد. هیچ بخش انگلیسی، هیچ تگ <think>، هیچ زنجیره فکر یا توضیح فرایند تحلیل‌ات منتشر نکن؛ فقط متن نهایی تحلیل را بنویس.\n\n"
+            "به عنوان یک مدیر ریسک سخت‌گیر و تحلیل‌گر ارشد نهادی (SMC/ICT/کوانت)، این چارت را با بالاترین دقت و سخت‌گیری تحلیل کن. "
+            "پاسخ باید مهندسی، بدون توهم و کاملاً ساختاریافته به فارسی باشد و دقیقاً این بخش‌ها را داشته باشد:\n\n"
+            "⚠️ قوانین صریح خروجی: کل پاسخ فقط و فقط فارسی باشد. هیچ بخش انگلیسی، هیچ تگ <think>، هیچ زنجیره فکر منتشر نکن. "
+            "هر عددی که در «پرونده کامل بازار» داده شده معتبر است؛ مطلقاً عددی از خودت نساز و اگر عددی نداری صریح بگو «داده کافی نیست».\n\n"
+            "ساختار اجباری پاسخ:\n"
+            "🏆 حکم نهایی مسیر بازار: صعودی / نزولی / رنج + درصد اطمینان (بر اساس نیروی خریدار/فروشنده و هم‌راستایی ساختار و حکم سیستم)\n"
+            "⚖️ ترازوی قدرت: زور خریدار X٪ مقابل فروشنده Y٪ (با ذکر دلیل از دلتا/عمق/فوت‌پرینت)\n"
+            "💧 نقدینگی‌ها: دقیقاً همان نقدینگی‌های شماره‌دار پرونده را با قیمت اعلام کن و بگو قیمت به کدام‌ها نزدیک است و چه ریسکی می‌سازند\n"
+            "🩹 گپ‌ها (FVG): محدوده عددی هر گپ، تازه یا پرشده، و نقش آن (مگنت/حمایت/مقاومت)\n"
+            "🧱 سفارشات: دیوارهای L2 و بلوک‌های سفارش با قیمت + تفسیر جذب/شکست\n"
+            "🕯️ فوت‌پرینت و والوم پروفایل: POC/VAH/VAL با عدد + موقعیت قیمت نسبت به آن‌ها\n"
+            "📰 فیلتر خبری و زمانی: اگر سیستم خبر را بلاک کرده یا جلسه ضعیف است صریحاً بگو\n"
+            "📊 هم‌گرایی کل اندیکاتورها و اوسیلاتورها: RSI/EMA/MACD/BB و تلاقی‌شان با ساختار\n"
+            "🧾 برنامه معاملاتی: فقط اگر حکم قطعی سیستم قابل‌معامله بود (نه NO_TRADE/WAIT) سه سناریوی ورود با اعداد Entry/SL/TP1/TP2/TP3 سیستم را اعلام کن؛ در غیر این صورت بنویس «بدون ورود» و دلیل دقیق سخت‌گیری را بیاور\n"
+            "❌ رد شرایط: صادقانه بگو چه شرایطی کم است تا ستاپ درجه-A شود\n\n"
             "۱. 🌀 تشخیص ساختار و رژیم بازار (Market Structure & Regime Detection):\n"
             "   - روند کلی بازار (نزولی، صعودی، رنج تعادلی، یا تراکم شدید Bollinger Bands).\n"
             "   - نواحی شکست معتبر (BoS/CHoCH با بدنه کندل پر).\n\n"
@@ -1549,14 +1765,41 @@ async def analyze_chart_vision(
             "قوانین طلایی برای اعمال:\n" + StrategyGroundedHelper.get_grounding_system_prompt_addon()
         )
 
-        # Ground the vision analysis in REAL microstructure (L2/footprint/VP/flow).
+        # Ground the vision analysis in REAL data: deterministic SMC report + microstructure.
         micro_block = ""
         vision_symbol = (symbol or "").strip().upper() or detect_symbol_from_text(file.filename or "")
         if vision_symbol:
             micro = await get_micro_summary(
                 vision_symbol, "auto", timeframe, timeout_s=8.0, compact=False
             )
-            if micro:
+            vision_report = None
+            try:
+                v_market = _auto_market(vision_symbol, None)
+                v_tf = _canonical_timeframe(timeframe)
+                v_raw = await fetch_live_candles(symbol=vision_symbol, market=v_market, timeframe=v_tf)
+                v_items = _norm_candles(v_raw[-150:])
+                if len(v_items) >= 30:
+                    from app.services.smc_engine import analyze as _v_analyze
+                    vision_report = _v_analyze(v_items, symbol=vision_symbol, timeframe=v_tf)
+                    vision_report["market"] = v_market
+                    v_flow = await orderflow_service.get_snapshot(vision_symbol, v_market, v_items)
+                    vision_report["microstructure"] = micro
+                    vision_report["force"] = _buyer_seller_force(vision_report, micro)
+                    apply_strict_decision(
+                        vision_report,
+                        v_items,
+                        market=v_market,
+                        timeframe=v_tf,
+                        orderflow_source=str(v_flow.get("source") or "unknown"),
+                        orderflow_confidence=float(v_flow.get("confidence") or 0),
+                        orderflow_snapshot=v_flow,
+                    )
+            except Exception as _ve:
+                import logging as _log
+                _log.getLogger("apex.api.vision").warning(f"vision grounding report failed: {_ve}")
+            if vision_report is not None:
+                micro_block = "\n\n" + build_market_dossier(vision_report, micro, [])
+            elif micro:
                 micro_block = (
                     f"\n\n📡 داده‌های زنده و واقعی خردساختار بازار برای {vision_symbol} "
                     f"(سیستم به‌صورت قطعی از صرافی محاسبه کرده؛ این اعداد را مبنا قرار بده، "
@@ -1756,7 +1999,10 @@ async def execute_ai_chat_assistant(
             "۲. اصطلاحات فنی بازار را به درستی به کار ببرید و ترجیحاً پاسخ‌ها را با بخش‌بندی‌های منظم مجهز به ایموجی‌های تخصصی ارسال کنید.\n"
             "۳. هر زمان کاربر درباره ستاپ‌ها، جهت بازار، یا اصول ولوم پروفایل سوال کرد، پاسخ را مستقیماً به فریمورک ۶ ستون اصلی پیوند دهید.\n"
             "۴. از قوانین و جزئیات ۲۰ استراتژی مرجع دانشنامه برای تحلیل سناریوهای کاربر استفاده کنید.\n"
-            "۵. پاسخ نهایی فقط و فقط فارسی باشد؛ هیچ تگ <think>، هیچ زنجیره فکر و هیچ متن انگلیسی خام در خروجی منتشر نکن.\n\n"
+            "۵. پاسخ نهایی فقط و فقط فارسی باشد؛ هیچ تگ <think>، هیچ زنجیره فکر و هیچ متن انگلیسی خام در خروجی منتشر نکن.\n"
+            "۶. سخت‌گیری حداکثری: هر عددی که در دیتای زنده داده شده معتبر است و مطلقاً نباید عددی از خودت بسازی؛ اگر دیتایی موجود نیست صریح بگو «داده کافی نیست».\n"
+            "۷. وقتی درباره مسیر بازار می‌پرسند، همیشه حکم صریح بده: صعودی/نزولی/رنج + درصد اطمینان + ترازوی زور خریدار مقابل فروشنده (از دلتا/عمق/فوت‌پرینت واقعی)\n"
+            "۸. نقدینگی‌ها و گپ‌ها (FVG) و دیوارهای سفارش را همیشه با عدد اعلام کن و فقط اگر شرایط معاملاتی واقعاً مناسب بود Entry/SL/TP با اعداد سیستم بده؛ در غیر این صورت «بدون ورود» + دلیل سخت‌گیری.\n\n"
             "ماتریس طلایی ۶ ستون و ۲۰ استراتژی مبنای شما:\n" + StrategyGroundedHelper.get_grounding_system_prompt_addon()
         )
 
@@ -1911,6 +2157,7 @@ async def deep_institutional_analysis(
         orderflow_snapshot=flow,
     )
 
+    report["force"] = _buyer_seller_force(report, report.get("microstructure"))
     micro_obj = report.get("microstructure") or {}
     direction = report.get("direction", "neutral")
     setup_type = report.get("setup_type") or "-"
@@ -1934,32 +2181,41 @@ async def deep_institutional_analysis(
         "htf": report.get("htf"),
         "micro_net": (micro_obj.get("filters") or {}).get("net_bias") or "neutral",
         "micro_confluence": _micro_confluence_points(micro_obj, direction),
+        "force": report.get("force"),
+        "liquidity_pools": _numbered_liquidity(report),
+        "gaps_fvg": _gap_list(report),
+        "order_blocks": _top_order_blocks(report),
+        "oscillators": _oscillator_snapshot(items),
         "no_trade_reason": decision.get("no_trade_reason"),
         "handbook": handbook,
     }
 
-    if micro_obj.get("is_real"):
-        micro_block = build_ai_context_text(micro_obj)
-    else:
-        micro_block = "داده خردساختار واقعی (L2/فوت‌پرینت) برای این نماد در دسترس نیست."
+    micro_block = build_market_dossier(report, micro_obj, items)
 
     deep_system_prompt = (
-        "شما مدیر تحلیل ارشد میز معاملات نهادی (Institutional Desk) در پلتفرم APEX PRO v3.1 هستید. "
+        "شما مدیر تحلیل ارشد میز معاملات نهادی (Institutional Desk) در پلتفرم APEX PRO v3.1 هستید؛ سخت‌گیرترین عضو میز. "
         "یک یادداشت تحلیلی عمیق، مهندسی، بدون توهم و کاملاً فارسی ارائه کنید.\n\n"
         "⚠️ قواعد الزامی:\n"
         "۱. خروجی قطعی سیستم (action_label و grade) مرجع نهایی و غیرقابل تغییر است؛ اگر تحلیل کارشناسی شما با آن متفاوت است، فقط در بخش «⚖️ تعارض با سیستم» صریحاً بنویسید و دلیل بیاورید.\n"
-        "۲. فقط از اعداد داده‌شده استفاده کنید؛ هیچ عددی از خودتان نسازید.\n"
-        "۳. کل پاسخ فقط فارسی باشد؛ بدون هیچ تگ <think> و بدون زنجیره فکر.\n\n"
+        "۲. فقط از اعداد پرونده کامل بازار استفاده کنید؛ هیچ عددی از خودتان نسازید و اگر داده‌ای نیست صریح بگویید.\n"
+        "۳. کل پاسخ فقط فارسی باشد؛ بدون هیچ تگ <think> و بدون زنجیره فکر.\n"
+        "۴. سخت‌گیری حداکثری: تا وقتی حکم سیستم NO_TRADE/WAIT است، هیچ برنامه ورودی ارائه ندهید؛ فقط مسیر بازار، نیروها و شروط فعال‌سازی را بگویید.\n\n"
         "ساختار الزامی پاسخ:\n"
         "🧭 خلاصه اجرایی (حداکثر ۳ خط)\n"
-        "🌀 ساختار و رژیم بازار\n"
-        "💧 نقدینگی و سوییپ‌ها\n"
-        "📊 پروفایل حجم (POC/VAH/VAL)\n"
-        "🕯️ سیلان سفارشات و فوت‌پرینت\n"
-        "🛰️ هم‌راستایی خردساختار (µ)\n"
+        "🏆 حکم مسیر بازار: صعودی/نزولی/رنج + درصد اطمینان + دلیل (ساختار+حجم+جریان)\n"
+        "⚖️ ترازوی نیرو: زور خریدار X٪ مقابل فروشنده Y٪ با استناد به دلتا/عمق/فوت‌پرینت\n"
+        "💧 نقدینگی‌های شماره‌دار با قیمت + نزدیک‌ترین تله نقدینگی به قیمت فعلی\n"
+        "🩹 گپ‌ها (FVG) با محدوده عددی + نقش هر گپ\n"
+        "🧱 سفارشات: دیوارهای L2 و OBها با قیمت + جذب یا شکست\n"
+        "📊 پروفایل حجم: POC/VAH/VAL با عدد + موقعیت قیمت + سناریوی ۸۰٪ Value Area\n"
+        "🕯️ فوت‌پرینت: دلتای کندل‌ها، Imbalanceهای روی‌هم، اتمام‌نیافته‌ها\n"
+        "📈 اندیکاتورها و اوسیلاتورها: RSI/EMA/MACD/BB هم‌گرا یا واگرا با ساختار؟\n"
+        "📰 فیلتر خبری و زمانی: وضعیت بلاک خبر و کیفیت جلسه\n"
+        "🛰️ هم‌راستایی خردساختار (µ) با ستاپ\n"
         "📖 تطبیق با استراتژی مرجع کتابچه\n"
-        "🎯 سناریو اصلی و سناریوی جایگزین (با محرک ورود)\n"
-        "🛡️ برنامه ریسک (Entry/SL/TP1-TP3 بر اساس سطوح سیستم)\n"
+        "🎯 سناریو اصلی و سناریوی جایگزین (فقط محرک/شرط، بدون ورود در حالت NO_TRADE)\n"
+        "🛡️ برنامه ریسک: فقط اگر سیستم actionable بود: Entry/SL/TP1-TP3 با اعداد سیستم\n"
+        "❌ چک‌لیست سخت‌گیری: چه چیزی کم است تا Grade-A شود\n"
         "⚖️ تعارض یا تأیید تصمیم قطعی سیستم\n\n"
         + StrategyGroundedHelper.get_grounding_system_prompt_addon()
     )
@@ -2691,7 +2947,7 @@ _SCAN_WATCHLIST = [
 ]
 
 @app.get("/api/v1/signals/scan")
-async def scan_signals(min_confluence: int = Query(default=40, ge=0, le=100)):
+async def scan_signals(min_confluence: int = Query(default=55, ge=0, le=100)):
     """Multi-symbol multi-tf professional SMC scan."""
     from app.services.smc_engine import analyze
     import asyncio, logging
@@ -2765,8 +3021,20 @@ async def scan_signals(min_confluence: int = Query(default=40, ge=0, le=100)):
         if x.get("omega_compliant") and x.get("grade") not in ("D", "F")
     ]
     watching = [x for x in candidates if x not in actionable]
-    actionable.sort(key=lambda x: (-x["confluence"], -x["rr"]))
-    watching.sort(key=lambda x: (-x["confluence"], -x["rr"]))
+    for row in candidates:
+        mc = int(row.get("micro_confluence") or 0)
+        rr_v = float(row.get("rr") or 0)
+        row["value_score"] = round(min(100.0, (
+            float(row.get("confluence") or 0) * 0.40
+            + float(row.get("probability") or 0) * 0.25
+            + min(rr_v, 5.0) / 5.0 * 100 * 0.15
+            + (mc / 15.0) * 100 * 0.20
+        )), 1)
+        row["is_prime"] = bool(
+            row.get("grade") in ("A+", "A") and rr_v >= 1.8 and mc >= 8
+        )
+    actionable.sort(key=lambda x: (-float(x.get("value_score") or 0), -x["confluence"], -x["rr"]))
+    watching.sort(key=lambda x: (-float(x.get("value_score") or 0), -x["confluence"], -x["rr"]))
     return {
         "signals": actionable,
         "watching": watching,
@@ -2822,6 +3090,23 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
     setup_type = report.get("setup_type") or "-"
     handbook_details = StrategyGroundedHelper.map_setup_to_handbook(setup_type, direction)
     micro_obj = report.get("microstructure") or {}
+    micro_points = _micro_confluence_points(micro_obj, direction)
+    rr_value = float(report.get("rr") or 0)
+    probability_value = int(report.get("probability") or 0)
+    confluence_value = int(report.get("confluence") or 0)
+    value_score = round(min(100.0, (
+        confluence_value * 0.40
+        + probability_value * 0.25
+        + min(rr_value, 5.0) / 5.0 * 100 * 0.15
+        + (micro_points / 15.0) * 100 * 0.20
+    )), 1)
+    grade_value = report.get("grade", "-")
+    is_prime = bool(
+        grade_value in ("A+", "A")
+        and rr_value >= 1.8
+        and micro_points >= 8
+        and direction in ("long", "short")
+    )
     return {
         "id": f"{symbol}:{timeframe}:{direction}:{setup_type}",
         "symbol": symbol,
@@ -2857,8 +3142,10 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
             if item.get("name")
         ],
         "decision": report.get("decision") or {},
-        "micro_confluence": _micro_confluence_points(micro_obj, direction),
+        "micro_confluence": micro_points,
         "micro_net": (micro_obj.get("filters") or {}).get("net_bias") or "neutral",
+        "value_score": value_score,
+        "is_prime": is_prime,
         "data_quality": report.get("data_quality") or {},
         "market_regime": report.get("market_regime") or {},
         "handbook_details": handbook_details,
@@ -2985,10 +3272,13 @@ async def scan_trade_setups(force: bool = Query(default=False)):
             market_prices,
             now=datetime.now(timezone.utc),
         )
-        forming = lifecycle["forming"][:20]
-        armed = lifecycle["armed"][:20]
-        confirmed = lifecycle["confirmed"][:20]
-        triggered = lifecycle["triggered"][:20]
+        def _by_value(item: dict) -> float:
+            return -(float(item.get("value_score") or 0))
+
+        forming = sorted(lifecycle["forming"], key=_by_value)[:20]
+        armed = sorted(lifecycle["armed"], key=_by_value)[:20]
+        confirmed = sorted(lifecycle["confirmed"], key=_by_value)[:20]
+        triggered = sorted(lifecycle["triggered"], key=_by_value)[:20]
         invalidated = lifecycle["invalidated"][:20]
         expired = lifecycle["expired"][:20]
         generated_at = datetime.now(timezone.utc).isoformat()

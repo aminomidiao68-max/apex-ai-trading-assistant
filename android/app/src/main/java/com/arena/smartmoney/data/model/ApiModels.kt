@@ -1275,7 +1275,9 @@ data class TradeSetupDto(
     @SerializedName("missing_scans") val missingScans: Int = 0,
     @SerializedName("handbook_details") val handbookDetails: TradeSetupHandbookDetails? = null,
     @SerializedName("micro_confluence") val microConfluence: Int = 0,
-    @SerializedName("micro_net") val microNet: String = "neutral"
+    @SerializedName("micro_net") val microNet: String = "neutral",
+    @SerializedName("value_score") val valueScore: Float = 0f,
+    @SerializedName("is_prime") val isPrime: Boolean = false
 )
 
 data class TradeSetupsResponseDto(
@@ -1347,6 +1349,11 @@ data class SmcStrictDecision(
     val orderflow: SmcDecisionOrderFlow = SmcDecisionOrderFlow()
 )
 
+data class SmcForce(
+    @SerializedName("buyers_pct") val buyersPct: Float = 50f,
+    @SerializedName("sellers_pct") val sellersPct: Float = 50f,
+    val label: String = "balanced"
+)
 data class SmcMicroLevel(
     val kind: String = "",
     val price: Float = 0f,
@@ -1377,6 +1384,7 @@ data class SmcReport(
     @SerializedName("entry_zone") val entryZone: SmcEntryZone? = null,
     @SerializedName("plan_lines") val planLines: List<SmcLine> = emptyList(),
     @SerializedName("micro_levels") val microLevels: List<SmcMicroLevel> = emptyList(),
+    val force: SmcForce? = null,
     @SerializedName("premium_zone") val premiumZone: String = "eq",
     @SerializedName("mtf_aligned") val mtfAligned: Boolean = false,
     @SerializedName("htf_bias") val htfBias: String? = null,
