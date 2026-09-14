@@ -118,6 +118,19 @@ class StrategyGroundedHelper:
   ۵. اگر پوشش داده جزئی بود (پنجره کوتاه)، این محدودیت را صادقانه در تحلیل ذکر کن.
 - اگر داده خردساختار واقعی در دسترس نبود، هرگز ادعای دیتای L2/فوت‌پرینت نکن و تحلیل را صرفاً بر ساختار چارت و حجم OHLCV استوار کن.
 ================================═══════════════════════════════════════
+🧊 پک پیشرفته ICT/Wyckoff (استراتژی‌های ۲۱ تا ۳۰) — الزامی برای ستاپ‌های زنده:
+================================═══════════════════════════════════════
+- Silver Bullet (۲۱): فقط در پنجره ۱۰-۱۱ صبح نیویورک؛ ورود روی FVG داخل حرکت Displacement.
+- Turtle Soup (۲۲): سوییپ سطح EQH/EQL یا سقف/کف قبلی + بسته‌شدن داخل محدوده → ورود خلاف جهت سوییپ.
+- Breaker Block (۲۳): OB شکست‌خورده که نقشش عوض شده؛ ورود در پولبک به آن.
+- FVG Fill / CE (۲۴): ورود روی Consequent Enclosure (میانه گپ) در جهت ساختار.
+- Judas Swing (۲۵): حرکت فریب ابتدای سشن لندن/نیویورک و بازگشت واقعی.
+- Wyckoff Spring (۲۶): شکست کف فاز C تراکم و بازگشت سریع → خرید.
+- Upthrust/UTAD (۲۷): شکست سقف توزیع و بازگشت → فروش.
+- Power of 3 (۲۸): چرخه انباشت-دستکاری-توزیع روزانه (AMD).
+- SMT (۲۹): واگرایی دو نماد همبسته (مثلاً EURUSD/GBPUSD یا BTC/ETH).
+- Displacement + Mitigation (۳۰): کندل‌های بدنه‌بزرگ نهادی + پولبک به OB/FVG همان حرکت.
+================================═══════════════════════════════════════
 """
 
     @classmethod
@@ -349,3 +362,60 @@ class StrategyGroundedHelper:
                 matched_id = 1
                 
         return strategies[matched_id]
+
+    ICT_ADVANCED_PACK: dict[int, dict] = {
+        21: {"name": "Silver Bullet (ICT)", "number": 21, "win_rate": "۶۵٪ الی ۷۵٪", "rr": "1:2", "timeframe": "1m الی 5m", "symbols": "NASDAQ, BTC, XAUUSD", "school": "ICT"},
+        22: {"name": "Turtle Soup (Sweep Reversal)", "number": 22, "win_rate": "۶۰٪ الی ۷۰٪", "rr": "1:2", "timeframe": "5m الی 15m", "symbols": "XAUUSD, EURUSD, BTC", "school": "ICT"},
+        23: {"name": "Breaker Block", "number": 23, "win_rate": "۶۵٪ الی ۷۵٪", "rr": "1:3", "timeframe": "15m الی 1h", "symbols": "تمام نمادها", "school": "ICT"},
+        24: {"name": "FVG Fill / CE Entry", "number": 24, "win_rate": "۶۰٪ الی ۷۰٪", "rr": "1:2.5", "timeframe": "5m الی 1h", "symbols": "تمام نمادها", "school": "ICT"},
+        25: {"name": "Judas Swing (Fakes Move)", "number": 25, "win_rate": "۶۰٪ الی ۷۰٪", "rr": "1:2", "timeframe": "5m الی 15m", "symbols": "XAUUSD, EURUSD", "school": "ICT"},
+        26: {"name": "Wyckoff Spring", "number": 26, "win_rate": "۶۵٪ الی ۷۵٪", "rr": "1:3", "timeframe": "1h الی Daily", "symbols": "BTC, ETH, XAUUSD", "school": "Wyckoff"},
+        27: {"name": "Upthrust / UTAD", "number": 27, "win_rate": "۶۰٪ الی ۷۰٪", "rr": "1:2.5", "timeframe": "1h الی Daily", "symbols": "BTC, ETH", "school": "Wyckoff"},
+        28: {"name": "Power of 3 (AMD)", "number": 28, "win_rate": "۵۵٪ الی ۶۵٪", "rr": "1:2", "timeframe": "15m الی 4h", "symbols": "شاخص‌ها و طلا", "school": "ICT"},
+        29: {"name": "SMT Divergence", "number": 29, "win_rate": "۵۵٪ الی ۶۵٪", "rr": "1:2", "timeframe": "5m الی 1h", "symbols": "جفت‌های همبسته", "school": "ICT"},
+        30: {"name": "Displacement + Mitigation", "number": 30, "win_rate": "۶۵٪ الی ۷۵٪", "rr": "1:3", "timeframe": "5m الی 1h", "symbols": "تمام نمادها", "school": "ICT"},
+    }
+
+    @classmethod
+    def map_setup_to_ict_pack(cls, setup_type: str, ict_summary: dict | None = None) -> dict | None:
+        """Match detected live ICT events to the advanced strategy pack (21-30)."""
+        clean = (setup_type or "").upper()
+        if ict_summary:
+            sb = (ict_summary.get("silver_bullet") or {}).get("active")
+            if sb:
+                return cls.ICT_ADVANCED_PACK[21]
+            sweeps = ict_summary.get("sweeps") or []
+            if sweeps:
+                return cls.ICT_ADVANCED_PACK[22]
+            disp = (ict_summary.get("displacement") or {}).get("direction")
+            if disp in ("up", "down"):
+                return cls.ICT_ADVANCED_PACK[30]
+        if "BREAKER" in clean:
+            return cls.ICT_ADVANCED_PACK[23]
+        if "FVG" in clean or "GAP" in clean or "IMBALANCE" in clean:
+            return cls.ICT_ADVANCED_PACK[24]
+        if "SWEEP" in clean or "SNIPE" in clean or "TURTLE" in clean:
+            return cls.ICT_ADVANCED_PACK[22]
+        if "JUDAS" in clean:
+            return cls.ICT_ADVANCED_PACK[25]
+        if "SPRING" in clean:
+            return cls.ICT_ADVANCED_PACK[26]
+        if "UTAD" in clean or "UPTHRUST" in clean:
+            return cls.ICT_ADVANCED_PACK[27]
+        if "AMD" in clean or "POWER OF 3" in clean:
+            return cls.ICT_ADVANCED_PACK[28]
+        if "SMT" in clean:
+            return cls.ICT_ADVANCED_PACK[29]
+        if "DISPLACEMENT" in clean:
+            return cls.ICT_ADVANCED_PACK[30]
+        return None
+
+    @classmethod
+    def get_ict_pack_prompt_section(cls) -> str:
+        lines = ["\n🧊 پک پیشرفته ICT/Wyckoff (استراتژی‌های ۲۱ تا ۳۰) — مبنای تطبیق ستاپ‌های زنده:"]
+        for item in cls.ICT_ADVANCED_PACK.values():
+            lines.append(
+                f"{item['number']}. {item['name']} ({item['school']}) | وین‌ریت: {item['win_rate']} | "
+                f"RR: {item['rr']} | تایم‌فریم: {item['timeframe']} | نمادها: {item['symbols']}"
+            )
+        return "\n".join(lines)

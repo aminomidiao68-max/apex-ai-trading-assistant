@@ -324,6 +324,26 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
                     ChipS("درجه ${r.grade}", gradeC)
                 }
                 item { ChipS("conf ${r.confluence}", when { r.confluence>=70->Gold; r.confluence>=40->GoldDim; else->TL }) }
+                r.ict?.let { ict ->
+                    ict.events.take(2).forEach { ev ->
+                        item {
+                            val isBull = ev.dir == "bullish"
+                            val lbl = when (ev.kind) {
+                                "sweep_high" -> "SWEEP▼"
+                                "sweep_low" -> "SWEEP▲"
+                                "displacement" -> if (isBull) "DISP▲" else "DISP▼"
+                                else -> ev.kind
+                            }
+                            ChipS(lbl, if (isBull) UpC else DnC)
+                        }
+                    }
+                    if (ict.silverBullet.active) item { ChipS("SB⚡", Gold) }
+                    if (ict.pointsBull > 0 || ict.pointsBear > 0) {
+                        item {
+                            ChipS("ICT ▲${ict.pointsBull}/▼${ict.pointsBear}", if (ict.pointsBull >= ict.pointsBear) UpC else DnC)
+                        }
+                    }
+                }
                 r.force?.let { f ->
                     item {
                         val col = if (f.buyersPct >= 58f) UpC else if (f.buyersPct <= 42f) DnC else TL

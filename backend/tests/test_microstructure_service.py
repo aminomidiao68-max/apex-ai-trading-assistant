@@ -493,7 +493,181 @@ def test_setup_value_score_and_prime():
     }
     payload = _setup_payload(report, "BTCUSDT", "crypto", "15m", "confirmed")
     assert payload["is_prime"] is True
-    assert payload["value_score"] >= 70
+    # No ICT/indicator intel in this fixture -> moderate score; prime rule unchanged.
+    assert payload["value_score"] >= 55
     weak = _setup_payload({**report, "grade": "C", "confluence": 45, "rr": 1.0, "microstructure": {"is_real": False}},
                           "BTCUSDT", "crypto", "15m", "forming")
-    assert weak["is_prime"] is False and weak["value_score"] < payload["value_score"]
+    assert weak["is_prime"] is False and weak["value_score"] < payload["value_score"] - 25
+
+
+# ================================== advanced indicators (professional grid)
+def _trend_items(n: int = 120, drift: float = 0.45, base: float = 100.0):
+    items = []
+    price = base
+    for i in range(n):
+        o = price
+        c = o + drift + (0.1 if i % 4 else -0.05)
+        h = max(o, c) + 0.15
+        l = min(o, c) - 0.15
+        items.append({"t": 1700000000 + i * 3600, "o": o, "c": c, "h": h, "l": l, "v": 100 + i})
+        price = c
+    return items
+
+
+def test_confluence_snapshot_uptrend_bullish():
+    from app.main import advanced_indicators as ai
+
+    snap = ai.confluence_snapshot(_trend_items())
+    assert snap["available"] is True
+    assert snap["score"] >= 35
+    assert snap["stance"] == "bullish"
+    assert snap["bull_count"] > snap["bear_count"]
+    v = snap["values"]
+    assert v["adx"]["adx"] and v["adx"]["adx"] >= 18
+    assert v["adx"]["plus_di"] > v["adx"]["minus_di"]
+    assert v["supertrend"]["direction"] == "up"
+    assert v["obv"]["slope"] == "up"
+    assert v["ichimoku"]["position"] in ("above_cloud", "inside_cloud")
+    assert v["vwap"]["vwap"] and v["vwap"]["distance_pct"] >= 0
+
+
+def test_confluence_snapshot_downtrend_bearish():
+    from app.main import advanced_indicators as ai
+
+    down = []
+    price = 200.0
+    for i in range(120):
+        o = price
+        c = o - 0.5 + (0.08 if i % 5 == 0 else 0)
+        down.append({"t": 1700000000 + i * 3600, "o": o, "c": c, "h": max(o, c) + 0.15, "l": min(o, c) - 0.15, "v": 100 + i})
+        price = c
+    snap = ai.confluence_snapshot(down)
+    assert snap["score"] <= -35
+    assert snap["stance"] == "bearish"
+    assert snap["values"]["adx"]["minus_di"] > snap["values"]["adx"]["plus_di"]
+    assert ai.confluence_snapshot(down[:10]).get("available") is False
+
+
+# ================================== advanced ICT engine
+def test_ict_sweep_detection_engineered():
+    from app.main import ict_engine
+
+    items = []
+    price = 100.0
+    for i in range(60):
+        items.append({"t": 1700000000 + i * 3600, "o": price, "c": price + 0.05, "h": price + 0.3, "l": price - 0.3, "v": 10})
+        price += 0.05
+    # establish swing high
+    items.append({"t": 1700000000 + 60 * 3600, "o": price, "c": price + 0.2, "h": price + 1.5, "l": price - 0.2, "v": 10})
+    price += 0.3
+    for i in range(61, 70):
+        items.append({"t": 1700000000 + i * 3600, "o": price, "c": price - 0.1, "h": price + 0.2, "l": price - 0.4, "v": 10})
+        price -= 0.1
+    # engineered sweep: wick above swing high, close back below
+    items.append({"t": 1700000000 + 70 * 3600, "o": price, "c": price + 0.05, "h": price + 2.5, "l": price - 0.3, "v": 10})
+    sweeps = ict_engine.liquidity_sweeps(items)
+    assert any(e["kind"] == "sweep_high" for e in sweeps)
+    eq = ict_engine.equal_levels(items)
+    assert "eqh" in eq and "eql" in eq
+    disp = ict_engine.displacement(items)
+    assert disp["direction"] in ("up", "down", "none")
+    assert 0 <= disp["strength"] <= 100
+
+
+def test_ict_fvg_states_and_pd_position():
+    from app.main import ict_engine
+
+    items = [{"t": 1700000000 + i * 60, "o": 100, "c": 100 + (0.2 if i % 2 else -0.05), "h": 100.6, "l": 99.7, "v": 5} for i in range(50)]
+    fvgs = [{"top": 100.5, "bottom": 100.0, "side": "bullish", "index": 5}]
+    states = ict_engine.fvg_states(fvgs, items)
+    assert states and 0 <= states[0]["filled_pct"] <= 100
+    assert states[0]["state"] in ("fresh", "partial", "filled")
+    assert states[0]["ce"] == 100.25
+
+    pd = ict_engine.premium_discount_position(99.75, items)
+    assert pd["zone"] == "discount" and pd["position_pct"] <= 30
+    pd2 = ict_engine.premium_discount_position(100.55, items)
+    assert pd2["zone"] == "premium"
+
+
+def test_ict_summarize_structure_and_points():
+    from app.main import ict_engine
+    from datetime import datetime, timezone
+
+    items = _trend_items(100)          # rally 100 -> ~145
+    price = items[-1]["c"]
+    for i in range(100, 118):          # pullback toward mid-range
+        o = price
+        c = o - 0.9
+        items.append({"t": 1700000000 + i * 3600, "o": o, "c": c, "h": o + 0.2, "l": c - 0.2, "v": 100 + i})
+        price = c
+    # institutional displacement candle up (body >> ATR)
+    items.append({"t": 1700000000 + 118 * 3600, "o": price, "c": price + 3.0, "h": price + 3.2, "l": price - 0.2, "v": 400})
+    summary = ict_engine.summarize(items, {}, now_utc=datetime(2026, 9, 14, 14, 30, tzinfo=timezone.utc))
+    for key in ("equal_highs_lows", "sweeps", "displacement", "fvg_states", "premium_discount", "silver_bullet", "points_bull", "points_bear"):
+        assert key in summary
+    assert summary["silver_bullet"]["active"] is True  # 10:30 NY on a Monday
+    assert 0 <= summary["points_bull"] <= 15
+    assert 0 <= summary["points_bear"] <= 15
+    # displacement up + pullback out of premium => bullish side must dominate
+    assert summary["displacement"]["direction"] == "up"
+    assert summary["points_bull"] > summary["points_bear"]
+
+
+# ================================== volume profile shape
+def test_volume_profile_shape_classification():
+    from app.services.microstructure_service import compute_volume_profile
+    import random
+
+    random.seed(3)
+    balanced = []
+    for i in range(800):
+        px = 100 + random.gauss(0, 0.4)
+        balanced.append({"px": px, "sz": 1, "side": "buy" if i % 2 else "sell", "ts": 1700000000000 + i})
+    vp = compute_volume_profile(balanced)
+    assert vp["shape"] in ("D", "B", "P", "b", "thin")
+    assert vp["shape_note"]
+
+    thin = [{"px": 100.0, "sz": 1, "side": "buy", "ts": 1700000000000 + i} for i in range(600)]
+    assert compute_volume_profile(thin)["shape"] == "thin"
+
+
+# ================================== setups payload: new intelligence fields
+def test_setup_payload_ict_and_indicator_fields():
+    from app.main import _setup_payload
+
+    report = {
+        "direction": "long", "setup_type": "BREAK+pulback", "grade": "A+",
+        "confluence": 80, "probability": 70, "rr": 2.5,
+        "microstructure": _compact_fixture(),
+        "ict": {"events": [{"kind": "sweep_low", "dir": "bullish", "price": 99.5}], "points_bull": 9, "points_bear": 2, "silver_bullet": {"active": False}},
+        "indicator_confluence": {"score": 40.0},
+        "levels": {"entry": 1, "sl": 0.9}, "decision": {},
+    }
+    payload = _setup_payload(report, "BTCUSDT", "crypto", "15m", "confirmed")
+    assert payload["ict_points"] == 9
+    assert payload["indicator_score"] == 70.0
+    assert payload["ict_events"][0]["kind"] == "sweep_low"
+    assert payload["ict_strategy"] is None  # no live ICT triggers -> pack mapping via type only
+    assert payload["value_score"] >= 70
+
+
+def test_dossier_includes_ict_and_indicator_sections():
+    from app.main import build_market_dossier
+
+    items = _trend_items(120)
+    report = {
+        "bias": "bullish", "htf": {"bias": "bullish"}, "premium_zone": "discount",
+        "price": items[-1]["c"], "action_label": "NO_TRADE", "grade": "C",
+        "direction": "neutral", "confluence": 40, "probability": 45, "rr": 0,
+        "levels": {"entry": None, "sl": None},
+        "fvg": [{"top": 105.0, "bottom": 104.0, "side": "bullish", "fresh": True}],
+        "force": {"buyers_pct": 60, "sellers_pct": 40, "label": "buyers_dominant"},
+    }
+    micro = None
+    report["ict"] = __import__("app.main", fromlist=["ict_engine"]).ict_engine.summarize(items, report)
+    report["indicator_confluence"] = __import__("app.main", fromlist=["advanced_indicators"]).advanced_indicators.confluence_snapshot(items)
+    dossier = build_market_dossier(report, micro, items)
+    assert "11) ICT پیشرفته" in dossier
+    assert "12) هم‌گرایی کل اندیکاتورها" in dossier
+    assert "SuperTrend=" in dossier and "Ichimoku=" in dossier

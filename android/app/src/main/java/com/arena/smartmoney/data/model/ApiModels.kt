@@ -1354,6 +1354,26 @@ data class SmcForce(
     @SerializedName("sellers_pct") val sellersPct: Float = 50f,
     val label: String = "balanced"
 )
+data class SmcIctEvent(
+    val kind: String = "",
+    val dir: String = "",
+    val price: Float = 0f
+)
+data class SmcIct(
+    val events: List<SmcIctEvent> = emptyList(),
+    val displacement: SmcIctDisp = SmcIctDisp(),
+    @SerializedName("silver_bullet") val silverBullet: SmcIctSb = SmcIctSb(),
+    @SerializedName("points_bull") val pointsBull: Int = 0,
+    @SerializedName("points_bear") val pointsBear: Int = 0
+)
+data class SmcIctDisp(
+    val direction: String = "none",
+    val strength: Float = 0f
+)
+data class SmcIctSb(
+    val active: Boolean = false,
+    val window: String? = null
+)
 data class SmcMicroLevel(
     val kind: String = "",
     val price: Float = 0f,
@@ -1385,6 +1405,7 @@ data class SmcReport(
     @SerializedName("plan_lines") val planLines: List<SmcLine> = emptyList(),
     @SerializedName("micro_levels") val microLevels: List<SmcMicroLevel> = emptyList(),
     val force: SmcForce? = null,
+    val ict: SmcIct? = null,
     @SerializedName("premium_zone") val premiumZone: String = "eq",
     @SerializedName("mtf_aligned") val mtfAligned: Boolean = false,
     @SerializedName("htf_bias") val htfBias: String? = null,

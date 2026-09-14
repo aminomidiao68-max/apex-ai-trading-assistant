@@ -149,6 +149,8 @@ from app.services.microstructure_service import (
     norm_timeframe,
 )
 from app.services.news_engine import mock_news
+from app.services import advanced_indicators
+from app.services import ict_engine
 from app.services.notification_service import NotificationService
 from app.services.orderflow_service import OrderFlowService
 from app.services.operational_validation_service import OperationalValidationError, OperationalValidationService
@@ -884,6 +886,50 @@ def build_market_dossier(report: dict, micro: dict | None, items: list[dict]) ->
         )
     lines.append("7) نیروی واقعی خریدار/فروشنده: خریدار=" + fmt(force.get("buyers_pct")) + "%"
                  + " | فروشنده=" + fmt(force.get("sellers_pct")) + "% (" + fmt(force.get("label")) + ")")
+    ict = report.get("ict")
+    if ict:
+        sweeps_txt = "؛ ".join(f"{e['kind']}@{e['price']:g}" for e in (ict.get("events") or []) if e.get("kind") != "displacement")
+        disp = ict.get("displacement") or {}
+        pd_info = ict.get("premium_discount") or {}
+        eq = ict.get("equal_highs_lows") or {}
+        fvg_states = ict.get("fvg_states") or []
+        sb = ict.get("silver_bullet") or {}
+        ict_line = (
+            "11) ICT پیشرفته (لایو): "
+            + (f"سوییپ‌ها: {sweeps_txt} | " if sweeps_txt else "")
+            + f"Displacement={disp.get('direction')} (قدرت {disp.get('strength')}%) | "
+            + f"موقعیت در رنج={pd_info.get('position_pct')}% ({pd_info.get('zone')}) | "
+            + f"EQH={len(eq.get('eqh') or [])} EQL={len(eq.get('eql') or [])} | "
+            + f"SilverBullet={'فعال' if sb.get('active') else 'غیرفعال'} | "
+            + f"وضعیت FVG: " + ("؛ ".join(f"{g['side']} {g['state']} {g['filled_pct']}% CE={g['ce']}" for g in fvg_states) or "بدون گپ باز")
+        )
+        lines.append(ict_line)
+    else:
+        lines.append("11) ICT پیشرفته: داده کافی نیست")
+    ind = report.get("indicator_confluence")
+    if ind and ind.get("available"):
+        values = ind.get("values") or {}
+        lines.append(
+            "12) هم‌گرایی کل اندیکاتورها/اوسیلاتورها: امتیاز=" + fmt(ind.get("score"))
+            + " (" + fmt(ind.get("stance")) + ")"
+            + " | صعودی=" + fmt(ind.get("bull_count")) + " نزولی=" + fmt(ind.get("bear_count")) + " خنثی=" + fmt(ind.get("neutral_count"))
+            + " | RSI=" + fmt(values.get("rsi14"))
+            + " | StochK/D=" + fmt(values.get("stoch_k")) + "/" + fmt(values.get("stoch_d"))
+            + " | StochRSI=" + fmt(values.get("stoch_rsi_k"))
+            + " | CCI=" + fmt(values.get("cci20"))
+            + " | Williams%R=" + fmt(values.get("williams_r"))
+            + " | MFI=" + fmt(values.get("mfi14"))
+            + " | OBV-slope=" + fmt((values.get("obv") or {}).get("slope"))
+            + " | ADX=" + fmt((values.get("adx") or {}).get("adx"))
+            + " | +DI=" + fmt((values.get("adx") or {}).get("plus_di"))
+            + " | -DI=" + fmt((values.get("adx") or {}).get("minus_di"))
+            + " | VWAP-dist%=" + fmt((values.get("vwap") or {}).get("distance_pct"))
+            + " | SuperTrend=" + fmt((values.get("supertrend") or {}).get("direction"))
+            + " | Ichimoku=" + fmt((values.get("ichimoku") or {}).get("position"))
+            + " | %B=" + fmt((values.get("bollinger") or {}).get("percent_b"))
+        )
+    else:
+        lines.append("12) هم‌گرایی اندیکاتورها: داده کافی نیست")
     lines.append("8) خردساختار زنده: " + micro_line.replace("\n", " | "))
     lines.append("9) حکم قطعی سیستم: action_label=" + fmt(report.get("action_label"))
                  + " | grade=" + fmt(report.get("grade"))
@@ -986,6 +1032,14 @@ async def enrich_orderflow(
         merged["micro"] = micro
         report["microstructure"] = micro
         report["micro_levels"] = _micro_level_lines(micro)
+    try:
+        report["ict"] = ict_engine.summarize(items, report)
+    except Exception:
+        report["ict"] = None
+    try:
+        report["indicator_confluence"] = advanced_indicators.confluence_snapshot(items)
+    except Exception:
+        report["indicator_confluence"] = None
     report["orderflow"] = merged
     return snapshot
 
@@ -1757,8 +1811,8 @@ async def analyze_chart_vision(
             "۴. 🕯️ سیلان سفارشات و سنجه‌های مشتقات (Order Flow & Derivatives):\n"
             "   - تحلیل مارکت اوردرها، دلتا و بررسی احتمال وقوع واگرایی مخفی یا معمولی CVD.\n"
             "   - وضعیت بهره باز (Open Interest) و نرخ فاندینگ (Funding Rate) در صورت وجود شواهد مشتقات.\n\n"
-            "۵. 📖 تطبیق با ۲۰ استراتژی مرجع کتابچه (Setup & Strategy Matching):\n"
-            "   - ستاپ شناسایی شده روی چارت را دقیقاً با یکی از ۲۰ استراتژی مرجع کتابچه تطبیق بده و وین‌ریت واقعی و ریسک به ریوارد آماری آن را ذکر کن.\n\n"
+            "۵. 📖 تطبیق با استراتژی مرجع (۲۰ کتابچه + پک پیشرفته ICT/Wyckoff ۲۱-۳۰):\n"
+            "   - ستاپ شناسایی‌شده را دقیقاً با شماره استراتژی مرجع تطبیق بده؛ اگر سوییپ/گپ/Displacement/پنجره Silver Bullet در پرونده هست، حتماً از پک ICT (۲۱-۳۰) استفاده کن و وین‌ریت و RR آماری آن را ذکر کن.\n\n"
             "۶. 🛡️ مدیریت سرمایه و برنامه خروج (Risk Plan & Grade):\n"
             "   - محدوده ورود پیشنهادی (Entry Zone)، حد ضرر امن (Safe SL) و اهداف سه گانه سود (TP1, TP2, TP3).\n"
             "   - تعیین رتبه نهایی معامله (Grade A+, A, B, C, D) بر اساس سیستم امتیازدهی وزن‌دار کوانت.\n\n"
@@ -1998,7 +2052,7 @@ async def execute_ai_chat_assistant(
             "۱. همیشه پاسخ‌ها را به زبان فارسی روان، علمی، صمیمانه، بسیار متمرکز بر مدیریت ریسک و بدون ادعاهای تضمین سود کاذب صادر کنید.\n"
             "۲. اصطلاحات فنی بازار را به درستی به کار ببرید و ترجیحاً پاسخ‌ها را با بخش‌بندی‌های منظم مجهز به ایموجی‌های تخصصی ارسال کنید.\n"
             "۳. هر زمان کاربر درباره ستاپ‌ها، جهت بازار، یا اصول ولوم پروفایل سوال کرد، پاسخ را مستقیماً به فریمورک ۶ ستون اصلی پیوند دهید.\n"
-            "۴. از قوانین و جزئیات ۲۰ استراتژی مرجع دانشنامه برای تحلیل سناریوهای کاربر استفاده کنید.\n"
+            "۴. از قوانین و جزئیات ۳۰ استراتژی مرجع (۲۰ استراتژی کتابچه + ۱۰ استراتژی پک پیشرفته ICT/Wyckoff) برای تحلیل سناریوهای کاربر استفاده کنید و شماره استراتژی متناظر را ذکر کنید.\n"
             "۵. پاسخ نهایی فقط و فقط فارسی باشد؛ هیچ تگ <think>، هیچ زنجیره فکر و هیچ متن انگلیسی خام در خروجی منتشر نکن.\n"
             "۶. سخت‌گیری حداکثری: هر عددی که در دیتای زنده داده شده معتبر است و مطلقاً نباید عددی از خودت بسازی؛ اگر دیتایی موجود نیست صریح بگو «داده کافی نیست».\n"
             "۷. وقتی درباره مسیر بازار می‌پرسند، همیشه حکم صریح بده: صعودی/نزولی/رنج + درصد اطمینان + ترازوی زور خریدار مقابل فروشنده (از دلتا/عمق/فوت‌پرینت واقعی)\n"
@@ -2186,6 +2240,8 @@ async def deep_institutional_analysis(
         "gaps_fvg": _gap_list(report),
         "order_blocks": _top_order_blocks(report),
         "oscillators": _oscillator_snapshot(items),
+        "ict": report.get("ict"),
+        "indicator_confluence": report.get("indicator_confluence"),
         "no_trade_reason": decision.get("no_trade_reason"),
         "handbook": handbook,
     }
@@ -2212,7 +2268,7 @@ async def deep_institutional_analysis(
         "📈 اندیکاتورها و اوسیلاتورها: RSI/EMA/MACD/BB هم‌گرا یا واگرا با ساختار؟\n"
         "📰 فیلتر خبری و زمانی: وضعیت بلاک خبر و کیفیت جلسه\n"
         "🛰️ هم‌راستایی خردساختار (µ) با ستاپ\n"
-        "📖 تطبیق با استراتژی مرجع کتابچه\n"
+        "📖 تطبیق با استراتژی مرجع (کتابچه ۲۰تایی + پک ICT ۲۱-۳۰ با ذکر شماره)\n"
         "🎯 سناریو اصلی و سناریوی جایگزین (فقط محرک/شرط، بدون ورود در حالت NO_TRADE)\n"
         "🛡️ برنامه ریسک: فقط اگر سیستم actionable بود: Entry/SL/TP1-TP3 با اعداد سیستم\n"
         "❌ چک‌لیست سخت‌گیری: چه چیزی کم است تا Grade-A شود\n"
@@ -3002,6 +3058,8 @@ async def scan_signals(min_confluence: int = Query(default=55, ge=0, le=100)):
                     "grade":r.get("grade","-"),
                     "micro_confluence": _micro_confluence_points(r.get("microstructure"), r.get("direction","neutral")),
                     "micro_net":((r.get("microstructure") or {}).get("filters") or {}).get("net_bias") or "neutral",
+                    "ict_points": ((r.get("ict") or {}).get("points_bull") if r.get("direction")=="long" else ((r.get("ict") or {}).get("points_bear") if r.get("direction")=="short" else 0)) or 0,
+                    "indicator_score": round((((r.get("indicator_confluence") or {}).get("score") or 0) + 100) / 2, 1),
                     "omega_compliant":r.get("omega_compliant",False),
                     "omega_reasons":r.get("omega_reasons",[]),
                     "action_label":r.get("action_label","WAIT"),
@@ -3024,11 +3082,15 @@ async def scan_signals(min_confluence: int = Query(default=55, ge=0, le=100)):
     for row in candidates:
         mc = int(row.get("micro_confluence") or 0)
         rr_v = float(row.get("rr") or 0)
+        ip = int(row.get("ict_points") or 0)
+        isc = float(row.get("indicator_score") or 50)
         row["value_score"] = round(min(100.0, (
-            float(row.get("confluence") or 0) * 0.40
-            + float(row.get("probability") or 0) * 0.25
+            float(row.get("confluence") or 0) * 0.25
+            + float(row.get("probability") or 0) * 0.15
             + min(rr_v, 5.0) / 5.0 * 100 * 0.15
             + (mc / 15.0) * 100 * 0.20
+            + (ip / 15.0) * 100 * 0.15
+            + isc * 0.10
         )), 1)
         row["is_prime"] = bool(
             row.get("grade") in ("A+", "A") and rr_v >= 1.8 and mc >= 8
@@ -3094,11 +3156,23 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
     rr_value = float(report.get("rr") or 0)
     probability_value = int(report.get("probability") or 0)
     confluence_value = int(report.get("confluence") or 0)
+    ict_obj = report.get("ict") or {}
+    if direction == "long":
+        ict_points = int(ict_obj.get("points_bull") or 0)
+    elif direction == "short":
+        ict_points = int(ict_obj.get("points_bear") or 0)
+    else:
+        ict_points = 0
+    ind_obj = report.get("indicator_confluence") or {}
+    ind_score = float(ind_obj.get("score") or 0)
+    indicator_score = round((ind_score + 100) / 2, 1)  # 0..100 aligned to direction-agnostic grid
     value_score = round(min(100.0, (
-        confluence_value * 0.40
-        + probability_value * 0.25
+        confluence_value * 0.25
+        + probability_value * 0.15
         + min(rr_value, 5.0) / 5.0 * 100 * 0.15
         + (micro_points / 15.0) * 100 * 0.20
+        + (ict_points / 15.0) * 100 * 0.15
+        + indicator_score * 0.10
     )), 1)
     grade_value = report.get("grade", "-")
     is_prime = bool(
@@ -3144,6 +3218,10 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
         "decision": report.get("decision") or {},
         "micro_confluence": micro_points,
         "micro_net": (micro_obj.get("filters") or {}).get("net_bias") or "neutral",
+        "ict_points": ict_points,
+        "indicator_score": indicator_score,
+        "ict_events": (report.get("ict") or {}).get("events") or [],
+        "ict_strategy": StrategyGroundedHelper.map_setup_to_ict_pack(setup_type, report.get("ict")),
         "value_score": value_score,
         "is_prime": is_prime,
         "data_quality": report.get("data_quality") or {},

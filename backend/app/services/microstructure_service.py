@@ -570,12 +570,30 @@ def compute_volume_profile(trades: list[dict], bin_count: int = 48) -> dict:
         if 0 < t <= mean_total * 0.5
     ]
 
+    above_mass = sum(totals[poc_index + 1:])
+    below_mass = sum(totals[:poc_index])
+    ratio_above = above_mass / grand_total if grand_total else 0.5
+    nonzero_bins = sum(1 for t in totals if t > 0)
+    max_share = max(totals) / grand_total if grand_total else 0.0
+    if max_share >= 0.30 or nonzero_bins <= 5:
+        shape, shape_note = "thin", "پروفایل نازک/ذره‌ای: نقدینگی واقعی کم است — ورود مطلقاً ممنوع"
+    elif ratio_above >= 0.62:
+        shape, shape_note = "P", "حجم بالا: روند صعودی قدرتمند یا توزیع سقف — پولبک به POC"
+    elif ratio_above <= 0.38:
+        shape, shape_note = "b", "حجم پایین: روند نزولی قدرتمند یا انباشت کف — پولبک به POC"
+    elif 0.42 <= ratio_above <= 0.58:
+        shape, shape_note = "D", "متعارف: بازار رنج و متعادل — استراتژی Range Fade بین VAH/VAL"
+    else:
+        shape, shape_note = "B", "دو-سشنی: بازار در حال انتقال ساختار"
+
     return {
         "is_real": True,
         "bin_width": _r(width, 8),
         "poc": _r(low + (poc_index + 0.5) * width, 6),
         "vah": _r(low + (upper + 1) * width, 6),
         "val": _r(low + lower * width, 6),
+        "shape": shape,
+        "shape_note": shape_note,
         "value_area_volume_pct": _r(acc / grand_total * 100, 2) if grand_total else 0.0,
         "hvn": hvn[:8],
         "lvn": lvn[:8],
@@ -919,6 +937,8 @@ def compact_micro(payload: dict) -> dict:
             "val": vp.get("val"),
             "hvn": vp.get("hvn"),
             "lvn": vp.get("lvn"),
+            "shape": vp.get("shape"),
+            "shape_note": vp.get("shape_note"),
         },
         "footprint": {
             "candles_covered": totals.get("candles_covered"),
@@ -1001,6 +1021,7 @@ def build_ai_context_text(payload: dict) -> str:
         ),
         (
             f"Volume Profile: POC={fmt(vp.get('poc'))} | VAH={fmt(vp.get('vah'))} | VAL={fmt(vp.get('val'))} | "
+            f"شکل={vp.get('shape') or '-'} ({vp.get('shape_note') or '-'}) | "
             f"HVN={fmt((vp.get('hvn') or [None])[:2])} | LVN={fmt((vp.get('lvn') or [None])[:2])}"
         ),
         (
