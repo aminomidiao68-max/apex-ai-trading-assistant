@@ -1,6 +1,7 @@
 package com.arena.smartmoney.data.network
 
 import com.arena.smartmoney.data.model.MarketStreamSnapshotDto
+import com.arena.smartmoney.data.model.ProximityAlertDto
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -22,13 +23,16 @@ class MarketWebSocketClient(
         symbol: String,
         market: String,
         onStatus: (String) -> Unit,
-        onSnapshot: (MarketStreamSnapshotDto) -> Unit
+        onSnapshot: (MarketStreamSnapshotDto) -> Unit,
+        timeframe: String = "15m",
+        alertsEnabled: Boolean = false,
+        onAlert: ((List<ProximityAlertDto>) -> Unit)? = null
     ) {
         disconnect()
         onStatus("connecting")
 
         val request = Request.Builder()
-            .url("$baseWsUrl?symbol=$symbol&market=$market")
+            .url("$baseWsUrl?symbol=$symbol&market=$market&timeframe=$timeframe&alerts=$alertsEnabled")
             .build()
 
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
@@ -38,6 +42,27 @@ class MarketWebSocketClient(
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 val json = JSONObject(text)
+                if (json.optString("type") == "proximity_alert") {
+                    val arr = json.optJSONArray("alerts") ?: return
+                    val parsed = mutableListOf<ProximityAlertDto>()
+                    for (i in 0 until arr.length()) {
+                        val o = arr.optJSONObject(i) ?: continue
+                        parsed.add(
+                            ProximityAlertDto(
+                                kind = o.optString("kind"),
+                                ref = o.optString("ref"),
+                                levelPrice = o.optDouble("level_price", 0.0),
+                                distancePct = o.optDouble("distance_pct", 0.0),
+                                side = o.optString("side"),
+                                severity = o.optStringOrNull("severity"),
+                                inRange = o.optBoolean("in_range", true),
+                                messageFa = o.optString("message_fa")
+                            )
+                        )
+                    }
+                    if (parsed.isNotEmpty()) onAlert?.invoke(parsed)
+                    return
+                }
                 val snapshot = MarketStreamSnapshotDto(
                     symbol = json.optString("symbol", symbol),
                     market = json.optString("market", market),

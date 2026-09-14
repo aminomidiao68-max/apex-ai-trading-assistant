@@ -151,6 +151,9 @@ from app.services.microstructure_service import (
 from app.services.news_engine import mock_news
 from app.services import advanced_indicators
 from app.services import ict_engine
+from app.services import smt_engine
+from app.services import proximity_alert_service
+from app.services import prime_backtest_service
 from app.services.notification_service import NotificationService
 from app.services.orderflow_service import OrderFlowService
 from app.services.operational_validation_service import OperationalValidationError, OperationalValidationService
@@ -930,6 +933,22 @@ def build_market_dossier(report: dict, micro: dict | None, items: list[dict]) ->
         )
     else:
         lines.append("12) هم‌گرایی اندیکاتورها: داده کافی نیست")
+    smt = report.get("smt")
+    if smt and smt.get("available"):
+        divs = smt.get("divergences") or []
+        div_txt = "؛ ".join(
+            f"{d.get('kind')} — قوی: {d.get('strong')}، ضعیف: {d.get('weak')}"
+            for d in divs[-2:]
+        ) or "بدون واگرایی اخیر"
+        lines.append(
+            "13) واگرایی SMT (لایو، قطعی): جفت=" + fmt(smt.get("primary")) + "/" + fmt(smt.get("correlated"))
+            + " | همبستگی=" + fmt(smt.get("correlation"))
+            + (" (قابل اتکا)" if smt.get("correlation_reliable") else " (زیر آستانه اتکا)")
+            + " | امتیاز SMT=" + fmt(smt.get("score"))
+            + " | " + div_txt
+        )
+    else:
+        lines.append("13) واگرایی SMT: داده جفت همبسته در دسترس نیست")
     lines.append("8) خردساختار زنده: " + micro_line.replace("\n", " | "))
     lines.append("9) حکم قطعی سیستم: action_label=" + fmt(report.get("action_label"))
                  + " | grade=" + fmt(report.get("grade"))
@@ -1017,12 +1036,35 @@ def _micro_level_lines(micro: dict | None) -> list[dict]:
     return levels
 
 
+_SMT_PAIRS = {
+    "BTCUSDT": ("ETHUSDT", "crypto"),
+    "ETHUSDT": ("BTCUSDT", "crypto"),
+    "SOLUSDT": ("ETHUSDT", "crypto"),
+    "XAUUSD": ("XAGUSD", "forex"),
+    "EURUSD": ("GBPUSD", "forex"),
+    "GBPUSD": ("EURUSD", "forex"),
+    "AUDUSD": ("NZDUSD", "forex"),
+}
+
+
+async def _smt_for_symbol(symbol: str, market: str, timeframe: str | None, items: list[dict]) -> dict | None:
+    """Deterministic SMT divergence vs the canonical correlated leg (real candles only)."""
+    pair = _SMT_PAIRS.get(str(symbol).upper())
+    if not pair or not items or not timeframe:
+        return None
+    corr_symbol, corr_market = pair
+    raw = await fetch_live_candles(corr_symbol, corr_market, _canonical_timeframe(timeframe))
+    corr_items = _norm_candles(raw)[-len(items):]
+    return smt_engine.detect_smt(items, corr_items, str(symbol).upper(), corr_symbol)
+
+
 async def enrich_orderflow(
     report: dict,
     symbol: str,
     market: str,
     items: list[dict],
     timeframe: str | None = None,
+    with_smt: bool = True,
 ) -> dict:
     snapshot = await orderflow_service.get_snapshot(symbol, market, items)
     candle_proxy = dict(report.get("orderflow") or {})
@@ -1036,6 +1078,11 @@ async def enrich_orderflow(
         report["ict"] = ict_engine.summarize(items, report)
     except Exception:
         report["ict"] = None
+    if with_smt:
+        try:
+            report["smt"] = await _smt_for_symbol(symbol, market, timeframe, items)
+        except Exception:
+            report["smt"] = None
     try:
         report["indicator_confluence"] = advanced_indicators.confluence_snapshot(items)
     except Exception:
@@ -1490,7 +1537,7 @@ async def get_intraday_fusion(
         report = analyze(items_by_tf[tf], symbol=symbol, timeframe=tf, htf_bias=htf_bias)
         report["market"] = market_eff
         report["frame_freshness"] = _frame_freshness(items_by_tf[tf], tf)
-        flow = await enrich_orderflow(report, symbol, market_eff, items_by_tf[tf], timeframe=tf)
+        flow = await enrich_orderflow(report, symbol, market_eff, items_by_tf[tf], timeframe=tf, with_smt=False)
         report = apply_strict_decision(
             report,
             items_by_tf[tf],
@@ -1839,6 +1886,15 @@ async def analyze_chart_vision(
                     v_flow = await orderflow_service.get_snapshot(vision_symbol, v_market, v_items)
                     vision_report["microstructure"] = micro
                     vision_report["force"] = _buyer_seller_force(vision_report, micro)
+                    # v3.11: deterministic ICT + SMT so the vision dossier is complete
+                    try:
+                        vision_report["ict"] = ict_engine.summarize(v_items, vision_report)
+                    except Exception:
+                        vision_report["ict"] = None
+                    try:
+                        vision_report["smt"] = await _smt_for_symbol(vision_symbol, v_market, v_tf, v_items)
+                    except Exception:
+                        vision_report["smt"] = None
                     apply_strict_decision(
                         vision_report,
                         v_items,
@@ -2241,6 +2297,7 @@ async def deep_institutional_analysis(
         "order_blocks": _top_order_blocks(report),
         "oscillators": _oscillator_snapshot(items),
         "ict": report.get("ict"),
+        "smt": report.get("smt"),
         "indicator_confluence": report.get("indicator_confluence"),
         "no_trade_reason": decision.get("no_trade_reason"),
         "handbook": handbook,
@@ -2268,6 +2325,7 @@ async def deep_institutional_analysis(
         "📈 اندیکاتورها و اوسیلاتورها: RSI/EMA/MACD/BB هم‌گرا یا واگرا با ساختار؟\n"
         "📰 فیلتر خبری و زمانی: وضعیت بلاک خبر و کیفیت جلسه\n"
         "🛰️ هم‌راستایی خردساختار (µ) با ستاپ\n"
+        "🔗 واگرایی SMT با جفت همبسته: اگر در پرونده هست با عدد گزارش بده؛ اگر نیست صریح بگو داده نیست\n"
         "📖 تطبیق با استراتژی مرجع (کتابچه ۲۰تایی + پک ICT ۲۱-۳۰ با ذکر شماره)\n"
         "🎯 سناریو اصلی و سناریوی جایگزین (فقط محرک/شرط، بدون ورود در حالت NO_TRADE)\n"
         "🛡️ برنامه ریسک: فقط اگر سیستم actionable بود: Entry/SL/TP1-TP3 با اعداد سیستم\n"
@@ -3040,7 +3098,7 @@ async def scan_signals(min_confluence: int = Query(default=55, ge=0, le=100)):
                         htf_bias = hrep.get("bias")
             except Exception: pass
             r = analyze(items, symbol=sym, timeframe=tf, htf_bias=htf_bias, news_blocked=_news_blocked)
-            flow = await enrich_orderflow(r, sym, mkt_eff, items, timeframe=tf)
+            flow = await enrich_orderflow(r, sym, mkt_eff, items, timeframe=tf, with_smt=False)
             r = apply_strict_decision(
                 r,
                 items,
@@ -3297,7 +3355,7 @@ async def scan_trade_setups(force: bool = Query(default=False)):
                         news_blocked=news_blocked,
                     )
                     report["htf_bias"] = htf_bias
-                    flow = await enrich_orderflow(report, symbol, market, items, timeframe=timeframe)
+                    flow = await enrich_orderflow(report, symbol, market, items, timeframe=timeframe, with_smt=False)
                     report = apply_strict_decision(
                         report,
                         items,
@@ -3430,13 +3488,199 @@ async def get_microstructure_snapshot(
     }
 
 
+async def _evaluate_proximity(
+    symbol: str,
+    market: str,
+    timeframe: str,
+    price: float | None = None,
+    with_micro: bool = True,
+) -> dict:
+    """Collect every real deterministic level and measure its distance to price.
+
+    Sources: numbered liquidity pools, FVG edges, order-block edges, EQH/EQL
+    (ICT), volume-profile POC/VAH/VAL and real L2 walls. Nothing is invented.
+    """
+    market_eff = _auto_market(symbol, None if market in (None, "", "auto") else market)
+    tf = _canonical_timeframe(timeframe)
+    raw = await fetch_live_candles(symbol, market_eff, tf)
+    items = _norm_candles(raw)
+    if len(items) < 30:
+        return {"available": False, "detail": "insufficient_candles", "rows": []}
+    price_eff = float(price or items[-1]["c"])
+    from app.services.smc_engine import analyze
+    report = analyze(items[-260:], symbol=symbol, timeframe=tf)
+    atr_pct = proximity_alert_service.atr_percent(items)
+    levels: list[dict] = []
+    for idx, pool in enumerate(_numbered_liquidity(report), 1):
+        levels.append({"kind": "liquidity", "price": pool["price"], "label": f"#{idx} {pool.get('kind') or 'liq'}"})
+    for gap in _gap_list(report)[:6]:
+        side = gap.get("side") or ""
+        levels.append({"kind": "fvg_edge", "price": gap["bottom"], "label": f"FVG {side} کف".strip()})
+        levels.append({"kind": "fvg_edge", "price": gap["top"], "label": f"FVG {side} سقف".strip()})
+    for ob in _top_order_blocks(report)[:3]:
+        edge = ob["top"] if price_eff <= float(ob["top"]) else ob["bottom"]
+        levels.append({"kind": "order_block", "price": edge, "label": f"OB {ob.get('side') or ''}".strip()})
+    try:
+        eq = ict_engine.equal_levels(items[-200:])
+        for row in (eq.get("eqh") or []):
+            levels.append({"kind": "eqh", "price": row.get("price"), "label": f"EQH×{row.get('count')}"})
+        for row in (eq.get("eql") or []):
+            levels.append({"kind": "eql", "price": row.get("price"), "label": f"EQL×{row.get('count')}"})
+    except Exception:
+        pass
+    if with_micro:
+        micro = await get_micro_summary(symbol, market_eff, tf, timeout_s=6.0, compact=True)
+        if micro and micro.get("is_real"):
+            vp = micro.get("vp") or {}
+            for key, label in (("poc", "POC"), ("vah", "VAH"), ("val", "VAL")):
+                if vp.get(key):
+                    levels.append({"kind": key, "price": float(vp[key]), "label": label})
+            l2 = micro.get("l2") or {}
+            for wall_key, kind in (("bid_wall", "l2_bid_wall"), ("ask_wall", "l2_ask_wall")):
+                wall = l2.get(wall_key) or {}
+                if wall.get("price"):
+                    levels.append({"kind": kind, "price": float(wall["price"]), "label": f"×{wall.get('x_median')}"})
+    rows = proximity_alert_service.evaluate_levels(price_eff, atr_pct, levels)
+    return {
+        "available": True,
+        "symbol": symbol,
+        "market": market_eff,
+        "timeframe": tf,
+        "price": price_eff,
+        "atr_pct": round(atr_pct, 4) if atr_pct is not None else None,
+        "levels_checked": len(levels),
+        "rows": rows,
+    }
+
+
+@app.get("/api/v1/alerts/proximity")
+async def get_proximity_alerts(
+    symbol: str = Query(..., min_length=2, max_length=24),
+    market: str = Query(default="auto", pattern="^(auto|crypto|forex)$"),
+    timeframe: str = Query(default="15m"),
+):
+    """Deterministic proximity of the live price to real liquidity/L2/VP/FVG levels."""
+    try:
+        evaluation = await _evaluate_proximity(symbol.upper(), market, timeframe)
+    except HTTPException:
+        raise
+    except Exception:
+        return {"available": False, "detail": "evaluation_failed", "alerts": [], "nearest": []}
+    rows = evaluation.get("rows") or []
+    alerts = [
+        {**row, "message_fa": proximity_alert_service.message_fa(symbol.upper(), row)}
+        for row in rows if row.get("in_range")
+    ]
+    return {
+        "available": bool(evaluation.get("available")),
+        "symbol": symbol.upper(),
+        "market": evaluation.get("market", market),
+        "timeframe": evaluation.get("timeframe"),
+        "price": evaluation.get("price"),
+        "atr_pct": evaluation.get("atr_pct"),
+        "levels_checked": evaluation.get("levels_checked", 0),
+        "alerts": alerts[:10],
+        "nearest": rows[:6],
+        "created_by": "Amin Omidi",
+    }
+
+
+_PRIME_BT_CACHE: dict[str, tuple[float, dict]] = {}
+
+
+@app.get("/api/v1/backtest/prime")
+async def backtest_prime_setups(
+    symbol: str = Query("BTCUSDT", min_length=2, max_length=24),
+    timeframe: str = Query("15m"),
+    market: str = Query(default="auto", pattern="^(auto|crypto|forex)$"),
+    candles: int = Query(default=1000, ge=200, le=2000),
+    force: bool = Query(default=False),
+):
+    """Walk-forward replay of the live setup detector over real historical candles."""
+    symbol = symbol.upper()
+    tf = _canonical_timeframe(timeframe)
+    market_eff = _auto_market(symbol, None if market == "auto" else market)
+    cache_key = f"{symbol}|{tf}|{candles}"
+    now = _time.time()
+    cached = _PRIME_BT_CACHE.get(cache_key)
+    if cached and now - cached[0] < 600 and not force:
+        return {**cached[1], "cached": True, "cache_age_seconds": round(now - cached[0], 1)}
+    if cached and force and now - cached[0] < 60:
+        # same anti-hammer cooldown as /setups/scan: force refreshes at most once a minute
+        return {**cached[1], "cached": True, "cache_age_seconds": round(now - cached[0], 1), "refresh_cooldown": True}
+
+    items: list[dict] = []
+    source = "none"
+    if market_eff == "crypto":
+        try:
+            items = await prime_backtest_service.fetch_okx_deep_candles(symbol, tf, candles)
+            source = "okx_history_candles"
+        except Exception:
+            items = []
+    if len(items) < 160:
+        try:
+            raw = await fetch_live_candles(symbol, market_eff, tf)
+            fallback = _norm_candles(raw)[-candles:]
+            if len(fallback) > len(items):
+                items = fallback
+                source = "live_cache_260" if market_eff == "crypto" else "provider_live"
+        except Exception:
+            pass
+    if len(items) < 160:
+        return {
+            "ok": False,
+            "detail": "داده تاریخی کافی برای بک‌تست در دسترس نیست.",
+            "candles": len(items),
+            "required": 160,
+        }
+
+    result = await prime_backtest_service.run_async(items, symbol=symbol, timeframe=tf)
+    result["data_source"] = source
+    if result.get("ok"):
+        _PRIME_BT_CACHE[cache_key] = (_time.time(), result)
+    return result
+
+
 @app.websocket("/ws/market")
-async def market_websocket(websocket: WebSocket, symbol: str = "BTCUSDT", market: str = "crypto"):
+async def market_websocket(
+    websocket: WebSocket,
+    symbol: str = "BTCUSDT",
+    market: str = "crypto",
+    timeframe: str = "15m",
+    alerts: bool = False,  # opt-in: older app builds must keep receiving snapshots only
+):
     await websocket.accept()
+    alert_state = proximity_alert_service.ProximityAlertState()
+    tick = 0
     try:
         while True:
             snapshot = await fetch_live_snapshot(symbol=symbol.upper(), market=market)
             await websocket.send_json(snapshot.model_dump())
+            tick += 1
+            if alerts and tick % 5 == 0:
+                try:
+                    evaluation = await _evaluate_proximity(
+                        symbol.upper(),
+                        market,
+                        timeframe,
+                        price=float(snapshot.last_price or 0) or None,
+                    )
+                    new_alerts = alert_state.filter_new(symbol.upper(), evaluation.get("rows") or [])
+                    if new_alerts:
+                        await websocket.send_json({
+                            "type": "proximity_alert",
+                            "symbol": symbol.upper(),
+                            "market": market,
+                            "timeframe": timeframe,
+                            "price": evaluation.get("price"),
+                            "ts": int(_time.time()),
+                            "alerts": [
+                                {**row, "message_fa": proximity_alert_service.message_fa(symbol.upper(), row)}
+                                for row in new_alerts
+                            ],
+                        })
+                except Exception:
+                    pass
             await asyncio.sleep(5)
     except WebSocketDisconnect:
         return

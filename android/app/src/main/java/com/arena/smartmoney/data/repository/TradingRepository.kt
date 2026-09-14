@@ -107,6 +107,19 @@ class TradingRepository(
     suspend fun getCandles(symbol: String, market: String, interval: String, limit: Int = 80) =
         api.getCandles(symbol = symbol, market = market, interval = interval, limit = limit)
 
+    suspend fun getProximityAlerts(symbol: String, market: String, timeframe: String) =
+        api.getProximityAlerts(symbol = symbol, market = market, timeframe = timeframe)
+
+    suspend fun getPrimeBacktest(
+        symbol: String,
+        timeframe: String,
+        market: String,
+        candles: Int = 1000,
+        force: Boolean = false
+    ) = api.getPrimeBacktest(
+        symbol = symbol, timeframe = timeframe, market = market, candles = candles, force = force
+    )
+
     suspend fun getExecutionStatus() = api.getExecutionStatus()
 
     suspend fun getPaperControl() = api.getPaperControl()

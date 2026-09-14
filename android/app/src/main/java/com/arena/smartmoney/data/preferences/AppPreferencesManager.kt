@@ -20,11 +20,39 @@ class AppPreferencesManager(context: Context) {
     fun getLanguage(): String = prefs.getString(KEY_LANGUAGE, "fa") ?: "fa"
     fun setLanguage(value: String) = prefs.edit().putString(KEY_LANGUAGE, value).apply()
 
+    // ---------------- chart user settings (v3.11) ----------------
+    fun getChartSymbol(): String = prefs.getString(KEY_CHART_SYMBOL, "XAUUSD") ?: "XAUUSD"
+    fun setChartSymbol(value: String) = prefs.edit().putString(KEY_CHART_SYMBOL, value).apply()
+
+    fun getChartMarket(): String = prefs.getString(KEY_CHART_MARKET, "") ?: ""
+    fun setChartMarket(value: String) = prefs.edit().putString(KEY_CHART_MARKET, value).apply()
+
+    fun getChartTimeframe(): String = prefs.getString(KEY_CHART_TIMEFRAME, "15m") ?: "15m"
+    fun setChartTimeframe(value: String) = prefs.edit().putString(KEY_CHART_TIMEFRAME, value).apply()
+
+    fun getChartCompareSymbols(): List<String> =
+        (prefs.getString(KEY_CHART_COMPARE, "") ?: "")
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .take(2)
+
+    fun setChartCompareSymbols(value: List<String>) =
+        prefs.edit().putString(KEY_CHART_COMPARE, value.joinToString(",")).apply()
+
+    fun isProximityAlertsEnabled(): Boolean = prefs.getBoolean(KEY_PROXIMITY_ALERTS, true)
+    fun setProximityAlertsEnabled(value: Boolean) = prefs.edit().putBoolean(KEY_PROXIMITY_ALERTS, value).apply()
+
     companion object {
         private const val KEY_NOTIFICATIONS = "notifications_enabled"
         private const val KEY_AUTO_REFRESH = "auto_refresh_enabled"
         private const val KEY_TESTNET_ONLY = "testnet_only"
         private const val KEY_RISK_ACK = "risk_ack"
         private const val KEY_LANGUAGE = "language"
+        private const val KEY_CHART_SYMBOL = "chart_symbol"
+        private const val KEY_CHART_MARKET = "chart_market"
+        private const val KEY_CHART_TIMEFRAME = "chart_timeframe"
+        private const val KEY_CHART_COMPARE = "chart_compare_symbols"
+        private const val KEY_PROXIMITY_ALERTS = "proximity_alerts_enabled"
     }
 }

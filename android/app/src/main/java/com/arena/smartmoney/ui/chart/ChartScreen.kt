@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,16 +29,21 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.arena.smartmoney.data.model.ProximityAlertDto
 import com.arena.smartmoney.data.model.SmcCandle
 import com.arena.smartmoney.data.model.SmcReport
 import com.arena.smartmoney.data.model.SmcSignal
+import com.arena.smartmoney.data.model.SmtInfoDto
 import com.arena.smartmoney.data.model.SmcZone
+import com.arena.smartmoney.data.network.MarketWebSocketClient
+import com.arena.smartmoney.data.preferences.AppPreferencesManager
 import com.arena.smartmoney.data.repository.TradingRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -74,27 +80,39 @@ private val VwapC    = Color(0xFFF5F0DC)
 private val VolUp    = Color(0x6626A69A)
 private val VolDn    = Color(0x66EF5350)
 
+private val CompareBlue = Color(0xFF42A5F5)
+private val CompareViolet = Color(0xFFCE93D8)
+private val COMPARE_COLORS = listOf(CompareBlue, CompareViolet)
+
 private val SYMBOLS = listOf("XAUUSD","EURUSD","GBPUSD","USDJPY","AUDUSD","BTCUSDT","ETHUSDT","SOLUSDT","US30","NAS100")
 private val TIMEFRAMES = listOf("1m","5m","15m","30m","1h","4h","1d")
 
 @Composable
 fun ChartScreen(
     onBack: (() -> Unit)? = null,
-    initialSymbol: String = "XAUUSD",
+    initialSymbol: String = "",
     initialMarket: String = "",
-    initialTimeframe: String = "15m",
+    initialTimeframe: String = "",
 ) {
     val repo = remember { TradingRepository() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val prefs = remember { AppPreferencesManager(context) }
     var r by remember { mutableStateOf(SmcReport()) }
     var loading by remember { mutableStateOf(true) }
-    var sym by remember(initialSymbol) { mutableStateOf(initialSymbol) }
-    var mkt by remember(initialMarket) { mutableStateOf(initialMarket) }
-    var tf by remember(initialTimeframe) { mutableStateOf(initialTimeframe) }
-    var scale by remember(initialTimeframe) { mutableStateOf(defaultChartScale(initialTimeframe)) }
+    var sym by remember { mutableStateOf(initialSymbol.ifBlank { prefs.getChartSymbol() }) }
+    var mkt by remember { mutableStateOf(initialMarket.ifBlank { prefs.getChartMarket() }) }
+    var tf by remember { mutableStateOf(initialTimeframe.ifBlank { prefs.getChartTimeframe() }) }
+    var scale by remember { mutableStateOf(defaultChartScale(tf)) }
     var signals by remember { mutableStateOf<List<SmcSignal>>(emptyList()) }
     var scanLoading by remember { mutableStateOf(false) }
     var refreshNonce by remember { mutableIntStateOf(0) }
+    var compareSyms by remember { mutableStateOf(prefs.getChartCompareSymbols().filter { it != sym }) }
+    var compareSeries by remember { mutableStateOf<List<CompareSeries>>(emptyList()) }
+    var alerts by remember { mutableStateOf<List<ProximityAlertDto>>(emptyList()) }
+    var alertsOpen by remember { mutableStateOf(false) }
+    var alertsEnabled by remember { mutableStateOf(prefs.isProximityAlertsEnabled()) }
+    val wsClient = remember { MarketWebSocketClient() }
     val screenListState = rememberLazyListState()
 
     fun scan() {
@@ -135,6 +153,57 @@ fun ChartScreen(
         scan()
     }
 
+    // v3.11: persist the user's chart settings (symbol / timeframe / compare / alerts)
+    LaunchedEffect(sym, mkt, tf, compareSyms, alertsEnabled) {
+        prefs.setChartSymbol(sym)
+        prefs.setChartMarket(mkt)
+        prefs.setChartTimeframe(tf)
+        prefs.setChartCompareSymbols(compareSyms)
+        prefs.setProximityAlertsEnabled(alertsEnabled)
+    }
+
+    // v3.11: fetch compare-symbol candles (up to 2) for the overlay
+    LaunchedEffect(compareSyms, tf) {
+        if (compareSyms.isEmpty()) {
+            compareSeries = emptyList()
+            return@LaunchedEffect
+        }
+        val out = mutableListOf<CompareSeries>()
+        compareSyms.forEach { compareSymbol ->
+            runCatching { repo.getCandles(compareSymbol, marketOf(compareSymbol), tf, 260) }
+                .onSuccess { resp ->
+                    val closes = resp.items.map { it.close.toFloat() }.filter { it > 0f }
+                    if (closes.size >= 2) out.add(CompareSeries(compareSymbol, closes))
+                }
+        }
+        compareSeries = out
+    }
+
+    // v3.11: seed proximity alerts once per symbol/timeframe (REST snapshot)
+    LaunchedEffect(sym, tf) {
+        alerts = emptyList()
+        runCatching { repo.getProximityAlerts(sym, marketOf(sym), tf) }
+            .onSuccess { resp -> alerts = resp.alerts }
+    }
+
+    // v3.11: live proximity alerts over the market WebSocket
+    DisposableEffect(sym, mkt, tf, alertsEnabled) {
+        if (alertsEnabled) {
+            wsClient.connect(
+                symbol = sym,
+                market = mkt.ifBlank { marketOf(sym) },
+                timeframe = tf,
+                alertsEnabled = true,
+                onStatus = { },
+                onSnapshot = { },
+                onAlert = { fresh -> alerts = (fresh + alerts).take(30) }
+            )
+        } else {
+            wsClient.disconnect()
+        }
+        onDispose { wsClient.disconnect() }
+    }
+
     Scaffold(
         containerColor = BgDark,
         topBar = {
@@ -156,12 +225,35 @@ fun ChartScreen(
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Label("نماد")
-                    ChipRow(SYMBOLS, sym) { sym = it; mkt = "" }
+                    ChipRow(SYMBOLS, sym) { picked -> sym = picked; mkt = ""; compareSyms = compareSyms.filter { it != picked } }
                     Label("تایم‌فریم")
                     ChipRow(TIMEFRAMES, tf) { tf = it; scale = defaultChartScale(it) }
+                    Label("مقایسه هم‌زمان (حداکثر ۲ نماد)")
+                    CompareChipRow(SYMBOLS.filter { it != sym }, compareSyms) { picked ->
+                        compareSyms = if (compareSyms.contains(picked)) {
+                            compareSyms - picked
+                        } else if (compareSyms.size >= 2) {
+                            compareSyms
+                        } else {
+                            compareSyms + picked
+                        }
+                    }
                 }
             }
             item { HeaderCard(r, sym, mkt, tf, loading) }
+            item {
+                AlertCard(
+                    alerts = alerts,
+                    enabled = alertsEnabled,
+                    expanded = alertsOpen,
+                    onToggleEnabled = { alertsEnabled = !alertsEnabled },
+                    onToggleOpen = { alertsOpen = !alertsOpen }
+                )
+            }
+            val smtInfo = r.smt
+            if (smtInfo != null && smtInfo.available) {
+                item { SmtCard(smtInfo) }
+            }
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = ChartBg), shape = RoundedCornerShape(6.dp)) {
                     Column(modifier = Modifier.padding(0.dp)) {
@@ -178,7 +270,10 @@ fun ChartScreen(
                             SmcCanvas(
                                 modifier = Modifier.fillMaxWidth().height(390.dp),
                                 report = r, scale = scale,
-                                onScale = { scale = (scale * it).coerceIn(0.6f, 4f) }
+                                onScale = { scale = (scale * it).coerceIn(0.6f, 4f) },
+                                compare = compareSeries.mapIndexed { idx, cs ->
+                                    CompareOverlay(cs.symbol, cs.closes, COMPARE_COLORS[idx % COMPARE_COLORS.size])
+                                }
                             )
                         } else {
                             Box(Modifier.fillMaxWidth().height(390.dp), contentAlignment = Alignment.Center) {
@@ -199,6 +294,13 @@ fun ChartScreen(
                                 item { LegendDot(LiqC, "BSL / SSL") }
                                 item { LegendDot(UpC, "BOS / CHoCH") }
                                 item { LegendDot(KzLon.copy(alpha=0.7f), "Sessions") }
+                                items(compareSeries) { cs ->
+                                    val idx = compareSeries.indexOf(cs)
+                                    val pct = if (cs.closes.first() > 0f)
+                                        (cs.closes.last() / cs.closes.first() - 1f) * 100f else 0f
+                                    val pctTxt = (if (pct >= 0f) "+" else "") + (Math.round(pct * 10.0) / 10.0) + "%"
+                                    LegendDot(COMPARE_COLORS[idx % COMPARE_COLORS.size], cs.symbol + " " + pctTxt)
+                                }
                             }
                         }
                     }
@@ -656,7 +758,7 @@ private fun defaultChartScale(timeframe: String): Float = when (timeframe) {
 
 // ======================== بوم چارت دقیقاً به سبک TradingView ========================
 @Composable
-private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: Float, onScale: (Float)->Unit) {
+private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: Float, onScale: (Float)->Unit, compare: List<CompareOverlay> = emptyList()) {
     Canvas(modifier = modifier
         .background(ChartBg)
         .pointerInput(Unit) { detectTransformGestures { _, _, zoom, _ -> onScale(zoom) } }
@@ -1037,6 +1139,32 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             drawContext.canvas.nativeCanvas.drawText(label, bx + pad, y + br.height() / 2f - 1f, lp)
         }
 
+        // ======== v3.11: خطوط مقایسه هم‌زمان (نرمال‌شده به محور قیمت نماد اصلی) ========
+        if (compare.isNotEmpty() && visible.isNotEmpty()) {
+            val anchor = visible.first().c
+            compare.forEach { ov ->
+                if (ov.closes.size < 2 || anchor <= 0f) return@forEach
+                val offset = totalCandles - ov.closes.size
+                val baseIdx = (startIdx - offset).coerceIn(0, ov.closes.size - 1)
+                val base = ov.closes[baseIdx]
+                if (base <= 0f) return@forEach
+                var prevX = 0f
+                var prevY = 0f
+                var started = false
+                for (ci in ov.closes.indices) {
+                    val absIdx = offset + ci
+                    if (absIdx < startIdx || absIdx >= totalCandles) continue
+                    val scaled = anchor * (ov.closes[ci] / base)
+                    val x = idxX(absIdx)
+                    val y = priceY(scaled).coerceIn(chartT, chartB)
+                    if (started) drawLine(ov.color.copy(alpha = 0.9f), Offset(prevX, prevY), Offset(x, y), strokeWidth = 1.6f)
+                    prevX = x
+                    prevY = y
+                    started = true
+                }
+            }
+        }
+
         // ======== قیمت لحظه‌ای (last price tag) مثل TV: برچسب روی محور راست ========
         val yPrice = priceY(report.price).coerceIn(chartT, chartB)
         val lastCol = if (candles.lastOrNull()?.let { it.c >= it.o } == true) UpC else DnC
@@ -1247,6 +1375,146 @@ fun AiSignalBoard(signals: List<com.arena.smartmoney.data.model.SmcSignal>, load
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+// ============================ v3.11: مقایسه / SMT / هشدارها ============================
+data class CompareSeries(val symbol: String, val closes: List<Float>)
+data class CompareOverlay(val symbol: String, val closes: List<Float>, val color: Color)
+
+private fun marketOf(symbol: String): String = when (symbol.uppercase()) {
+    "BTCUSDT", "ETHUSDT", "SOLUSDT" -> "crypto"
+    else -> "forex"
+}
+
+@Composable
+private fun CompareChipRow(options: List<String>, selected: List<String>, onToggle: (String) -> Unit) {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            contentPadding = PaddingValues(horizontal = 2.dp)
+        ) {
+            items(options) { option ->
+                val idx = selected.indexOf(option)
+                val isOn = idx >= 0
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isOn) COMPARE_COLORS[idx % COMPARE_COLORS.size].copy(alpha = 0.25f) else Surf,
+                    border = if (isOn) androidx.compose.foundation.BorderStroke(
+                        1.dp, COMPARE_COLORS[idx % COMPARE_COLORS.size]
+                    ) else null,
+                    modifier = Modifier.clickable { onToggle(option) }
+                ) {
+                    Text(
+                        text = option,
+                        color = if (isOn) TH else TL,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SmtCard(smt: SmtInfoDto) {
+    val scoreColor = if (smt.score > 0) UpC else if (smt.score < 0) DnC else TL
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Surf),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.25f))
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("🔗 واگرایی SMT (هوش پول هوشمند)", color = Gold, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                Spacer(Modifier.weight(1f))
+                Text("امتیاز ${smt.score}", color = scoreColor, fontWeight = FontWeight.Black, fontSize = 13.sp)
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(smt.summaryFa, color = TH, fontSize = 12.sp, lineHeight = 20.sp)
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val corrTxt = smt.correlation?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "—"
+                ChipS("همبستگی $corrTxt", if (smt.correlationReliable) UpC else DnC)
+                Spacer(Modifier.width(6.dp))
+                ChipS("${smt.primary} ↔ ${smt.correlated}", Gold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlertCard(
+    alerts: List<ProximityAlertDto>,
+    enabled: Boolean,
+    expanded: Boolean,
+    onToggleEnabled: () -> Unit,
+    onToggleOpen: () -> Unit
+) {
+    val latest = alerts.firstOrNull()
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Surf),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            when {
+                latest == null -> Gold.copy(alpha = 0.18f)
+                latest.severity == "critical" -> DnC.copy(alpha = 0.55f)
+                else -> Gold.copy(alpha = 0.4f)
+            }
+        )
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Notifications, "alerts", tint = Gold, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("هشدار مجاورت سطوح", color = Gold, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                Spacer(Modifier.weight(1f))
+                Text(if (enabled) "زنده" else "خاموش", color = if (enabled) UpC else TL, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Switch(checked = enabled, onCheckedChange = { onToggleEnabled() }, modifier = Modifier.height(24.dp))
+            }
+            if (latest != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    latest.messageFa,
+                    color = if (latest.severity == "critical") DnC else TH,
+                    fontSize = 12.sp,
+                    lineHeight = 20.sp,
+                    modifier = Modifier.clickable { onToggleOpen() }
+                )
+                if (alerts.size > 1) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        if (expanded) "بستن فهرست ▲" else "${alerts.size - 1} هشدار دیگر — نمایش ▼",
+                        color = TL,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { onToggleOpen() }
+                    )
+                    if (expanded) {
+                        Spacer(Modifier.height(6.dp))
+                        alerts.drop(1).take(8).forEach { row ->
+                            Text(
+                                row.messageFa,
+                                color = if (row.severity == "critical") DnC.copy(alpha = 0.85f) else TL,
+                                fontSize = 11.sp,
+                                lineHeight = 18.sp,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    if (enabled) "در حال پایش فاصله قیمت تا نقدینگی‌ها، دیوارهای L2، POC/VAH/VAL و گپ‌ها..."
+                    else "هشدارها خاموش است؛ برای پایش زنده روشن کنید.",
+                    color = TL, fontSize = 11.sp
+                )
             }
         }
     }

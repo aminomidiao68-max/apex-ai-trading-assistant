@@ -7,6 +7,7 @@ import com.arena.smartmoney.data.model.BacktestRunRequestDto
 import com.arena.smartmoney.data.model.BacktestSummaryDto
 import com.arena.smartmoney.data.model.BacktestSweepRequestDto
 import com.arena.smartmoney.data.model.BacktestSweepSummaryDto
+import com.arena.smartmoney.data.model.PrimeBacktestResponseDto
 import com.arena.smartmoney.data.model.RiskSettingsDto
 import com.arena.smartmoney.data.model.TradeStatsDto
 import com.arena.smartmoney.data.model.WalkForwardRequestDto
@@ -37,6 +38,9 @@ data class BacktestUiState(
     val sweepSummary: BacktestSweepSummaryDto? = null,
     val walkForwardSummary: WalkForwardSummaryDto? = null,
     val analytics: AnalyticsSummaryDto? = null,
+    val primeLoading: Boolean = false,
+    val primeResult: PrimeBacktestResponseDto? = null,
+    val primeError: String? = null,
     val error: String? = null
 )
 
@@ -102,6 +106,29 @@ class BacktestViewModel(
     fun cycleTakeProfit() {
         val current = _uiState.value
         _uiState.value = current.copy(takeProfitIndex = (current.takeProfitIndex + 1) % 3)
+    }
+
+    fun runPrimeBacktest() {
+        val current = _uiState.value
+        viewModelScope.launch {
+            _uiState.value = current.copy(primeLoading = true, primeError = null)
+            runCatching {
+                repository.getPrimeBacktest(
+                    symbol = current.symbol,
+                    timeframe = current.timeframe,
+                    market = current.market,
+                    candles = 1000,
+                    force = false
+                )
+            }.onSuccess { result ->
+                _uiState.value = _uiState.value.copy(primeLoading = false, primeResult = result, primeError = null)
+            }.onFailure { throwable ->
+                _uiState.value = _uiState.value.copy(
+                    primeLoading = false,
+                    primeError = throwable.message ?: "PRIME backtest failed"
+                )
+            }
+        }
     }
 
     fun runBacktest() {

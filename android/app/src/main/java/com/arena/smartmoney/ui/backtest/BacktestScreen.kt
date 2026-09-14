@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arena.smartmoney.data.model.BacktestSummaryDto
+import com.arena.smartmoney.data.model.PrimeBacktestStatsDto
 import com.arena.smartmoney.data.model.BacktestSweepSummaryDto
 import com.arena.smartmoney.data.model.WalkForwardSummaryDto
 import com.arena.smartmoney.ui.components.PremiumGlassCard
@@ -99,6 +100,58 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
                     walkForward = state.walkForwardSummary,
                     t = t,
                 )
+            }
+            item {
+                PremiumGlassCard(borderColor = Color(0x40D4AF37)) {
+                    Text(
+                        t("PRIME Backtest (Live Detector Replay)", "بک‌تست PRIME (بازپخش آشکارساز زنده)"),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        t(
+                            "Replays the exact live setup detector over real exchange history with conservative fills. No login needed.",
+                            "آشکارساز زنده ستاپ‌ها را روی تاریخچه واقعی صرافی با قوانین پرکردن محافظه‌کارانه بازپخش می‌کند. بدون نیاز به ورود."
+                        ),
+                        color = Color(0xFFDDF8FF)
+                    )
+                    Button(onClick = { viewModel.runPrimeBacktest() }, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            if (state.primeLoading) t("Running on real history...", "در حال اجرا روی تاریخچه واقعی...")
+                            else t("Run PRIME Backtest", "اجرای بک‌تست PRIME") + " • ${state.symbol} • ${state.timeframe}"
+                        )
+                    }
+                    state.primeError?.let { Text(t("Error", "خطا") + ": $it", color = MaterialTheme.colorScheme.error) }
+                    state.primeResult?.let { res ->
+                        if (!res.ok) {
+                            Text(res.detail ?: t("Not enough historical data", "داده تاریخی کافی نیست"), color = Color(0xFFFFD27A))
+                        } else {
+                            MetricLine(
+                                t("Candles / Source", "کندل‌ها / منبع"),
+                                "${res.candles} • ${res.dataSource}" + (res.htf?.let { " • HTF $it" } ?: "")
+                            )
+                            MetricLine(
+                                t("Setups Detected / Not Triggered", "ستاپ‌های شناسایی / فعال‌نشده"),
+                                "${res.setupsDetected} / ${res.setupsNotTriggered}"
+                            )
+                            PrimeStatsBlock(t("All Graded Setups (A+/A/B)", "همه ستاپ‌های گریددار (A+/A/B)"), res.all, t)
+                            PrimeStatsBlock(t("PRIME Proxy (Full Omega Gate)", "پروکسی PRIME (گیت کامل امگا)"), res.primeProxy, t)
+                            if (res.trades.isNotEmpty()) {
+                                Text(t("Recent Trades", "معاملات اخیر"), color = Color.White, fontWeight = FontWeight.Bold)
+                                res.trades.takeLast(6).reversed().forEach { tr ->
+                                    Text(
+                                        "${tr.direction.uppercase(Locale.getDefault())} • ${tr.setupType} • ${tr.grade}" +
+                                            (if (tr.prime) " ★PRIME" else "") +
+                                            " → R=${tr.r} (${tr.exitReason})",
+                                        color = if (tr.r > 0) Color(0xFF67ECFF) else Color(0xFFFFD27A)
+                                    )
+                                }
+                            }
+                            Text(res.disclaimerFa, color = Color(0xFF9AA7BD), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
             }
             state.analytics?.let { analytics ->
                 item {
@@ -312,4 +365,19 @@ private fun localizeOutcome(value: String, t: (String, String) -> String): Strin
         "no_entry" -> t("No Entry", "ورود فعال نشد")
         else -> value
     }
+}
+
+@Composable
+private fun PrimeStatsBlock(title: String, stats: PrimeBacktestStatsDto, t: (String, String) -> String) {
+    Text(title, color = Color(0xFF67ECFF), fontWeight = FontWeight.Bold)
+    if (stats.trades == 0) {
+        Text(t("No trades in this window", "در این بازه معامله‌ای ثبت نشد"), color = Color(0xFFDDF8FF))
+        return
+    }
+    MetricLine(t("Trades / Wins / Losses", "معاملات / برد / باخت"), "${stats.trades} / ${stats.wins} / ${stats.losses}")
+    MetricLine(t("Win Rate", "نرخ برد"), stats.winRatePct?.let { "$it%" } ?: "—")
+    MetricLine(t("Avg R / Total R", "میانگین R / کل R"), "${stats.avgR ?: "—"} / ${stats.totalR ?: "—"}")
+    MetricLine(t("Profit Factor / Expectancy", "ضریب سود / امیدریاضی"), "${stats.profitFactor ?: "—"} / ${stats.expectancyR ?: "—"}")
+    MetricLine(t("Max Consecutive Losses", "حداکثر باخت پیاپی"), stats.maxConsecutiveLosses.toString())
+    MetricLine(t("Best / Worst R", "بهترین / بدترین R"), "${stats.bestR ?: "—"} / ${stats.worstR ?: "—"}")
 }

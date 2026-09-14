@@ -1406,6 +1406,7 @@ data class SmcReport(
     @SerializedName("micro_levels") val microLevels: List<SmcMicroLevel> = emptyList(),
     val force: SmcForce? = null,
     val ict: SmcIct? = null,
+    val smt: SmtInfoDto? = null,
     @SerializedName("premium_zone") val premiumZone: String = "eq",
     @SerializedName("mtf_aligned") val mtfAligned: Boolean = false,
     @SerializedName("htf_bias") val htfBias: String? = null,
@@ -1438,4 +1439,96 @@ data class SmcReport(
     val decision: SmcStrictDecision = SmcStrictDecision(),
     @SerializedName("data_quality") val dataQuality: SmcDataQuality = SmcDataQuality(),
     @SerializedName("market_regime") val marketRegime: SmcMarketRegime = SmcMarketRegime()
+)
+
+
+// ================== v3.11: SMT + Proximity Alerts + PRIME Backtest ==================
+data class SmtDivergenceDto(
+    val kind: String = "",
+    val side: String = "",
+    val strong: String = "",
+    val weak: String = "",
+    val time: Double? = null
+)
+
+data class SmtInfoDto(
+    val available: Boolean = false,
+    val primary: String = "",
+    val correlated: String = "",
+    val correlation: Double? = null,
+    @SerializedName("correlation_reliable") val correlationReliable: Boolean = false,
+    @SerializedName("aligned_candles") val alignedCandles: Int = 0,
+    val divergences: List<SmtDivergenceDto> = emptyList(),
+    val score: Int = 0,
+    @SerializedName("summary_fa") val summaryFa: String = ""
+)
+
+data class ProximityAlertDto(
+    val kind: String = "",
+    val ref: String = "",
+    @SerializedName("level_price") val levelPrice: Double = 0.0,
+    @SerializedName("distance_pct") val distancePct: Double = 0.0,
+    val side: String = "",
+    val severity: String? = null,
+    @SerializedName("in_range") val inRange: Boolean = false,
+    @SerializedName("message_fa") val messageFa: String = ""
+)
+
+data class ProximityAlertsResponseDto(
+    val available: Boolean = false,
+    val symbol: String = "",
+    val market: String = "",
+    val timeframe: String = "",
+    val price: Double? = null,
+    @SerializedName("atr_pct") val atrPct: Double? = null,
+    @SerializedName("levels_checked") val levelsChecked: Int = 0,
+    val alerts: List<ProximityAlertDto> = emptyList(),
+    val nearest: List<ProximityAlertDto> = emptyList()
+)
+
+data class PrimeBacktestStatsDto(
+    val trades: Int = 0,
+    val wins: Int = 0,
+    val losses: Int = 0,
+    @SerializedName("win_rate_pct") val winRatePct: Double? = null,
+    @SerializedName("avg_r") val avgR: Double? = null,
+    @SerializedName("total_r") val totalR: Double? = null,
+    @SerializedName("profit_factor") val profitFactor: Double? = null,
+    @SerializedName("expectancy_r") val expectancyR: Double? = null,
+    @SerializedName("max_consecutive_losses") val maxConsecutiveLosses: Int = 0,
+    @SerializedName("best_r") val bestR: Double? = null,
+    @SerializedName("worst_r") val worstR: Double? = null,
+    @SerializedName("exit_reasons") val exitReasons: Map<String, Int> = emptyMap()
+)
+
+data class PrimeBacktestTradeDto(
+    val direction: String = "",
+    @SerializedName("setup_type") val setupType: String = "",
+    val grade: String = "",
+    val confluence: Int = 0,
+    @SerializedName("omega_compliant") val omegaCompliant: Boolean = false,
+    val prime: Boolean = false,
+    val entry: Double = 0.0,
+    val sl: Double = 0.0,
+    val tp1: Double = 0.0,
+    @SerializedName("exit_reason") val exitReason: String = "",
+    @SerializedName("bars_held") val barsHeld: Int = 0,
+    val r: Double = 0.0,
+    val time: Double? = null
+)
+
+data class PrimeBacktestResponseDto(
+    val ok: Boolean = false,
+    val detail: String? = null,
+    val symbol: String = "",
+    val timeframe: String = "",
+    val htf: String? = null,
+    val candles: Int = 0,
+    @SerializedName("data_source") val dataSource: String = "",
+    @SerializedName("setups_detected") val setupsDetected: Int = 0,
+    @SerializedName("setups_not_triggered") val setupsNotTriggered: Int = 0,
+    val all: PrimeBacktestStatsDto = PrimeBacktestStatsDto(),
+    @SerializedName("prime_proxy") val primeProxy: PrimeBacktestStatsDto = PrimeBacktestStatsDto(),
+    val trades: List<PrimeBacktestTradeDto> = emptyList(),
+    @SerializedName("disclaimer_fa") val disclaimerFa: String = ""
 )

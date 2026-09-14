@@ -20,6 +20,8 @@ import com.arena.smartmoney.data.model.WalkForwardRequestDto
 import com.arena.smartmoney.data.model.WalkForwardSummaryDto
 import com.arena.smartmoney.data.model.BacktestSummaryDto
 import com.arena.smartmoney.data.model.CandlesResponse
+import com.arena.smartmoney.data.model.ProximityAlertsResponseDto
+import com.arena.smartmoney.data.model.PrimeBacktestResponseDto
 import com.arena.smartmoney.data.model.DeviceTokenItemDto
 import com.arena.smartmoney.data.model.ExecutionActionResponseDto
 import com.arena.smartmoney.data.model.DeviceTokenRegisterRequestDto
@@ -146,6 +148,22 @@ interface TradingApiService {
         @Query("interval") interval: String,
         @Query("limit") limit: Int
     ): CandlesResponse
+
+    @GET("api/v1/alerts/proximity")
+    suspend fun getProximityAlerts(
+        @Query("symbol") symbol: String,
+        @Query("market") market: String,
+        @Query("timeframe") timeframe: String
+    ): ProximityAlertsResponseDto
+
+    @GET("api/v1/backtest/prime")
+    suspend fun getPrimeBacktest(
+        @Query("symbol") symbol: String,
+        @Query("timeframe") timeframe: String,
+        @Query("market") market: String,
+        @Query("candles") candles: Int,
+        @Query("force") force: Boolean
+    ): PrimeBacktestResponseDto
 
     @GET("api/v1/execution/status")
     suspend fun getExecutionStatus(): ExecutionStatusResponse
