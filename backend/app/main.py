@@ -145,9 +145,12 @@ from app.services.market_data_service import MarketDataService
 from app.services.microstructure_service import (
     MicrostructureService,
     build_ai_context_text,
+    build_compact_context_text,
     detect_symbol_from_text,
     norm_timeframe,
 )
+from app.services import indicator_pack_v2
+from app.services import strategy_pack_v2
 from app.services.news_engine import mock_news
 from app.services import advanced_indicators
 from app.services import ict_engine
@@ -844,9 +847,12 @@ def build_market_dossier(report: dict, micro: dict | None, items: list[dict]) ->
     gaps = _gap_list(report)
     obs = _top_order_blocks(report)
     events = (report.get("events") or [])[-4:]
-    micro_line = build_ai_context_text(micro) if micro and micro.get("is_real") else (
-        "⚠️ داده خردساختار واقعی (L2/فوت‌پرینت) در دسترس نیست؛ نباید عددی از خودت بسازی."
-    )
+    if micro and micro.get("is_real"):
+        # compact payloads carry "flow"/"vp"/"l2" keys; full payloads carry "order_flow"/...
+        is_compact = "order_flow" not in micro and "flow" in micro
+        micro_line = build_compact_context_text(micro) if is_compact else build_ai_context_text(micro)
+    else:
+        micro_line = "⚠️ داده خردساختار واقعی (L2/فوت‌پرینت) در دسترس نیست؛ نباید عددی از خودت بسازی."
 
     def fmt(v) -> str:
         return f"{v:g}" if isinstance(v, (int, float)) else str(v)
@@ -891,19 +897,49 @@ def build_market_dossier(report: dict, micro: dict | None, items: list[dict]) ->
                  + " | فروشنده=" + fmt(force.get("sellers_pct")) + "% (" + fmt(force.get("label")) + ")")
     ict = report.get("ict")
     if ict:
-        sweeps_txt = "؛ ".join(f"{e['kind']}@{e['price']:g}" for e in (ict.get("events") or []) if e.get("kind") != "displacement")
+        sweeps_txt = "؛ ".join(f"{e['kind']}@{e['price']:g}" for e in (ict.get("events") or []) if e.get("kind") not in ("displacement", "BOS", "CHoCH"))
         disp = ict.get("displacement") or {}
         pd_info = ict.get("premium_discount") or {}
         eq = ict.get("equal_highs_lows") or {}
         fvg_states = ict.get("fvg_states") or []
         sb = ict.get("silver_bullet") or {}
+        ms = ict.get("market_structure") or {}
+        ote = ict.get("ote") or {}
+        kz = ict.get("killzone") or {}
+        inv = ict.get("inversion_fvg") or []
+        brk = ict.get("breakers") or []
+        struct_txt = ""
+        if ms.get("state"):
+            ev_txt2 = "؛ ".join(f"{e.get('kind')} {e.get('dir')}@{e.get('price'):g}" for e in (ms.get("events") or [])[-3:] if e.get("price"))
+            struct_txt = f"ساختار={ms.get('state')} ({ms.get('pattern')})" + (f" | رویدادها: {ev_txt2}" if ev_txt2 else "") + " | "
+        ote_txt = ""
+        if ote.get("available"):
+            ote_txt = (f"OTE({ote.get('direction')}): ناحیه {ote.get('ote_bottom'):g}–{ote.get('ote_top'):g}"
+                       + (" ← قیمت داخل ناحیه OTE است" if ote.get("price_in_zone") else "") + " | ")
+        kz_txt = ""
+        kz_active = kz.get("active") or {}
+        if kz_active:
+            kz_txt = f"کیلزون فعال={kz_active.get('name')} ({kz_active.get('minutes_left')} دقیقه مانده، کیفیت {kz.get('quality')}) | "
+        elif kz:
+            kz_txt = f"کیلزون فعال نیست (کیفیت {kz.get('quality')}) | "
+        brk_txt = ""
+        if brk:
+            brk_txt = "بریکرها: " + "؛ ".join(f"{b.get('kind')} {b.get('bottom'):g}–{b.get('top'):g}" for b in brk[-2:]) + " | "
+        inv_txt = ""
+        if inv:
+            inv_txt = "FVG وارونه: " + "؛ ".join(f"{g.get('original_side')} پر شده → نقش {g.get('inverted_role')} ({g.get('bottom'):g}–{g.get('top'):g})" for g in inv[:2]) + " | "
         ict_line = (
             "11) ICT پیشرفته (لایو): "
+            + struct_txt
             + (f"سوییپ‌ها: {sweeps_txt} | " if sweeps_txt else "")
             + f"Displacement={disp.get('direction')} (قدرت {disp.get('strength')}%) | "
             + f"موقعیت در رنج={pd_info.get('position_pct')}% ({pd_info.get('zone')}) | "
+            + ote_txt
+            + kz_txt
             + f"EQH={len(eq.get('eqh') or [])} EQL={len(eq.get('eql') or [])} | "
             + f"SilverBullet={'فعال' if sb.get('active') else 'غیرفعال'} | "
+            + brk_txt
+            + inv_txt
             + f"وضعیت FVG: " + ("؛ ".join(f"{g['side']} {g['state']} {g['filled_pct']}% CE={g['ce']}" for g in fvg_states) or "بدون گپ باز")
         )
         lines.append(ict_line)
@@ -949,6 +985,18 @@ def build_market_dossier(report: dict, micro: dict | None, items: list[dict]) ->
         )
     else:
         lines.append("13) واگرایی SMT: داده جفت همبسته در دسترس نیست")
+    ind2 = report.get("indicators_v2") or {}
+    ind2_sum = ind2.get("summary") or {}
+    if ind2_sum.get("available"):
+        pack = ind2.get("pack") or {}
+        lines.append("14) پک اندیکاتورهای پیشرفته v2: " + indicator_pack_v2.build_context_text(pack, ind2_sum).replace("\n", " | "))
+    else:
+        lines.append("14) پک اندیکاتورهای پیشرفته v2: داده کافی نیست")
+    strat2 = report.get("strategies_v2") or {}
+    if strat2.get("available"):
+        lines.append("15) پک استراتژی‌های کلاسیک v2:\n" + strategy_pack_v2.build_context_text(strat2))
+    else:
+        lines.append("15) پک استراتژی‌های کلاسیک v2: داده کافی نیست")
     lines.append("8) خردساختار زنده: " + micro_line.replace("\n", " | "))
     lines.append("9) حکم قطعی سیستم: action_label=" + fmt(report.get("action_label"))
                  + " | grade=" + fmt(report.get("grade"))
@@ -1087,6 +1135,16 @@ async def enrich_orderflow(
         report["indicator_confluence"] = advanced_indicators.confluence_snapshot(items)
     except Exception:
         report["indicator_confluence"] = None
+    # v3.12: professional indicator pack v2 + classic strategy pack v2 (deterministic)
+    try:
+        _pack = indicator_pack_v2.compute_all(items)
+        report["indicators_v2"] = {"pack": _pack, "summary": indicator_pack_v2.summarize(_pack)}
+    except Exception:
+        report["indicators_v2"] = None
+    try:
+        report["strategies_v2"] = strategy_pack_v2.scan_all(items, timeframe or "15m")
+    except Exception:
+        report["strategies_v2"] = None
     report["orderflow"] = merged
     return snapshot
 
@@ -1844,6 +1902,9 @@ async def analyze_chart_vision(
             "🕯️ فوت‌پرینت و والوم پروفایل: POC/VAH/VAL با عدد + موقعیت قیمت نسبت به آن‌ها\n"
             "📰 فیلتر خبری و زمانی: اگر سیستم خبر را بلاک کرده یا جلسه ضعیف است صریحاً بگو\n"
             "📊 هم‌گرایی کل اندیکاتورها و اوسیلاتورها: RSI/EMA/MACD/BB و تلاقی‌شان با ساختار\n"
+            "🔬 پک اندیکاتور پیشرفته v2: رأی ۱۶ اندیکاتور حرفه‌ای (TRIX/KST/Aroon/TTM Squeeze/Choppiness/VWAP-z و...) از پرونده — هم‌راستا یا مخالف ساختار؟\n"
+            "🧰 استراتژی‌های کلاسیک v2: سیگنال‌های فعال پک ۲۲تایی (وایکاف، سر و شانه، ORB، پرچم، جوداس، Power of 3 و...) با کیفیت هرکدام؛ تضادها را صریح بگو\n"
+            "🏛️ ICT ساختاری: وضعیت BOS/CHoCH + ناحیه OTE (قیمت داخلش هست؟) + کیلزون فعال + بریکرها/FVG وارونه\n"
             "🧾 برنامه معاملاتی: فقط اگر حکم قطعی سیستم قابل‌معامله بود (نه NO_TRADE/WAIT) سه سناریوی ورود با اعداد Entry/SL/TP1/TP2/TP3 سیستم را اعلام کن؛ در غیر این صورت بنویس «بدون ورود» و دلیل دقیق سخت‌گیری را بیاور\n"
             "❌ رد شرایط: صادقانه بگو چه شرایطی کم است تا ستاپ درجه-A شود\n\n"
             "۱. 🌀 تشخیص ساختار و رژیم بازار (Market Structure & Regime Detection):\n"
@@ -1895,6 +1956,16 @@ async def analyze_chart_vision(
                         vision_report["smt"] = await _smt_for_symbol(vision_symbol, v_market, v_tf, v_items)
                     except Exception:
                         vision_report["smt"] = None
+                    # v3.12: indicator + strategy packs for the vision dossier
+                    try:
+                        _v_pack = indicator_pack_v2.compute_all(v_items)
+                        vision_report["indicators_v2"] = {"pack": _v_pack, "summary": indicator_pack_v2.summarize(_v_pack)}
+                    except Exception:
+                        vision_report["indicators_v2"] = None
+                    try:
+                        vision_report["strategies_v2"] = strategy_pack_v2.scan_all(v_items, v_tf)
+                    except Exception:
+                        vision_report["strategies_v2"] = None
                     apply_strict_decision(
                         vision_report,
                         v_items,
@@ -2102,8 +2173,12 @@ async def execute_ai_chat_assistant(
         model_options = await _model_options_for(cand, kind="chat")
 
         system_prompt = (
-            "شما دستیار ارشد، زبده و ریاضیدان ترید اسمارت مانی (SMC)، آی‌سی‌تی (ICT) و جریان سفارشات (Order Flow) پلتفرم APEX PRO v3.1 هستید. "
+            "شما دستیار ارشد، زبده و ریاضیدان ترید اسمارت مانی (SMC)، آی‌سی‌تی (ICT) و جریان سفارشات (Order Flow) پلتفرم APEX PRO v3.12 هستید. "
             "وظیفه شما راهنمایی معامله‌گران بر اساس اصول علمی، سیستم امتیازدهی کمّی کوانت، ۶ ستون اصلی استراتژی و دانشنامه جامع ۲۰ استراتژی معاملاتی است.\n\n"
+            "📁 اگر «پرونده قطعی بازار» در پیام هست: تمام اعداد آن واقعی و محاسبه‌شده سیستم است (ساختار ICT شامل BOS/CHoCH و OTE و کیلزون، "
+            "فوت‌پرینت و CVD، پک ۲۲ اندیکاتور پیشرفته با رأی‌گیری، پک ۲۲ استراتژی کلاسیک فعال، SMT). "
+            "پاسخ را دقیقاً بر پایه همان اعداد بساز؛ اگر بخشی «داده کافی نیست» بود صریح بگو و حدس نزن. "
+            "تضاد بین استراتژی‌ها/اندیکاتورها را پنهان نکن — سخت‌گیرانه وزن‌دهی کن و بگو کدام شواهد قوی‌ترند.\n\n"
             "دستورالعمل‌های رفتاری شما:\n"
             "۱. همیشه پاسخ‌ها را به زبان فارسی روان، علمی، صمیمانه، بسیار متمرکز بر مدیریت ریسک و بدون ادعاهای تضمین سود کاذب صادر کنید.\n"
             "۲. اصطلاحات فنی بازار را به درستی به کار ببرید و ترجیحاً پاسخ‌ها را با بخش‌بندی‌های منظم مجهز به ایموجی‌های تخصصی ارسال کنید.\n"
@@ -2130,6 +2205,37 @@ async def execute_ai_chat_assistant(
                     + build_ai_context_text(micro)
                     + "\n\n"
                 )
+            # v3.12: full deterministic dossier (SMC + ICT v2 + packs + SMT) for chat grounding
+            try:
+                c_tf = _canonical_timeframe(request.timeframe or "15m")
+                c_market = _auto_market(chat_symbol, None)
+                c_raw = await fetch_live_candles(symbol=chat_symbol, market=c_market, timeframe=c_tf)
+                c_items = _norm_candles(c_raw[-220:])
+                if len(c_items) >= 30:
+                    from app.services.smc_engine import analyze as _c_an
+                    c_report = _c_an(c_items, symbol=chat_symbol, timeframe=c_tf)
+                    c_report["market"] = c_market
+                    try:
+                        c_report["ict"] = ict_engine.summarize(c_items, c_report)
+                    except Exception:
+                        c_report["ict"] = None
+                    try:
+                        c_report["smt"] = await _smt_for_symbol(chat_symbol, c_market, c_tf, c_items)
+                    except Exception:
+                        c_report["smt"] = None
+                    try:
+                        _c_pack = indicator_pack_v2.compute_all(c_items)
+                        c_report["indicators_v2"] = {"pack": _c_pack, "summary": indicator_pack_v2.summarize(_c_pack)}
+                    except Exception:
+                        c_report["indicators_v2"] = None
+                    try:
+                        c_report["strategies_v2"] = strategy_pack_v2.scan_all(c_items, c_tf)
+                    except Exception:
+                        c_report["strategies_v2"] = None
+                    c_report["force"] = _buyer_seller_force(c_report, micro)
+                    live_context += "📁 پرونده قطعی بازار (تحلیل سیستم، نه حدس):\n" + build_market_dossier(c_report, micro, c_items) + "\n\n"
+            except Exception:
+                pass
 
         history_messages = _chat_history_messages(request.history)
         base_payload = {
@@ -2299,6 +2405,20 @@ async def deep_institutional_analysis(
         "ict": report.get("ict"),
         "smt": report.get("smt"),
         "indicator_confluence": report.get("indicator_confluence"),
+        "indicators_v2": (report.get("indicators_v2") or {}).get("summary"),
+        "strategies_v2": {
+            "counts": (report.get("strategies_v2") or {}).get("counts"),
+            "net_direction": (report.get("strategies_v2") or {}).get("net_direction"),
+            "agreement_pct": (report.get("strategies_v2") or {}).get("agreement_pct"),
+            "active": [
+                {"name_fa": s.get("name_fa"), "direction": s.get("direction"), "quality": s.get("quality"), "reason_fa": s.get("reason_fa")}
+                for s in ((report.get("strategies_v2") or {}).get("active") or [])[:8]
+            ],
+            "forming": [
+                {"name_fa": s.get("name_fa"), "reason_fa": s.get("reason_fa")}
+                for s in ((report.get("strategies_v2") or {}).get("forming") or [])[:4]
+            ],
+        } if (report.get("strategies_v2") or {}).get("available") else None,
         "no_trade_reason": decision.get("no_trade_reason"),
         "handbook": handbook,
     }
@@ -2321,8 +2441,11 @@ async def deep_institutional_analysis(
         "🩹 گپ‌ها (FVG) با محدوده عددی + نقش هر گپ\n"
         "🧱 سفارشات: دیوارهای L2 و OBها با قیمت + جذب یا شکست\n"
         "📊 پروفایل حجم: POC/VAH/VAL با عدد + موقعیت قیمت + سناریوی ۸۰٪ Value Area\n"
-        "🕯️ فوت‌پرینت: دلتای کندل‌ها، Imbalanceهای روی‌هم، اتمام‌نیافته‌ها\n"
+        "🕯️ فوت‌پرینت: دلتای کندل‌ها، Imbalanceهای روی‌هم، اتمام‌نیافته‌ها + جمع‌بندی (مهاجرت POC، واگرایی دلتا/قیمت)\n"
         "📈 اندیکاتورها و اوسیلاتورها: RSI/EMA/MACD/BB هم‌گرا یا واگرا با ساختار؟\n"
+        "🔬 پک اندیکاتور پیشرفته v2: رأی‌ها (صعودی/نزولی/خنثی)، وضعیت TTM Squeeze، Choppiness (رژیم روند/رنج)، z-score نسبت به VWAP — هم‌راستا با ساختار یا نه؟\n"
+        "🧰 استراتژی‌های کلاسیک v2: سیگنال‌های فعال/در حال شکل‌گیری با کیفیت هرکدام (وایکاف، ORB، سر و شانه، پرچم، جوداس، Power of 3 و...) — اگر با هم تضاد دارند بگو کدام با ساختار/جریان هم‌راستاست\n"
+        "🏛️ ICT ساختاری: وضعیت BOS/CHoCH و الگوی HH/HL یا LH/LL + آیا قیمت داخل ناحیه OTE است؟ + کیلزون فعال و کیفیت زمانی + بریکرها و FVGهای وارونه\n"
         "📰 فیلتر خبری و زمانی: وضعیت بلاک خبر و کیفیت جلسه\n"
         "🛰️ هم‌راستایی خردساختار (µ) با ستاپ\n"
         "🔗 واگرایی SMT با جفت همبسته: اگر در پرونده هست با عدد گزارش بده؛ اگر نیست صریح بگو داده نیست\n"
@@ -2921,6 +3044,10 @@ def _rebase_killzones(items, offset: int, total: int):
 
 def _prepare_chart_report(report: dict, items: list[dict], max_candles: int = 160) -> dict:
     """Trim candles and rebase every overlay index to the returned chart window."""
+    # v3.12: clients only need the indicator-pack summary; drop the raw pack (bandwidth)
+    ind2 = report.get("indicators_v2")
+    if isinstance(ind2, dict) and "pack" in ind2:
+        report["indicators_v2"] = {"summary": ind2.get("summary")}
     total = len(items)
     offset = max(0, total - max_candles)
     display = items[offset:]
@@ -3118,6 +3245,13 @@ async def scan_signals(min_confluence: int = Query(default=55, ge=0, le=100)):
                     "micro_net":((r.get("microstructure") or {}).get("filters") or {}).get("net_bias") or "neutral",
                     "ict_points": ((r.get("ict") or {}).get("points_bull") if r.get("direction")=="long" else ((r.get("ict") or {}).get("points_bear") if r.get("direction")=="short" else 0)) or 0,
                     "indicator_score": round((((r.get("indicator_confluence") or {}).get("score") or 0) + 100) / 2, 1),
+                    "strategies_net": (r.get("strategies_v2") or {}).get("net_direction"),
+                    "strategies_agreement_pct": (r.get("strategies_v2") or {}).get("agreement_pct"),
+                    "strategies_active": [
+                        {"name_fa": s.get("name_fa"), "direction": s.get("direction"), "quality": s.get("quality")}
+                        for s in ((r.get("strategies_v2") or {}).get("active") or [])[:3]
+                    ],
+                    "indicators_v2_net": ((r.get("indicators_v2") or {}).get("summary") or {}).get("net"),
                     "omega_compliant":r.get("omega_compliant",False),
                     "omega_reasons":r.get("omega_reasons",[]),
                     "action_label":r.get("action_label","WAIT"),
@@ -3150,8 +3284,19 @@ async def scan_signals(min_confluence: int = Query(default=55, ge=0, le=100)):
             + (ip / 15.0) * 100 * 0.15
             + isc * 0.10
         )), 1)
+        # v3.12: strategy pack evidence adjusts value and gates PRIME (no conflict allowed)
+        s_net = row.get("strategies_net")
+        s_dir = row.get("direction")
+        s_conflict = bool(s_net in ("long", "short") and s_dir in ("long", "short") and s_net != s_dir)
+        if s_net == s_dir and int(row.get("strategies_agreement_pct") or 0) >= 60:
+            row["value_score"] = round(min(100.0, row["value_score"] + 4.0), 1)
+        elif s_conflict:
+            row["value_score"] = round(max(0.0, row["value_score"] - 6.0), 1)
+        elif s_net == "conflict":
+            row["value_score"] = round(max(0.0, row["value_score"] - 2.0), 1)
+        row["strategies_conflict"] = s_conflict
         row["is_prime"] = bool(
-            row.get("grade") in ("A+", "A") and rr_v >= 1.8 and mc >= 8
+            row.get("grade") in ("A+", "A") and rr_v >= 1.8 and mc >= 8 and not s_conflict
         )
     actionable.sort(key=lambda x: (-float(x.get("value_score") or 0), -x["confluence"], -x["rr"]))
     watching.sort(key=lambda x: (-float(x.get("value_score") or 0), -x["confluence"], -x["rr"]))
@@ -3232,12 +3377,29 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
         + (ict_points / 15.0) * 100 * 0.15
         + indicator_score * 0.10
     )), 1)
+    # v3.12: classic strategy pack evidence (deterministic adjustment ±)
+    strat2 = report.get("strategies_v2") or {}
+    strat_net = None
+    strat_agree = 0
+    strat_conflict = False
+    if strat2.get("available") and direction in ("long", "short"):
+        strat_net = strat2.get("net_direction")
+        strat_agree = int(strat2.get("agreement_pct") or 0)
+        if strat_net == direction and strat_agree >= 60:
+            value_score = round(min(100.0, value_score + 4.0), 1)
+        elif strat_net in ("long", "short") and strat_net != direction:
+            strat_conflict = True
+            value_score = round(max(0.0, value_score - 6.0), 1)
+        elif strat_net == "conflict":
+            value_score = round(max(0.0, value_score - 2.0), 1)
     grade_value = report.get("grade", "-")
     is_prime = bool(
         grade_value in ("A+", "A")
         and rr_value >= 1.8
         and micro_points >= 8
         and direction in ("long", "short")
+        # v3.12 strictness: the classic strategy pack must not be fighting the setup
+        and not strat_conflict
     )
     return {
         "id": f"{symbol}:{timeframe}:{direction}:{setup_type}",
@@ -3280,6 +3442,15 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
         "indicator_score": indicator_score,
         "ict_events": (report.get("ict") or {}).get("events") or [],
         "ict_strategy": StrategyGroundedHelper.map_setup_to_ict_pack(setup_type, report.get("ict")),
+        "strategies_net": strat_net,
+        "strategies_agreement_pct": strat_agree,
+        "strategies_conflict": strat_conflict,
+        "strategies_active": [
+            {"name_fa": s.get("name_fa"), "direction": s.get("direction"), "quality": s.get("quality")}
+            for s in ((report.get("strategies_v2") or {}).get("active") or [])[:4]
+        ],
+        "indicators_v2_net": ((report.get("indicators_v2") or {}).get("summary") or {}).get("net"),
+        "indicators_v2_verdict": ((report.get("indicators_v2") or {}).get("summary") or {}).get("verdict"),
         "value_score": value_score,
         "is_prime": is_prime,
         "data_quality": report.get("data_quality") or {},

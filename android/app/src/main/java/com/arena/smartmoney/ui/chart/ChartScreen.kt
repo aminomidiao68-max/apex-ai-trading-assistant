@@ -38,9 +38,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arena.smartmoney.data.model.ProximityAlertDto
 import com.arena.smartmoney.data.model.SmcCandle
+import com.arena.smartmoney.data.model.SmcIct
 import com.arena.smartmoney.data.model.SmcReport
 import com.arena.smartmoney.data.model.SmcSignal
 import com.arena.smartmoney.data.model.SmtInfoDto
+import com.arena.smartmoney.data.model.StrategiesV2Dto
+import com.arena.smartmoney.data.model.IndicatorsV2SummaryDto
 import com.arena.smartmoney.data.model.SmcZone
 import com.arena.smartmoney.data.network.MarketWebSocketClient
 import com.arena.smartmoney.data.preferences.AppPreferencesManager
@@ -253,6 +256,19 @@ fun ChartScreen(
             val smtInfo = r.smt
             if (smtInfo != null && smtInfo.available) {
                 item { SmtCard(smtInfo) }
+            }
+            // === v3.12: پک استراتژی‌های کلاسیک + پک اندیکاتور پیشرفته + ICT Pro ===
+            val strat2 = r.strategiesV2
+            if (strat2 != null && strat2.available && (strat2.active.isNotEmpty() || strat2.forming.isNotEmpty())) {
+                item { StrategyPackCard(strat2) }
+            }
+            val ind2 = r.indicatorsV2?.summary
+            if (ind2 != null && ind2.available) {
+                item { IndicatorPackCard(ind2) }
+            }
+            val ictPro = r.ict
+            if (ictPro != null && (ictPro.marketStructure != null || (ictPro.ote?.available == true) || ictPro.killzone != null)) {
+                item { IctProCard(ictPro) }
             }
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = ChartBg), shape = RoundedCornerShape(6.dp)) {
@@ -537,6 +553,35 @@ private fun HeaderCard(r: SmcReport, sym: String, mkt: String, tf: String, loadi
                         }
                         micro.footprint?.stackedSell?.takeIf { it >= 3 }?.let { stk ->
                             item { ChipS("STK▼$stk", DnC) }
+                        }
+                        micro.footprint?.summary?.takeIf { it.available }?.let { fps ->
+                            fps.pocMigration?.let { m ->
+                                item {
+                                    ChipS(
+                                        when (m) { "rising" -> "POC↑"; "falling" -> "POC↓"; else -> "POC→" },
+                                        when (m) { "rising" -> UpC; "falling" -> DnC; else -> TL }
+                                    )
+                                }
+                            }
+                            fps.deltaPriceDivergence?.let { dv ->
+                                item {
+                                    ChipS(
+                                        if (dv == "bullish") "ΔDIV▲" else "ΔDIV▼",
+                                        if (dv == "bullish") UpC else DnC
+                                    )
+                                }
+                            }
+                            fps.deltaTrend?.takeIf { it.startsWith("accelerating") }?.let { dt ->
+                                item {
+                                    ChipS(
+                                        if (dt == "accelerating_buy") "Δ++" else "Δ--",
+                                        if (dt == "accelerating_buy") UpC else DnC
+                                    )
+                                }
+                            }
+                            fps.unfinishedBias?.let { ub ->
+                                item { ChipS(if (ub == "up") "UNF▲" else "UNF▼", GoldDim) }
+                            }
                         }
                         micro.l2?.bidWall?.price?.let { wallPrice ->
                             item { ChipS("BW ${"%.2f".format(wallPrice)}", GoldDim) }
@@ -1442,6 +1487,209 @@ private fun SmtCard(smt: SmtInfoDto) {
                 ChipS("همبستگی $corrTxt", if (smt.correlationReliable) UpC else DnC)
                 Spacer(Modifier.width(6.dp))
                 ChipS("${smt.primary} ↔ ${smt.correlated}", Gold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun StrategyPackCard(s: StrategiesV2Dto) {
+    val netColor = when (s.netDirection) { "long" -> UpC; "short" -> DnC; "conflict" -> BearOB; else -> TL }
+    val netLabel = when (s.netDirection) {
+        "long" -> "خالص: صعودی"; "short" -> "خالص: نزولی"
+        "conflict" -> "تضاد سیگنال‌ها"; else -> "بدون جهت خالص"
+    }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Surf),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, netColor.copy(alpha = 0.45f))
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("🧰 استراتژی‌های کلاسیک (اسکن لایو)", color = Gold, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                Spacer(Modifier.weight(1f))
+                ChipS(netLabel, netColor)
+            }
+            Spacer(Modifier.height(4.dp))
+            val activeN = s.counts["active"] ?: s.active.size
+            val formN = s.counts["forming"] ?: s.forming.size
+            Text(
+                "$activeN سیگنال فعال • $formN در حال شکل‌گیری • توافق ${s.agreementPct}٪",
+                color = TL, fontSize = 11.sp
+            )
+            if (s.active.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                s.active.take(6).forEach { st ->
+                    val col = if (st.direction == "long") UpC else if (st.direction == "short") DnC else TL
+                    Surface(
+                        shape = RoundedCornerShape(10.dp), color = col.copy(alpha = 0.07f),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                    ) {
+                        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier.width(3.dp).height(34.dp).clip(RoundedCornerShape(2.dp)).background(col)
+                            )
+                            Spacer(Modifier.width(9.dp))
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        st.nameFa, color = TH, fontSize = 12.sp,
+                                        fontWeight = FontWeight.Black, modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        if (st.direction == "long") "LONG" else if (st.direction == "short") "SHORT" else "-",
+                                        color = col, fontSize = 10.sp, fontWeight = FontWeight.Black
+                                    )
+                                }
+                                Text(st.reasonFa, color = TL, fontSize = 10.sp, lineHeight = 15.sp, maxLines = 2)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Column(horizontalAlignment = Alignment.End) {
+                                Surface(shape = RoundedCornerShape(6.dp), color = col.copy(alpha = 0.2f)) {
+                                    Text(
+                                        " ${st.quality}٪ ", color = col,
+                                        fontSize = 11.sp, fontWeight = FontWeight.Black
+                                    )
+                                }
+                                if (st.entry != null && st.stop != null && st.target != null) {
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        "E ${fmt(st.entry.toFloat())}",
+                                        color = TL, fontSize = 8.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (s.forming.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                s.forming.take(3).forEach { st ->
+                    Text("◌ ${st.nameFa} — ${st.reasonFa}", color = TL.copy(alpha = 0.8f), fontSize = 10.sp,
+                        maxLines = 1, modifier = Modifier.padding(vertical = 1.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IndicatorPackCard(s: IndicatorsV2SummaryDto) {
+    val verdictColor = when (s.verdict) { "bullish" -> UpC; "bearish" -> DnC; "range" -> BearOB; else -> TL }
+    val verdictLabel = when (s.verdict) {
+        "bullish" -> "صعودی"; "bearish" -> "نزولی"; "range" -> "رنج"; "mixed" -> "ترکیبی"; else -> "-"
+    }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Surf),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Gold.copy(alpha = 0.25f))
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("🔬 رأی اندیکاتورهای پیشرفته", color = Gold, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                Spacer(Modifier.weight(1f))
+                ChipS("$verdictLabel • خالص ${s.net}٪", verdictColor)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("▲ ${s.votes["bullish"] ?: 0}", color = UpC, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                Spacer(Modifier.width(14.dp))
+                Text("▼ ${s.votes["bearish"] ?: 0}", color = DnC, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                Spacer(Modifier.width(14.dp))
+                Text("• ${s.votes["neutral"] ?: 0}", color = TL, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                Spacer(Modifier.weight(1f))
+                Text("از ${s.votes["total"] ?: 16} اندیکاتور", color = TL, fontSize = 10.sp)
+            }
+            Spacer(Modifier.height(8.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (s.squeezeOn == true) item { ChipS("🗜️ SQUEEZE فعال", BearOB) }
+                if (s.squeezeFired == true) item { ChipS("💥 Squeeze آزاد شد", Gold) }
+                s.regimeChoppiness?.let { reg ->
+                    item {
+                        val chopVal = s.choppinessValue?.let { String.format(java.util.Locale.US, "%.0f", it) } ?: ""
+                        ChipS(
+                            when (reg) { "trend" -> "رونددار $chopVal"; "range" -> "رنج $chopVal"; else -> "گذار $chopVal" },
+                            when (reg) { "trend" -> UpC; "range" -> BearOB; else -> TL }
+                        )
+                    }
+                }
+                s.vwapZ?.let { z ->
+                    item {
+                        ChipS(
+                            "VWAP z=${String.format(java.util.Locale.US, "%.1f", z)}",
+                            if (z > 2) DnC else if (z < -2) UpC else TL
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IctProCard(ict: SmcIct) {
+    val ms = ict.marketStructure
+    val ote = ict.ote
+    val kz = ict.killzone
+    val stateColor = when (ms?.state) { "bullish" -> UpC; "bearish" -> DnC; "ranging" -> BearOB; else -> TL }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Surf),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, FvgC.copy(alpha = 0.3f))
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("🏛️ ICT Pro — ساختار و زمان‌بندی", color = Gold, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                Spacer(Modifier.weight(1f))
+                if (ms != null) {
+                    ChipS("${ms.pattern} • ${ms.state}", stateColor)
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            if (ote != null && ote.available) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "OTE (${if (ote.direction == "long") "صعودی" else "نزولی"}): " +
+                            "${ote.oteBottom?.let { fmt(it.toFloat()) } ?: "—"} – ${ote.oteTop?.let { fmt(it.toFloat()) } ?: "—"}",
+                        color = TH, fontSize = 11.sp
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    if (ote.priceInZone) ChipS("قیمت داخل OTE ⭐", Gold)
+                }
+                Spacer(Modifier.height(4.dp))
+            }
+            if (kz != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val kzAct = kz.active
+                    Text(
+                        if (kzAct != null)
+                            "⏰ کیلزون ${kzAct.name} — ${kzAct.minutesLeft} دقیقه مانده"
+                        else "⏰ خارج از کیلزون",
+                        color = if (kzAct != null) TH else TL, fontSize = 11.sp
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    ChipS(
+                        when (kz.quality) { "high" -> "کیفیت بالا"; "medium" -> "کیفیت متوسط"; else -> "کیفیت پایین" },
+                        when (kz.quality) { "high" -> UpC; "medium" -> BearOB; else -> DnC }
+                    )
+                }
+                kz.active?.noteFa?.takeIf { it.isNotBlank() }?.let { note ->
+                    Spacer(Modifier.height(3.dp))
+                    Text(note, color = TL, fontSize = 10.sp)
+                }
+            }
+            if (ms != null && ms.events.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                ms.events.takeLast(3).forEach { ev ->
+                    val col = if (ev.dir == "bullish") UpC else DnC
+                    Text(
+                        "${ev.kind} ${if (ev.dir == "bullish") "▲" else "▼"} @ ${ev.price?.let { fmt(it.toFloat()) } ?: "-"}",
+                        color = col, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 1.dp)
+                    )
+                }
             }
         }
     }

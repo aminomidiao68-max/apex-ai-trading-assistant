@@ -1083,7 +1083,8 @@ data class MicroFootprint(
     @SerializedName("stacked_buy") val stackedBuy: Int? = null,
     @SerializedName("stacked_sell") val stackedSell: Int? = null,
     @SerializedName("unfinished_high") val unfinishedHigh: Boolean? = null,
-    @SerializedName("unfinished_low") val unfinishedLow: Boolean? = null
+    @SerializedName("unfinished_low") val unfinishedLow: Boolean? = null,
+    val summary: FootprintSummaryDto? = null
 )
 data class MicroWall(
     val price: Float? = null,
@@ -1276,8 +1277,20 @@ data class TradeSetupDto(
     @SerializedName("handbook_details") val handbookDetails: TradeSetupHandbookDetails? = null,
     @SerializedName("micro_confluence") val microConfluence: Int = 0,
     @SerializedName("micro_net") val microNet: String = "neutral",
+    @SerializedName("strategies_net") val strategiesNet: String? = null,
+    @SerializedName("strategies_agreement_pct") val strategiesAgreementPct: Int = 0,
+    @SerializedName("strategies_conflict") val strategiesConflict: Boolean = false,
+    @SerializedName("strategies_active") val strategiesActive: List<StrategyV2BriefDto> = emptyList(),
+    @SerializedName("indicators_v2_net") val indicatorsV2Net: Int? = null,
+    @SerializedName("indicators_v2_verdict") val indicatorsV2Verdict: String? = null,
     @SerializedName("value_score") val valueScore: Float = 0f,
     @SerializedName("is_prime") val isPrime: Boolean = false
+)
+
+data class StrategyV2BriefDto(
+    @SerializedName("name_fa") val nameFa: String = "",
+    val direction: String = "none",
+    val quality: Int = 0
 )
 
 data class TradeSetupsResponseDto(
@@ -1363,8 +1376,97 @@ data class SmcIct(
     val events: List<SmcIctEvent> = emptyList(),
     val displacement: SmcIctDisp = SmcIctDisp(),
     @SerializedName("silver_bullet") val silverBullet: SmcIctSb = SmcIctSb(),
+    @SerializedName("market_structure") val marketStructure: IctMarketStructureDto? = null,
+    val ote: IctOteDto? = null,
+    val killzone: IctKillzoneDto? = null,
     @SerializedName("points_bull") val pointsBull: Int = 0,
     @SerializedName("points_bear") val pointsBear: Int = 0
+)
+
+// ================== v3.12: ICT Pro / Indicator Pack / Strategy Pack ==================
+data class IctStructureEventDto(
+    val kind: String = "",
+    val dir: String = "",
+    val price: Double? = null
+)
+
+data class IctMarketStructureDto(
+    val state: String = "unknown",
+    val pattern: String = "unknown",
+    val events: List<IctStructureEventDto> = emptyList(),
+    @SerializedName("last_swing_high") val lastSwingHigh: Double? = null,
+    @SerializedName("last_swing_low") val lastSwingLow: Double? = null
+)
+
+data class IctOteDto(
+    val available: Boolean = false,
+    val direction: String? = null,
+    @SerializedName("ote_top") val oteTop: Double? = null,
+    @SerializedName("ote_bottom") val oteBottom: Double? = null,
+    @SerializedName("leg_low") val legLow: Double? = null,
+    @SerializedName("leg_high") val legHigh: Double? = null,
+    @SerializedName("price_in_zone") val priceInZone: Boolean = false
+)
+
+data class IctKillzoneActiveDto(
+    val name: String = "",
+    @SerializedName("minutes_left") val minutesLeft: Int = 0,
+    @SerializedName("note_fa") val noteFa: String = ""
+)
+
+data class IctKillzoneDto(
+    val active: IctKillzoneActiveDto? = null,
+    val quality: String = "low",
+    val weekend: Boolean = false
+)
+
+data class IndicatorsV2SummaryDto(
+    val available: Boolean = false,
+    val votes: Map<String, Int> = emptyMap(),
+    val net: Int = 0,
+    val verdict: String = "",
+    @SerializedName("bullish_indicators") val bullishIndicators: List<String> = emptyList(),
+    @SerializedName("bearish_indicators") val bearishIndicators: List<String> = emptyList(),
+    @SerializedName("squeeze_on") val squeezeOn: Boolean? = null,
+    @SerializedName("squeeze_fired") val squeezeFired: Boolean? = null,
+    @SerializedName("regime_choppiness") val regimeChoppiness: String? = null,
+    @SerializedName("choppiness_value") val choppinessValue: Double? = null,
+    @SerializedName("vwap_z") val vwapZ: Double? = null
+)
+
+data class IndicatorsV2Dto(
+    val summary: IndicatorsV2SummaryDto? = null
+)
+
+data class StrategyV2Dto(
+    val id: String = "",
+    @SerializedName("name_fa") val nameFa: String = "",
+    val family: String = "",
+    val direction: String = "none",
+    val status: String = "none",
+    val quality: Int = 0,
+    @SerializedName("reason_fa") val reasonFa: String = "",
+    val entry: Double? = null,
+    val stop: Double? = null,
+    val target: Double? = null
+)
+
+data class StrategiesV2Dto(
+    val available: Boolean = false,
+    val active: List<StrategyV2Dto> = emptyList(),
+    val forming: List<StrategyV2Dto> = emptyList(),
+    val counts: Map<String, Int> = emptyMap(),
+    @SerializedName("net_direction") val netDirection: String = "none",
+    @SerializedName("agreement_pct") val agreementPct: Int = 0
+)
+
+data class FootprintSummaryDto(
+    val available: Boolean = false,
+    @SerializedName("poc_migration") val pocMigration: String? = null,
+    @SerializedName("delta_price_divergence") val deltaPriceDivergence: String? = null,
+    @SerializedName("stacked_bias") val stackedBias: String? = null,
+    @SerializedName("delta_trend") val deltaTrend: String? = null,
+    @SerializedName("unfinished_bias") val unfinishedBias: String? = null
 )
 data class SmcIctDisp(
     val direction: String = "none",
@@ -1407,6 +1509,8 @@ data class SmcReport(
     val force: SmcForce? = null,
     val ict: SmcIct? = null,
     val smt: SmtInfoDto? = null,
+    @SerializedName("indicators_v2") val indicatorsV2: IndicatorsV2Dto? = null,
+    @SerializedName("strategies_v2") val strategiesV2: StrategiesV2Dto? = null,
     @SerializedName("premium_zone") val premiumZone: String = "eq",
     @SerializedName("mtf_aligned") val mtfAligned: Boolean = false,
     @SerializedName("htf_bias") val htfBias: String? = null,

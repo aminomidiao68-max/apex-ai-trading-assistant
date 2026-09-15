@@ -738,6 +738,71 @@ def _max_run(prices: list[float], rows: int, low: float, width: float) -> int:
     return best
 
 
+def summarize_footprint(fp: dict, flow: dict | None = None) -> dict:
+    """High-level read of the footprint: POC migration, delta/price divergence,
+    stacked-imbalance bias and unfinished-auction pull. Deterministic."""
+    candles = (fp or {}).get("candles") or []
+    totals = (fp or {}).get("totals") or {}
+    if len(candles) < 2:
+        return {"available": False}
+    closed = [c for c in candles if not c.get("partial")] or candles
+    pocs = [_safe_float(c.get("poc")) for c in closed if _safe_float(c.get("poc")) > 0]
+    poc_migration = None
+    if len(pocs) >= 3:
+        half = len(pocs) // 2
+        first_avg = sum(pocs[:half]) / half
+        second_avg = sum(pocs[half:]) / max(len(pocs) - half, 1)
+        span = max(pocs) - min(pocs)
+        if span > 0:
+            drift = (second_avg - first_avg) / span
+            poc_migration = "rising" if drift > 0.15 else "falling" if drift < -0.15 else "flat"
+    # delta vs price divergence across footprint candles
+    divergence = None
+    if len(closed) >= 4:
+        highs = [_safe_float(c.get("high")) for c in closed]
+        lows = [_safe_float(c.get("low")) for c in closed]
+        deltas = [_safe_float(c.get("delta")) for c in closed]
+        h1, h2 = max(highs[: len(highs) // 2]), max(highs[len(highs) // 2:])
+        d1 = sum(deltas[: len(deltas) // 2])
+        d2 = sum(deltas[len(deltas) // 2:])
+        l1, l2 = min(lows[: len(lows) // 2]), min(lows[len(lows) // 2:])
+        if h2 > h1 and d1 > 0 and d2 < d1 * 0.6:
+            divergence = "bearish"
+        elif l2 < l1 and d1 < 0 and d2 > d1 * 0.6:
+            divergence = "bullish"
+    stacked_buy = int(totals.get("max_stacked_buy") or 0)
+    stacked_sell = int(totals.get("max_stacked_sell") or 0)
+    stacked_bias = "buy" if stacked_buy >= stacked_sell + 2 else "sell" if stacked_sell >= stacked_buy + 2 else "none"
+    last = candles[-1]
+    unfinished = last.get("unfinished") or {}
+    unfinished_bias = None
+    if unfinished.get("high") and not unfinished.get("low"):
+        unfinished_bias = "up"
+    elif unfinished.get("low") and not unfinished.get("high"):
+        unfinished_bias = "down"
+    recent_deltas = [_safe_float(c.get("delta")) for c in candles[-3:]]
+    delta_trend = None
+    if len(recent_deltas) == 3:
+        delta_trend = (
+            "accelerating_buy" if recent_deltas[2] > recent_deltas[1] > recent_deltas[0] and recent_deltas[2] > 0
+            else "accelerating_sell" if recent_deltas[2] < recent_deltas[1] < recent_deltas[0] and recent_deltas[2] < 0
+            else "mixed"
+        )
+    return {
+        "available": True,
+        "candles": len(candles),
+        "poc_migration": poc_migration,
+        "delta_price_divergence": divergence,
+        "stacked_bias": stacked_bias,
+        "stacked_buy": stacked_buy,
+        "stacked_sell": stacked_sell,
+        "unfinished_bias": unfinished_bias,
+        "delta_trend": delta_trend,
+        "net_delta": totals.get("delta_sum"),
+        "cvd_divergence": (flow or {}).get("cvd_divergence"),
+    }
+
+
 # -------------------------------------------------------------------- L2
 def compute_l2(book: dict) -> dict:
     bids = [
@@ -948,6 +1013,7 @@ def compact_micro(payload: dict) -> dict:
             "stacked_sell": totals.get("max_stacked_sell"),
             "unfinished_high": (last_candle.get("unfinished") or {}).get("high"),
             "unfinished_low": (last_candle.get("unfinished") or {}).get("low"),
+            "summary": summarize_footprint(fp, flow),
         },
         "l2": {
             "mid": l2.get("mid"),
@@ -1011,6 +1077,8 @@ def build_ai_context_text(payload: dict) -> str:
             return f"{value:g}"
         return str(value)
 
+    fp_summary = summarize_footprint(fp, flow)
+
     lines = [
         f"منبع: OKX | ابزار: {instrument_note} | اعداد واقعی هستند، نه حدس.",
         f"پنجره داده: {fmt(window.get('trades'))} معامله واقعی | {coverage_note}",
@@ -1030,9 +1098,76 @@ def build_ai_context_text(payload: dict) -> str:
             f"اتمام‌نیافته: بالا={'بله' if (last_candle.get('unfinished') or {}).get('high') else 'خیر'} پایین={'بله' if (last_candle.get('unfinished') or {}).get('low') else 'خیر'}"
         ),
         (
+            "جمع‌بندی فوت‌پرینت: "
+            f"مهاجرت POC={fmt(fp_summary.get('poc_migration'))} | "
+            f"واگرایی دلتا/قیمت={fmt(fp_summary.get('delta_price_divergence'))} | "
+            f"بایاس ایمبالانس روی‌هم={fmt(fp_summary.get('stacked_bias'))} | "
+            f"روند دلتا={fmt(fp_summary.get('delta_trend'))} | "
+            f"کشش اتمام‌نیافته={fmt(fp_summary.get('unfinished_bias'))}"
+        ),
+        (
             f"Level-2: mid={fmt(l2.get('mid'))} | اسپرد={fmt(l2.get('spread_bps'))}bp | عدم‌توازن ۲۵ سطح={fmt(top25.get('imbalance'))} | "
             f"دیوار خرید={fmt((bid_walls[0] or {}).get('price') if bid_walls else None)} | دیوار فروش={fmt((ask_walls[0] or {}).get('price') if ask_walls else None)}"
         ),
         f"فیلترهای قطعی سیستم: بایاس خالص={filters.get('net_bias')} | امتیاز={fmt(filters.get('score'))}",
+    ]
+    return "\n".join(lines)
+
+
+def build_compact_context_text(micro: dict) -> str:
+    """Persian context from the COMPACT micro payload (keys: flow/vp/footprint/l2).
+
+    The dossier passes compact payloads; the full builder expects raw payloads.
+    This keeps every real number visible to the AI without fabricated values.
+    """
+    if not micro or not micro.get("is_real"):
+        return (
+            "⚠️ داده‌های خردساختار واقعی (L2/Footprint/Order Flow) برای این نماد در دسترس نیست؛ "
+            "فقط تخمین OHLCV موجود است. صادقانه بگو و عددی جعل نکن."
+        )
+
+    def fmt(value: Any) -> str:
+        if value is None:
+            return "-"
+        if isinstance(value, float):
+            return f"{value:g}"
+        return str(value)
+
+    flow = micro.get("flow") or {}
+    vp = micro.get("vp") or {}
+    fp = micro.get("footprint") or {}
+    fps = fp.get("summary") or {}
+    l2 = micro.get("l2") or {}
+    filters = micro.get("filters") or {}
+    bw = (l2.get("bid_wall") or {})
+    aw = (l2.get("ask_wall") or {})
+    lines = [
+        f"منبع: OKX (واقعی) | {fmt(micro.get('window_trades'))} معامله | پوشش {fmt(micro.get('covered_seconds'))} ثانیه | اطمینان={fmt(micro.get('confidence'))}",
+        (
+            f"جریان سفارشات: دلتا={fmt(flow.get('delta'))} (فشار {fmt(flow.get('pressure'))}) | "
+            f"CVD={fmt(flow.get('cvd'))} | جذب={'بله' if flow.get('absorption') else 'خیر'} | "
+            f"کلایمکس={'بله' if flow.get('climax') else 'خیر'} | واگرایی CVD={fmt(flow.get('cvd_divergence'))}"
+        ),
+        (
+            f"پروفایل حجم: POC={fmt(vp.get('poc'))} VAH={fmt(vp.get('vah'))} VAL={fmt(vp.get('val'))} | "
+            f"شکل={fmt(vp.get('shape'))} ({fmt(vp.get('shape_note'))}) | HVN={fmt((vp.get('hvn') or [None])[:2])} | LVN={fmt((vp.get('lvn') or [None])[:2])}"
+        ),
+        (
+            f"فوت‌پرینت: دلتای آخرین کندل={fmt(fp.get('last_delta'))} | POC={fmt(fp.get('last_poc'))} | "
+            f"ایمبالانس روی‌هم خرید={fmt(fp.get('stacked_buy'))} فروش={fmt(fp.get('stacked_sell'))} | "
+            f"اتمام‌نیافته بالا={'بله' if fp.get('unfinished_high') else 'خیر'} پایین={'بله' if fp.get('unfinished_low') else 'خیر'}"
+        ),
+        (
+            f"جمع‌بندی فوت‌پرینت: مهاجرت POC={fmt(fps.get('poc_migration'))} | "
+            f"واگرایی دلتا/قیمت={fmt(fps.get('delta_price_divergence'))} | "
+            f"بایاس ایمبالانس={fmt(fps.get('stacked_bias'))} | روند دلتا={fmt(fps.get('delta_trend'))} | "
+            f"کشش اتمام‌نیافته={fmt(fps.get('unfinished_bias'))}"
+        ),
+        (
+            f"Level-2: mid={fmt(l2.get('mid'))} | اسپرد={fmt(l2.get('spread_bps'))}bp | "
+            f"عدم‌توازن ۲۵ سطح={fmt(l2.get('imbalance_top25'))} | "
+            f"دیوار خرید={fmt(bw.get('price'))} (×{fmt(bw.get('ratio'))}) | دیوار فروش={fmt(aw.get('price'))} (×{fmt(aw.get('ratio'))})"
+        ),
+        f"فیلترهای قطعی: بایاس خالص={fmt(filters.get('net_bias'))} | امتیاز={fmt(filters.get('score'))} | سیگنال‌ها: {', '.join(filters.get('signals') or []) or '-'}",
     ]
     return "\n".join(lines)

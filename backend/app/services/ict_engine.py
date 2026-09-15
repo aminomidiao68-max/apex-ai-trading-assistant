@@ -181,6 +181,165 @@ def silver_bullet_active(now_utc: datetime | None = None) -> dict:
     return {"active": active, "window": window, "local_hour": hour}
 
 
+# ---------------------------------------------------------------- v2 additions
+
+
+def market_structure(items: list[dict], k: int = 2, lookback: int = 80) -> dict:
+    """BOS / CHoCH state machine over confirmed fractal swings (no repaint)."""
+    win = items[-lookback:] if len(items) > lookback else items
+    high_idx, low_idx = swing_points(win, k)
+    if len(high_idx) < 2 or len(low_idx) < 2:
+        return {"state": "unknown", "events": [], "last_swing_high": None,
+                "last_swing_low": None, "pattern": "unknown"}
+    events: list[dict] = []
+    state = "bullish" if win[high_idx[-1]]["h"] > win[high_idx[-2]]["h"] and win[low_idx[-1]]["l"] > win[low_idx[-2]]["l"] else (
+        "bearish" if win[low_idx[-1]]["l"] < win[low_idx[-2]]["l"] and win[high_idx[-1]]["h"] < win[high_idx[-2]]["h"] else "ranging")
+    last_sh = win[high_idx[-1]]["h"]
+    last_sl = win[low_idx[-1]]["l"]
+    for i in range(max(high_idx[-1], low_idx[-1]) + k + 1, len(win)):
+        c = float(win[i]["c"])
+        if state in ("bullish", "ranging") and c > last_sh:
+            kind = "BOS" if state == "bullish" else "CHoCH"
+            events.append({"kind": kind, "dir": "bullish", "price": _r(last_sh), "index": i})
+            state = "bullish"
+            highs_after = [j for j in high_idx if j < i]
+            lows_after = [j for j in low_idx if j < i]
+            if highs_after:
+                last_sh = win[highs_after[-1]]["h"]
+            if lows_after:
+                last_sl = win[lows_after[-1]]["l"]
+        elif state in ("bearish", "ranging") and c < last_sl:
+            kind = "BOS" if state == "bearish" else "CHoCH"
+            events.append({"kind": kind, "dir": "bearish", "price": _r(last_sl), "index": i})
+            state = "bearish"
+            highs_after = [j for j in high_idx if j < i]
+            lows_after = [j for j in low_idx if j < i]
+            if highs_after:
+                last_sh = win[highs_after[-1]]["h"]
+            if lows_after:
+                last_sl = win[lows_after[-1]]["l"]
+    hh_hl = state == "bullish"
+    return {
+        "state": state,
+        "events": events[-4:],
+        "last_swing_high": _r(last_sh),
+        "last_swing_low": _r(last_sl),
+        "pattern": "HH/HL" if hh_hl else "LH/LL" if state == "bearish" else "mixed",
+    }
+
+
+def ote_zone(items: list[dict], k: int = 2) -> dict:
+    """Optimal Trade Entry: 0.62–0.79 retracement of the latest impulsive leg."""
+    high_idx, low_idx = swing_points(items, k)
+    if len(high_idx) < 1 or len(low_idx) < 1:
+        return {"available": False}
+    hi = high_idx[-1]
+    lo = low_idx[-1]
+    price = float(items[-1]["c"])
+    if hi > lo:
+        leg_low = float(items[lo]["l"])
+        leg_high = float(items[hi]["h"])
+        direction = "long"
+    elif lo > hi:
+        leg_low = float(items[lo]["l"])
+        leg_high = float(items[hi]["h"])
+        direction = "short"
+    else:
+        return {"available": False}
+    span = leg_high - leg_low
+    if span <= 0:
+        return {"available": False}
+    top = leg_high - 0.618 * span
+    bottom = leg_high - 0.786 * span
+    inside = bottom <= price <= top
+    return {
+        "available": True,
+        "direction": direction,
+        "leg_low": _r(leg_low), "leg_high": _r(leg_high),
+        "ote_top": _r(top), "ote_bottom": _r(bottom),
+        "ote_71": _r(leg_high - 0.705 * span),
+        "price_in_zone": bool(inside),
+    }
+
+
+def killzone_state(items: list[dict] | None = None, now_utc: datetime | None = None) -> dict:
+    """Active ICT killzone (UTC): Asia 00-06, London 07-10, NY 12-15, LondonClose 15-17."""
+    ts = float(items[-1]["t"]) if items else None
+    now = now_utc or (datetime.fromtimestamp(ts, timezone.utc) if ts else datetime.now(timezone.utc))
+    minutes = now.hour * 60 + now.minute
+    windows = [
+        ("asia", 0, 360, "رنج آسیا — نقدینگی‌سازی؛ معمولاً بی‌روند"),
+        ("london", 420, 600, "کیلزون لندن — بیشترین احتمال manipulation + جهت روز"),
+        ("new_york", 720, 900, "کیلزون نیویورک — ادامه یا بازگشت جهت لندن"),
+        ("london_close", 900, 1020, "بسته‌شدن لندن — تسویه و بازگشت‌های کوتاه"),
+    ]
+    active = None
+    for name, start, end, note in windows:
+        if start <= minutes < end:
+            active = {"name": name, "note_fa": note, "minutes_left": end - minutes}
+            break
+    weekday = now.weekday()
+    weekend = weekday >= 5
+    return {"active": active, "utc_hour": now.hour, "utc_minute": now.minute, "weekend": weekend,
+            "quality": "low" if weekend or not active else "high" if active and active["name"] in ("london", "new_york") else "medium"}
+
+
+def inversion_fvgs(fvg_state_list: list[dict]) -> list[dict]:
+    """Filled FVGs flip their role (ICT inversion): bull filled → resistance."""
+    out: list[dict] = []
+    for gap in fvg_state_list or []:
+        if str(gap.get("state")) != "filled":
+            continue
+        side = str(gap.get("side") or "")
+        new_role = "resistance" if side.startswith("bull") else "support" if side.startswith("bear") else "unknown"
+        out.append({"top": gap.get("top"), "bottom": gap.get("bottom"), "ce": gap.get("ce"),
+                    "original_side": side, "inverted_role": new_role})
+    return out[:4]
+
+
+def breaker_blocks(items: list[dict], k: int = 2, atr_period: int = 14) -> list[dict]:
+    """Breaker: last opposite OB swept through by displacement; now flips role."""
+    n = len(items)
+    if n < atr_period + 10:
+        return []
+    trs = [max(items[i]["h"] - items[i]["l"], abs(items[i]["h"] - items[i - 1]["c"]), abs(items[i]["l"] - items[i - 1]["c"])) for i in range(1, n)]
+    atr = sum(trs[-atr_period:]) / atr_period or 1e-9
+    high_idx, low_idx = swing_points(items, k)
+    out: list[dict] = []
+    # bullish breaker: failed bearish OB (down-close cluster) broken by a strong up move
+    for i in range(max(k + 2, n - 60), n - 2):
+        body = items[i]["c"] - items[i]["o"]
+        if body >= 1.4 * atr and high_idx:
+            prior = [j for j in low_idx if j < i]
+            if prior and float(items[i]["c"]) > float(items[prior[-1]]["l"]) + atr:
+                # the last down-close candle before the impulse is the breaker
+                cand = None
+                for j in range(i - 1, max(i - 6, 0), -1):
+                    if items[j]["c"] < items[j]["o"]:
+                        cand = j
+                        break
+                if cand is not None:
+                    zone = {"kind": "bullish_breaker", "top": _r(items[cand]["h"]), "bottom": _r(items[cand]["l"]),
+                            "index": cand, "broken_index": i}
+                    if zone not in out:
+                        out.append(zone)
+        if body <= -1.4 * atr and low_idx:
+            prior = [j for j in high_idx if j < i]
+            if prior and float(items[i]["c"]) < float(items[prior[-1]]["h"]) - atr:
+                cand = None
+                for j in range(i - 1, max(i - 6, 0), -1):
+                    if items[j]["c"] > items[j]["o"]:
+                        cand = j
+                        break
+                if cand is not None:
+                    zone = {"kind": "bearish_breaker", "top": _r(items[cand]["h"]), "bottom": _r(items[cand]["l"]),
+                            "index": cand, "broken_index": i}
+                    if zone not in out:
+                        out.append(zone)
+    return out[-3:]
+
+
+
 def summarize(items: list[dict], report: dict | None = None, now_utc: datetime | None = None, price: float | None = None) -> dict:
     report = report or {}
     price = float(price or (items[-1]["c"] if items else 0))
@@ -190,6 +349,11 @@ def summarize(items: list[dict], report: dict | None = None, now_utc: datetime |
     fvgs = fvg_states((report.get("fvg") or []), items)
     pd = premium_discount_position(price, items)
     sb = silver_bullet_active(now_utc)
+    structure = market_structure(items)
+    ote = ote_zone(items)
+    kz = killzone_state(items, now_utc)
+    inv = inversion_fvgs(fvgs)
+    brk = breaker_blocks(items)
 
     bull = bear = 0
     for sweep in sweeps:
@@ -211,11 +375,23 @@ def summarize(items: list[dict], report: dict | None = None, now_utc: datetime |
                 bull += 2
             elif gap["side"].startswith("bear") and price <= gap["top"]:
                 bear += 2
+    # v2: market structure + OTE alignment
+    if structure.get("state") == "bullish":
+        bull += 3
+    elif structure.get("state") == "bearish":
+        bear += 3
+    if ote.get("available") and ote.get("price_in_zone"):
+        if ote.get("direction") == "long":
+            bull += 2
+        else:
+            bear += 2
     events = [
         {"kind": s["kind"], "dir": s["dir"], "price": s["price"]} for s in sweeps
     ]
     if disp["direction"] != "none":
         events.append({"kind": "displacement", "dir": "bullish" if disp["direction"] == "up" else "bearish", "price": price})
+    for ev in structure.get("events") or []:
+        events.append({"kind": ev.get("kind"), "dir": ev.get("dir"), "price": ev.get("price")})
     return {
         "equal_highs_lows": eq,
         "sweeps": sweeps,
@@ -223,7 +399,12 @@ def summarize(items: list[dict], report: dict | None = None, now_utc: datetime |
         "fvg_states": fvgs[:5],
         "premium_discount": pd,
         "silver_bullet": sb,
-        "events": events[:5],
+        "market_structure": structure,
+        "ote": ote,
+        "killzone": kz,
+        "inversion_fvg": inv,
+        "breakers": brk,
+        "events": events[-6:],
         "points_bull": min(15, bull),
         "points_bear": min(15, bear),
     }

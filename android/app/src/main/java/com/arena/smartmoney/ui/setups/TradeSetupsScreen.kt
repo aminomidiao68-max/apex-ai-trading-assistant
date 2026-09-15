@@ -538,6 +538,79 @@ private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
                                         )
                                     }
                                 }
+                                micro.footprint?.summary?.takeIf { it.available }?.let { fps ->
+                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                        Text("جمع‌بندی فوت‌پرینت: ", color = SetupMuted, fontSize = 12.sp)
+                                        Text(
+                                            buildString {
+                                                fps.pocMigration?.let { append("POC:").append(
+                                                    when (it) { "rising" -> "صعودی"; "falling" -> "نزولی"; else -> "خنثی" }
+                                                ).append("  ") }
+                                                fps.deltaPriceDivergence?.let { append("واگرایی Δ/قیمت:").append(
+                                                    if (it == "bullish") "صعودی" else "نزولی"
+                                                ).append("  ") }
+                                                fps.deltaTrend?.let { append("روند Δ:").append(
+                                                    when (it) {
+                                                        "accelerating_buy" -> "شتاب خرید"
+                                                        "accelerating_sell" -> "شتاب فروش"
+                                                        else -> "ترکیبی"
+                                                    }
+                                                ) }
+                                            },
+                                            color = Color.White, fontSize = 12.sp
+                                        )
+                                    }
+                                }
+                                if (!setup.strategiesActive.isNullOrEmpty() || setup.strategiesNet != null) {
+                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                        Text("استراتژی‌های کلاسیک: ", color = SetupMuted, fontSize = 12.sp)
+                                        Text(
+                                            when (setup.strategiesNet) {
+                                                "long" -> "خالص صعودی"
+                                                "short" -> "خالص نزولی"
+                                                "conflict" -> "تضاد سیگنال"
+                                                else -> "بدون سیگنال"
+                                            } + if (setup.strategiesAgreementPct > 0) " (توافق ${setup.strategiesAgreementPct}٪)" else "",
+                                            color = when (setup.strategiesNet) {
+                                                setup.direction -> SetupGreen
+                                                "conflict" -> SetupGold
+                                                null -> SetupMuted
+                                                else -> SetupRed
+                                            },
+                                            fontWeight = FontWeight.Bold, fontSize = 12.sp
+                                        )
+                                    }
+                                    setup.strategiesActive.take(3).forEach { st ->
+                                        Text(
+                                            "  • ${st.nameFa} [${if (st.direction == "long") "خرید" else "فروش"}] کیفیت ${st.quality}٪",
+                                            color = if (st.direction == setup.direction) SetupGreen else SetupRed,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                    if (setup.strategiesConflict) {
+                                        Text(
+                                            "⚠️ تضاد با پک استراتژی — از PRIME حذف شد",
+                                            color = SetupRed, fontSize = 11.sp, fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                                setup.indicatorsV2Net?.let { net ->
+                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                        Text("رأی اندیکاتورهای v2: ", color = SetupMuted, fontSize = 12.sp)
+                                        Text(
+                                            "${if (net > 0) "+" else ""}$net٪ (${
+                                                when (setup.indicatorsV2Verdict) {
+                                                    "bullish" -> "صعودی"; "bearish" -> "نزولی"
+                                                    "range" -> "رنج"; "mixed" -> "ترکیبی"; else -> "-"
+                                                }
+                                            })",
+                                            color = when (setup.indicatorsV2Verdict) {
+                                                "bullish" -> SetupGreen; "bearish" -> SetupRed; else -> SetupGold
+                                            },
+                                            fontWeight = FontWeight.Bold, fontSize = 12.sp
+                                        )
+                                    }
+                                }
                             }
                         }
 
