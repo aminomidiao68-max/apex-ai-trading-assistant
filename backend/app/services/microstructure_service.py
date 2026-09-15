@@ -228,7 +228,15 @@ class MicrostructureService:
 
         flow = compute_flow_metrics(trades)
         vp = compute_volume_profile(trades)
-        fp = compute_footprint(trades, tf_sec)
+        # Adaptive footprint buckets: for high-volume symbols the trade cap may
+        # cover only seconds of tape — bucketing by full tf would yield a single
+        # candle. Use finer real buckets so POC migration / delta reads work.
+        covered_pre = (flow.get("window_end_ts") or 0) - (flow.get("window_start_ts") or 0)
+        covered_pre = covered_pre / 1000.0
+        fp_tf = tf_sec
+        if covered_pre < 2 * tf_sec:
+            fp_tf = max(10, min(tf_sec, int(covered_pre // 4) or 10))
+        fp = compute_footprint(trades, fp_tf)
         l2 = compute_l2(book)
         price = flow.get("last_price") or l2.get("mid") or vp.get("poc") or 0.0
         filters = apply_filters(price, flow, vp, l2, fp)
