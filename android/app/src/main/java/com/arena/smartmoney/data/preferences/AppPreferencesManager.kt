@@ -43,6 +43,9 @@ class AppPreferencesManager(context: Context) {
     fun isProximityAlertsEnabled(): Boolean = prefs.getBoolean(KEY_PROXIMITY_ALERTS, true)
     fun setProximityAlertsEnabled(value: Boolean) = prefs.edit().putBoolean(KEY_PROXIMITY_ALERTS, value).apply()
 
+    fun isClassicLevelsEnabled(): Boolean = prefs.getBoolean(KEY_CLASSIC_LEVELS, true)
+    fun setClassicLevelsEnabled(value: Boolean) = prefs.edit().putBoolean(KEY_CLASSIC_LEVELS, value).apply()
+
     companion object {
         private const val KEY_NOTIFICATIONS = "notifications_enabled"
         private const val KEY_AUTO_REFRESH = "auto_refresh_enabled"
@@ -54,5 +57,6 @@ class AppPreferencesManager(context: Context) {
         private const val KEY_CHART_TIMEFRAME = "chart_timeframe"
         private const val KEY_CHART_COMPARE = "chart_compare_symbols"
         private const val KEY_PROXIMITY_ALERTS = "proximity_alerts_enabled"
+        private const val KEY_CLASSIC_LEVELS = "chart_classic_levels_enabled"
     }
 }

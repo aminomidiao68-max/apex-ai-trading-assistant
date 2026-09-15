@@ -8,6 +8,7 @@ import com.arena.smartmoney.data.model.BacktestSummaryDto
 import com.arena.smartmoney.data.model.BacktestSweepRequestDto
 import com.arena.smartmoney.data.model.BacktestSweepSummaryDto
 import com.arena.smartmoney.data.model.PrimeBacktestResponseDto
+import com.arena.smartmoney.data.model.StrategyBacktestResponseDto
 import com.arena.smartmoney.data.model.RiskSettingsDto
 import com.arena.smartmoney.data.model.TradeStatsDto
 import com.arena.smartmoney.data.model.WalkForwardRequestDto
@@ -41,6 +42,9 @@ data class BacktestUiState(
     val primeLoading: Boolean = false,
     val primeResult: PrimeBacktestResponseDto? = null,
     val primeError: String? = null,
+    val stratLoading: Boolean = false,
+    val stratResult: StrategyBacktestResponseDto? = null,
+    val stratError: String? = null,
     val error: String? = null
 )
 
@@ -126,6 +130,30 @@ class BacktestViewModel(
                 _uiState.value = _uiState.value.copy(
                     primeLoading = false,
                     primeError = throwable.message ?: "PRIME backtest failed"
+                )
+            }
+        }
+    }
+
+    fun runStrategyBacktest() {
+        val current = _uiState.value
+        viewModelScope.launch {
+            _uiState.value = current.copy(stratLoading = true, stratError = null)
+            runCatching {
+                repository.getStrategyBacktest(
+                    symbol = current.symbol,
+                    timeframe = current.timeframe,
+                    market = current.market,
+                    candles = 1000,
+                    minQuality = 55,
+                    force = false
+                )
+            }.onSuccess { result ->
+                _uiState.value = _uiState.value.copy(stratLoading = false, stratResult = result, stratError = null)
+            }.onFailure { throwable ->
+                _uiState.value = _uiState.value.copy(
+                    stratLoading = false,
+                    stratError = throwable.message ?: "Strategy backtest failed"
                 )
             }
         }

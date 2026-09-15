@@ -153,6 +153,75 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
                     }
                 }
             }
+            item {
+                PremiumGlassCard(borderColor = Color(0x40B08CFF)) {
+                    Text(
+                        t("Classic Strategy Backtest (22 Strategies)", "بک‌تست استراتژی‌های کلاسیک (۲۲ استراتژی)"),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        t(
+                            "Replays all 22 classic strategies from the scanner over real history and grades them by quality bucket. Answers: does higher quality actually win more?",
+                            "هر ۲۲ استراتژی کلاسیک اسکنر را روی تاریخچه واقعی بازپخش و بر اساس سبد کیفی ارزیابی می‌کند. پاسخ می‌دهد: آیا کیفیت بالاتر واقعاً برد بیشتری دارد؟"
+                        ),
+                        color = Color(0xFFE7DEFF)
+                    )
+                    Button(onClick = { viewModel.runStrategyBacktest() }, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            if (state.stratLoading) t("Running on real history...", "در حال اجرا روی تاریخچه واقعی...")
+                            else t("Run Strategy Backtest", "اجرای بک‌تست استراتژی‌ها") + " • ${state.symbol} • ${state.timeframe}"
+                        )
+                    }
+                    state.stratError?.let {
+                        Text(t("Error", "خطا") + ": $it", color = MaterialTheme.colorScheme.error)
+                    }
+                    state.stratResult?.let { res ->
+                        if (!res.ok) {
+                            Text(
+                                res.detail ?: t("Not enough historical data", "داده تاریخی کافی نیست"),
+                                color = Color(0xFFFFD27A)
+                            )
+                        } else {
+                            MetricLine(t("Candles / Source", "کندل‌ها / منبع"), "${res.candles} • ${res.dataSource}")
+                            MetricLine(
+                                t("Signals Detected / Trades", "سیگنال‌های شناسایی / معاملات"),
+                                "${res.signalsDetected} / ${res.all.trades}"
+                            )
+                            PrimeStatsBlock(t("All Traded Signals", "همه سیگنال‌های معامله‌شده"), res.all, t)
+                            Text(
+                                t("By Quality Bucket", "بر اساس سبد کیفی"),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                            listOf("q75+", "q65-74", "q55-64", "q<55").forEach { key ->
+                                res.byQualityBucket[key]?.let { b ->
+                                    MetricLine(
+                                        key,
+                                        "${b.trades} • WR=${b.winRatePct ?: "—"}٪ • avgR=${b.avgR ?: "—"} • PF=${b.profitFactor ?: "—"}"
+                                    )
+                                }
+                            }
+                            if (res.byStrategy.isNotEmpty()) {
+                                Text(
+                                    t("By Strategy (≥1 trade)", "به تفکیک استراتژی (≥۱ معامله)"),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                res.byStrategy.values.sortedByDescending { it.trades }.take(10).forEach { s ->
+                                    Text(
+                                        "${s.nameFa} [${s.family}] → ${s.trades} • WR=${s.winRatePct ?: "—"}٪ • avgR=${s.avgR ?: "—"}",
+                                        color = if ((s.avgR ?: 0.0) > 0) Color(0xFF9BFFC8) else Color(0xFFFFD27A)
+                                    )
+                                }
+                            }
+                            Text(res.verdictFa, color = Color(0xFFB08CFF))
+                            Text(res.disclaimerFa, color = Color(0xFF9AA7BD), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
             state.analytics?.let { analytics ->
                 item {
                     PremiumGlassCard(borderColor = Color(0x4059C7FF)) {

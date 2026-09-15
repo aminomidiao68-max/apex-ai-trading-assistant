@@ -1420,6 +1420,19 @@ data class IctKillzoneDto(
     val weekend: Boolean = false
 )
 
+data class ClassicLevelsDto(
+    @SerializedName("donchian_upper") val donchianUpper: Double? = null,
+    @SerializedName("donchian_lower") val donchianLower: Double? = null,
+    @SerializedName("keltner_upper") val keltnerUpper: Double? = null,
+    @SerializedName("keltner_lower") val keltnerLower: Double? = null,
+    val vwap: Double? = null,
+    @SerializedName("vwap_up2") val vwapUp2: Double? = null,
+    @SerializedName("vwap_dn2") val vwapDn2: Double? = null,
+    val pivot: Double? = null,
+    @SerializedName("pivot_r1") val pivotR1: Double? = null,
+    @SerializedName("pivot_s1") val pivotS1: Double? = null
+)
+
 data class IndicatorsV2SummaryDto(
     val available: Boolean = false,
     val votes: Map<String, Int> = emptyMap(),
@@ -1431,7 +1444,8 @@ data class IndicatorsV2SummaryDto(
     @SerializedName("squeeze_fired") val squeezeFired: Boolean? = null,
     @SerializedName("regime_choppiness") val regimeChoppiness: String? = null,
     @SerializedName("choppiness_value") val choppinessValue: Double? = null,
-    @SerializedName("vwap_z") val vwapZ: Double? = null
+    @SerializedName("vwap_z") val vwapZ: Double? = null,
+    val levels: ClassicLevelsDto? = null
 )
 
 data class IndicatorsV2Dto(
@@ -1635,4 +1649,33 @@ data class PrimeBacktestResponseDto(
     @SerializedName("prime_proxy") val primeProxy: PrimeBacktestStatsDto = PrimeBacktestStatsDto(),
     val trades: List<PrimeBacktestTradeDto> = emptyList(),
     @SerializedName("disclaimer_fa") val disclaimerFa: String = ""
+)
+
+// ================== v3.13: Classic Strategy Pack Backtest ==================
+data class StrategyBacktestRowDto(
+    @SerializedName("name_fa") val nameFa: String = "",
+    val family: String = "",
+    val trades: Int = 0,
+    val wins: Int = 0,
+    @SerializedName("win_rate_pct") val winRatePct: Double? = null,
+    @SerializedName("avg_r") val avgR: Double? = null,
+    @SerializedName("profit_factor") val profitFactor: Double? = null
+)
+
+data class StrategyBacktestResponseDto(
+    val ok: Boolean = false,
+    val detail: String? = null,
+    val symbol: String = "",
+    val timeframe: String = "",
+    val candles: Int = 0,
+    @SerializedName("data_source") val dataSource: String = "",
+    @SerializedName("signals_detected") val signalsDetected: Int = 0,
+    @SerializedName("signals_not_triggered") val signalsNotTriggered: Int = 0,
+    val all: PrimeBacktestStatsDto = PrimeBacktestStatsDto(),
+    @SerializedName("by_quality_bucket") val byQualityBucket: Map<String, PrimeBacktestStatsDto> = emptyMap(),
+    @SerializedName("by_direction") val byDirection: Map<String, PrimeBacktestStatsDto> = emptyMap(),
+    @SerializedName("by_strategy") val byStrategy: Map<String, StrategyBacktestRowDto> = emptyMap(),
+    @SerializedName("verdict_fa") val verdictFa: String = "",
+    @SerializedName("disclaimer_fa") val disclaimerFa: String = "",
+    val cached: Boolean = false
 )

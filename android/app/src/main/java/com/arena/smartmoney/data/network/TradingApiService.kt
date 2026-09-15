@@ -22,6 +22,7 @@ import com.arena.smartmoney.data.model.BacktestSummaryDto
 import com.arena.smartmoney.data.model.CandlesResponse
 import com.arena.smartmoney.data.model.ProximityAlertsResponseDto
 import com.arena.smartmoney.data.model.PrimeBacktestResponseDto
+import com.arena.smartmoney.data.model.StrategyBacktestResponseDto
 import com.arena.smartmoney.data.model.DeviceTokenItemDto
 import com.arena.smartmoney.data.model.ExecutionActionResponseDto
 import com.arena.smartmoney.data.model.DeviceTokenRegisterRequestDto
@@ -164,6 +165,16 @@ interface TradingApiService {
         @Query("candles") candles: Int,
         @Query("force") force: Boolean
     ): PrimeBacktestResponseDto
+
+    @GET("api/v1/backtest/strategies")
+    suspend fun getStrategyBacktest(
+        @Query("symbol") symbol: String,
+        @Query("timeframe") timeframe: String,
+        @Query("market") market: String,
+        @Query("candles") candles: Int,
+        @Query("min_quality") minQuality: Int,
+        @Query("force") force: Boolean
+    ): StrategyBacktestResponseDto
 
     @GET("api/v1/execution/status")
     suspend fun getExecutionStatus(): ExecutionStatusResponse

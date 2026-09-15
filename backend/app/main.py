@@ -157,6 +157,7 @@ from app.services import ict_engine
 from app.services import smt_engine
 from app.services import proximity_alert_service
 from app.services import prime_backtest_service
+from app.services import strategy_backtest_service
 from app.services.notification_service import NotificationService
 from app.services.orderflow_service import OrderFlowService
 from app.services.operational_validation_service import OperationalValidationError, OperationalValidationService
@@ -3757,6 +3758,7 @@ async def get_proximity_alerts(
 
 
 _PRIME_BT_CACHE: dict[str, tuple[float, dict]] = {}
+_STRATEGY_BT_CACHE: dict[str, tuple[float, dict]] = {}
 
 
 @app.get("/api/v1/backtest/prime")
@@ -3809,6 +3811,65 @@ async def backtest_prime_setups(
     result["data_source"] = source
     if result.get("ok"):
         _PRIME_BT_CACHE[cache_key] = (_time.time(), result)
+    return result
+
+
+@app.get("/api/v1/backtest/strategies")
+async def backtest_classic_strategies(
+    symbol: str = Query("BTCUSDT", min_length=2, max_length=24),
+    timeframe: str = Query("15m"),
+    market: str = Query(default="auto", pattern="^(auto|crypto|forex)$"),
+    candles: int = Query(default=1000, ge=300, le=2000),
+    min_quality: int = Query(default=55, ge=0, le=100),
+    force: bool = Query(default=False),
+):
+    """Walk-forward replay of the 22-strategy classic pack over real history.
+
+    Answers the calibration question with data: does quality>=65 actually win
+    more? Per-strategy books, conservative fills, honest small-sample verdicts.
+    """
+    symbol = symbol.upper()
+    tf = _canonical_timeframe(timeframe)
+    market_eff = _auto_market(symbol, None if market == "auto" else market)
+    cache_key = f"{symbol}|{tf}|{candles}|{min_quality}"
+    now = _time.time()
+    cached = _STRATEGY_BT_CACHE.get(cache_key)
+    if cached and now - cached[0] < 600 and not force:
+        return {**cached[1], "cached": True, "cache_age_seconds": round(now - cached[0], 1)}
+    if cached and force and now - cached[0] < 60:
+        return {**cached[1], "cached": True, "cache_age_seconds": round(now - cached[0], 1), "refresh_cooldown": True}
+
+    items: list[dict] = []
+    source = "none"
+    if market_eff == "crypto":
+        try:
+            items = await prime_backtest_service.fetch_okx_deep_candles(symbol, tf, candles)
+            source = "okx_history_candles"
+        except Exception:
+            items = []
+    if len(items) < 220:
+        try:
+            raw = await fetch_live_candles(symbol, market_eff, tf)
+            fallback = _norm_candles(raw)[-candles:]
+            if len(fallback) > len(items):
+                items = fallback
+                source = "live_cache_260" if market_eff == "crypto" else "provider_live"
+        except Exception:
+            pass
+    if len(items) < 220:
+        return {
+            "ok": False,
+            "detail": "داده تاریخی کافی برای بک‌تست استراتژی‌ها در دسترس نیست (حداقل ۲۲۰ کندل).",
+            "candles": len(items),
+            "required": 220,
+        }
+
+    result = await strategy_backtest_service.run_async(
+        items, symbol=symbol, timeframe=tf, min_quality=min_quality
+    )
+    result["data_source"] = source
+    if result.get("ok"):
+        _STRATEGY_BT_CACHE[cache_key] = (_time.time(), result)
     return result
 
 

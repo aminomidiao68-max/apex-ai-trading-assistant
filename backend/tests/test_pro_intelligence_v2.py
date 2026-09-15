@@ -333,3 +333,98 @@ def test_smc_endpoint_includes_v2_packs(monkeypatch):
     assert strat["counts"]["active"] == len(strat["active"])
     ict = body.get("ict") or {}
     assert "market_structure" in ict and "ote" in ict and "killzone" in ict
+
+
+# ------------------------------------------------------- strategy backtest
+def test_strategy_backtest_mechanics():
+    from app.services import strategy_backtest_service as sbs
+
+    items = []
+    price = 100.0
+    for i in range(350):
+        drift = 0.06 if i < 300 else 0.9
+        jitter = ((i * 37) % 7 - 3) / 50.0
+        o = price
+        c = price + drift + jitter
+        wick = 0.04 + ((i * 53) % 5) / 100.0
+        items.append({"t": 1_700_000_000.0 + i * 900.0, "o": o, "h": max(o, c) + wick,
+                      "l": min(o, c) - wick, "c": c, "v": 1000.0 + (i % 9) * 5})
+        price = c
+
+    res = sbs.run(items, symbol="TEST", timeframe="15m", min_quality=0)
+    assert res["ok"] is True
+    allst = res["all"]
+    assert allst["wins"] + allst["losses"] == allst["trades"]
+    for bucket in ("q<55", "q55-64", "q65-74", "q75+"):
+        assert bucket in res["by_quality_bucket"]
+    assert set(res["by_direction"]) == {"long", "short"}
+    assert res["verdict_fa"]
+    assert res["settings"]["no_target_rule"] == "tp_2r"
+    # determinism
+    res2 = sbs.run(items, symbol="TEST", timeframe="15m", min_quality=0)
+    assert res["all"] == res2["all"] and res["trades"] == res2["trades"]
+    # insufficient data guard
+    small = sbs.run(items[:100], symbol="TEST")
+    assert small["ok"] is False and small["detail"] == "insufficient_candles"
+
+
+def test_strategy_backtest_simulate_plan_rules():
+    from app.services import strategy_backtest_service as sbs
+
+    base = 100.0
+    items = [{"t": 1_700_000_000.0 + i * 900.0, "o": base, "h": base + 0.5,
+              "l": base - 0.5, "c": base, "v": 10.0} for i in range(40)]
+    # never touches entry (long limit far BELOW the range → low never reaches it)
+    out = sbs._simulate_plan(items, 5, "long", base - 50, base - 51, base - 40, 20, 0.0)
+    assert out == {"triggered": False}
+    # stop-first on the entry bar (conservative): entry=base, low dips to sl same bar
+    items2 = list(items)
+    items2[6] = {**items[6], "h": base + 3.0, "l": base - 2.0}
+    out2 = sbs._simulate_plan(items2, 5, "long", base, base - 1.0, base + 2.0, 20, 0.0)
+    assert out2["triggered"] and out2["exit_reason"] == "sl" and out2["r"] == -1.0
+    # clean target hit later → +2R style (target=entry+2)
+    items3 = list(items)
+    items3[8] = {**items3[8], "h": base + 2.5, "l": base - 0.2}
+    out3 = sbs._simulate_plan(items3, 5, "long", base, base - 1.0, base + 2.0, 20, 0.0)
+    assert out3["triggered"] and out3["exit_reason"] == "tp" and out3["r"] == 2.0
+    # no target → tp_2r convention
+    out4 = sbs._simulate_plan(items3, 5, "long", base, base - 1.0, None, 20, 0.0)
+    assert out4["triggered"] and out4["exit_reason"] == "tp_2r" and out4["r"] == 2.0
+
+
+def test_strategy_backtest_endpoint_offline_and_cooldown(monkeypatch):
+    import asyncio
+
+    items = []
+    price = 100.0
+    for i in range(400):
+        drift = 0.06 if i < 340 else 0.9
+        jitter = ((i * 37) % 7 - 3) / 50.0
+        o = price
+        c = price + drift + jitter
+        wick = 0.04 + ((i * 53) % 5) / 100.0
+        items.append({"t": 1_700_000_000.0 + i * 900.0, "o": o, "h": max(o, c) + wick,
+                      "l": min(o, c) - wick, "c": c, "v": 1000.0 + (i % 9) * 5})
+        price = c
+
+    async def fake_deep(symbol, timeframe, max_candles=1200):
+        return items[:max_candles]
+
+    monkeypatch.setattr(main.prime_backtest_service, "fetch_okx_deep_candles", fake_deep)
+    main._STRATEGY_BT_CACHE.clear()
+    resp = client.get("/api/v1/backtest/strategies",
+                      params={"symbol": "BTCUSDT", "timeframe": "15m", "candles": 400, "min_quality": 0})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["data_source"] == "okx_history_candles"
+    assert "by_quality_bucket" in body and "verdict_fa" in body
+    assert body["all"]["trades"] >= 0
+
+    # cached + cooldown on force (same anti-hammer pattern as prime)
+    body2 = client.get("/api/v1/backtest/strategies",
+                       params={"symbol": "BTCUSDT", "timeframe": "15m", "candles": 400, "min_quality": 0}).json()
+    assert body2.get("cached") is True
+    body3 = client.get("/api/v1/backtest/strategies",
+                       params={"symbol": "BTCUSDT", "timeframe": "15m", "candles": 400, "min_quality": 0, "force": "true"}).json()
+    assert body3.get("cached") is True and body3.get("refresh_cooldown") is True

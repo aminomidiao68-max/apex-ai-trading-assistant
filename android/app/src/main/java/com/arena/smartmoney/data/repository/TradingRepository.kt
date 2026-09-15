@@ -120,6 +120,18 @@ class TradingRepository(
         symbol = symbol, timeframe = timeframe, market = market, candles = candles, force = force
     )
 
+    suspend fun getStrategyBacktest(
+        symbol: String,
+        timeframe: String,
+        market: String,
+        candles: Int = 1000,
+        minQuality: Int = 55,
+        force: Boolean = false
+    ) = api.getStrategyBacktest(
+        symbol = symbol, timeframe = timeframe, market = market,
+        candles = candles, minQuality = minQuality, force = force
+    )
+
     suspend fun getExecutionStatus() = api.getExecutionStatus()
 
     suspend fun getPaperControl() = api.getPaperControl()

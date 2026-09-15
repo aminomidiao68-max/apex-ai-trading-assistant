@@ -43,6 +43,7 @@ import com.arena.smartmoney.data.model.SmcReport
 import com.arena.smartmoney.data.model.SmcSignal
 import com.arena.smartmoney.data.model.SmtInfoDto
 import com.arena.smartmoney.data.model.StrategiesV2Dto
+import com.arena.smartmoney.data.model.ClassicLevelsDto
 import com.arena.smartmoney.data.model.IndicatorsV2SummaryDto
 import com.arena.smartmoney.data.model.SmcZone
 import com.arena.smartmoney.data.network.MarketWebSocketClient
@@ -80,6 +81,10 @@ private val KzLon    = Color(0x3390CAF9)   // London Killzone — آبی روش�
 private val KzNy     = Color(0x33EF5350)   // New York — قرمز روشن TV
 private val KzOver   = Color(0x44D4AF37)   // Overlap — طلایی
 private val VwapC    = Color(0xFFF5F0DC)
+private val DonchC   = Color(0xFFFFB74D)   // v3.13: Donchian 20 — نارنجی
+private val KeltC    = Color(0xFFB39DDB)   // v3.13: Keltner 2.5ATR — بنفش
+private val BandC    = Color(0xFF4DD0E1)   // v3.13: VWAP ±2σ — فیروزه‌ای
+private val PivotC   = Color(0xFF90A4AE)   // v3.13: Pivot/R1/S1 — خاکستری‌آبی
 private val VolUp    = Color(0x6626A69A)
 private val VolDn    = Color(0x66EF5350)
 
@@ -115,6 +120,7 @@ fun ChartScreen(
     var alerts by remember { mutableStateOf<List<ProximityAlertDto>>(emptyList()) }
     var alertsOpen by remember { mutableStateOf(false) }
     var alertsEnabled by remember { mutableStateOf(prefs.isProximityAlertsEnabled()) }
+    var showClassic by remember { mutableStateOf(prefs.isClassicLevelsEnabled()) }
     val wsClient = remember { MarketWebSocketClient() }
     val screenListState = rememberLazyListState()
 
@@ -157,12 +163,13 @@ fun ChartScreen(
     }
 
     // v3.11: persist the user's chart settings (symbol / timeframe / compare / alerts)
-    LaunchedEffect(sym, mkt, tf, compareSyms, alertsEnabled) {
+    LaunchedEffect(sym, mkt, tf, compareSyms, alertsEnabled, showClassic) {
         prefs.setChartSymbol(sym)
         prefs.setChartMarket(mkt)
         prefs.setChartTimeframe(tf)
         prefs.setChartCompareSymbols(compareSyms)
         prefs.setProximityAlertsEnabled(alertsEnabled)
+        prefs.setClassicLevelsEnabled(showClassic)
     }
 
     // v3.11: fetch compare-symbol candles (up to 2) for the overlay
@@ -280,7 +287,18 @@ fun ChartScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text("APEX Smart Money Concepts", color = TL, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                            Text("(با دو انگشت زوم کنید)", color = TL.copy(alpha = 0.6f), fontSize = 9.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    if (showClassic) "سطوح کلاسیک ✓" else "سطوح کلاسیک",
+                                    color = if (showClassic) BandC else TL.copy(alpha = 0.45f),
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier
+                                        .clickable { showClassic = !showClassic }
+                                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                                )
+                                Text("(با دو انگشت زوم کنید)", color = TL.copy(alpha = 0.6f), fontSize = 9.sp)
+                            }
                         }
                         if (r.candles.isNotEmpty()) {
                             SmcCanvas(
@@ -289,7 +307,9 @@ fun ChartScreen(
                                 onScale = { scale = (scale * it).coerceIn(0.6f, 4f) },
                                 compare = compareSeries.mapIndexed { idx, cs ->
                                     CompareOverlay(cs.symbol, cs.closes, COMPARE_COLORS[idx % COMPARE_COLORS.size])
-                                }
+                                },
+                                classicLevels = r.indicatorsV2?.summary?.levels,
+                                showClassic = showClassic
                             )
                         } else {
                             Box(Modifier.fillMaxWidth().height(390.dp), contentAlignment = Alignment.Center) {
@@ -803,7 +823,7 @@ private fun defaultChartScale(timeframe: String): Float = when (timeframe) {
 
 // ======================== بوم چارت دقیقاً به سبک TradingView ========================
 @Composable
-private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: Float, onScale: (Float)->Unit, compare: List<CompareOverlay> = emptyList()) {
+private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: Float, onScale: (Float)->Unit, compare: List<CompareOverlay> = emptyList(), classicLevels: ClassicLevelsDto? = null, showClassic: Boolean = false) {
     Canvas(modifier = modifier
         .background(ChartBg)
         .pointerInput(Unit) { detectTransformGestures { _, _, zoom, _ -> onScale(zoom) } }
@@ -1041,6 +1061,33 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
                 val vp = NativePaint().apply { color=VwapC.toArgb(); textSize=14f; isAntiAlias=true }
                 drawContext.canvas.nativeCanvas.drawText("VWAP", chartL+4f, y-4f, vp)
             }
+        }
+
+        // ======== v3.13: Classic levels (Donchian / Keltner / VWAP±2σ / Pivots) ========
+        if (showClassic && classicLevels != null) {
+            fun classicLine(price: Double?, col: Color, label: String, dash: FloatArray?) {
+                if (price == null || price <= 0.0) return
+                val y = priceY(price.toFloat())
+                if (y < chartT || y > chartB) return
+                drawLine(
+                    col.copy(alpha = 0.8f), Offset(chartL, y), Offset(chartR, y),
+                    strokeWidth = 1f,
+                    pathEffect = dash?.let { PathEffect.dashPathEffect(it) }
+                )
+                val lp = NativePaint().apply { color = col.toArgb(); textSize = 13f; isAntiAlias = true }
+                drawContext.canvas.nativeCanvas.drawText(
+                    "$label  ${df.format(price.toFloat())}", chartL + 4f, y - 3f, lp
+                )
+            }
+            classicLine(classicLevels.donchianUpper, DonchC, "DON 20 ↑", null)
+            classicLine(classicLevels.donchianLower, DonchC, "DON 20 ↓", null)
+            classicLine(classicLevels.keltnerUpper, KeltC, "KELT ↑", floatArrayOf(7f, 4f))
+            classicLine(classicLevels.keltnerLower, KeltC, "KELT ↓", floatArrayOf(7f, 4f))
+            classicLine(classicLevels.vwapUp2, BandC, "VWAP +2σ", floatArrayOf(2f, 4f))
+            classicLine(classicLevels.vwapDn2, BandC, "VWAP -2σ", floatArrayOf(2f, 4f))
+            classicLine(classicLevels.pivot, PivotC, "PIVOT", floatArrayOf(10f, 3f, 2f, 3f))
+            classicLine(classicLevels.pivotR1, PivotC, "R1", floatArrayOf(10f, 3f, 2f, 3f))
+            classicLine(classicLevels.pivotS1, PivotC, "S1", floatArrayOf(10f, 3f, 2f, 3f))
         }
 
         // ======== Only the latest EQH/EQL reference levels ========
