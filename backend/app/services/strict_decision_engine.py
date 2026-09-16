@@ -124,7 +124,10 @@ def apply_strict_decision(
             {
                 "fee_r": cost["fee_r"], "risk_pct": cost["risk_pct"], "net_rr": cost["net_rr"],
                 "rescue_possible": bool(cost_projection and cost_projection.get("viable")),
-                "rescue_reason_fa": (cost_projection or {}).get("reasons_fa") or cost["reasons_fa"],
+                "rescue_reason_fa": cost["reasons_fa"] + (
+                    (cost_projection or {}).get("reasons_fa")
+                    if (cost_projection or {}).get("projected") else []
+                ),
             },
             "fee<=0.30R, stop>=0.35×ATR, netRR>=1.5",
         ),

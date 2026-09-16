@@ -86,6 +86,8 @@ def test_strict_engine_rejects_but_explains_rescue_geometry():
     assert not tc["passed"]
     assert tc["actual"]["rescue_possible"] is True  # geometry WOULD be rescuable
     assert tc["actual"]["rescue_reason_fa"]
+    # the gate's own failure reason comes first, projection detail second
+    assert "کارمزد" in tc["actual"]["rescue_reason_fa"][0]
     proj = dec["decision"]["trade_cost"]["projection"]
     assert proj["viable"] and proj["sl"] < 99.9  # informational rescue detail
     assert dec["decision"]["status"] != "actionable"
