@@ -546,7 +546,11 @@ def _default_providers() -> dict[str, "AIProvider"]:
 # Explicit latency-first priority. The generic openai_compatible slot sits last
 # among external providers on purpose: it is a catch-all, and letting it lead
 # would silently starve Cerebras/Groq whenever AI_OPENAI_API_KEY happens to be set.
-PROVIDER_PRIORITY = ("cerebras", "groq", "openrouter", "openai_compatible", "gemini")
+# Groq leads: Cerebras ended its permanent free tier on 2026-07-21 ($5 trial
+# credit, requires a payment method → accounts without billing answer 402), so
+# it stays configured but sits behind the proven-working providers. If billing
+# is ever activated it automatically rejoins as a fallback — no code change.
+PROVIDER_PRIORITY = ("groq", "openrouter", "cerebras", "openai_compatible", "gemini")
 
 
 def _configured_chain(providers: dict[str, "AIProvider"], preferred: str | None = None) -> list[str]:

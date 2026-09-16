@@ -289,7 +289,8 @@ def test_status_exposes_fallback_chain_without_leaking_keys(monkeypatch):
     status = service.status()
     chain = status["fallback_chain"]
     assert chain, "at least one configured provider must be listed"
-    assert chain[0] == "cerebras", "cerebras leads the latency-ordered chain"
+    assert chain[0] == "groq", "groq leads; cerebras is demoted (card-gated trial since 2026-07)"
+    assert chain.index("cerebras") > chain.index("openrouter")
     assert "openrouter" in chain and "groq" in chain
     serialized = json.dumps(status).lower()
     assert "cerebras-secret-key" not in serialized
@@ -302,16 +303,16 @@ def test_chain_falls_over_to_next_provider_on_transport_error(monkeypatch):
     """A dead key must degrade to the next configured model, not to silence."""
     _enable_external(monkeypatch)
     dead = _FakeProvider(error=RuntimeError("401 invalid key"))
-    dead.name = "cerebras"
+    dead.name = "groq"  # chain leader since the cerebras demotion
     alive = _FakeProvider(_valid_draft())
-    alive.name = "groq"
-    service = AIExplainabilityService(providers={"cerebras": dead, "groq": alive})
+    alive.name = "cerebras"
+    service = AIExplainabilityService(providers={"groq": dead, "cerebras": alive})
 
     result = asyncio.run(service.explain(_request(provider="auto")))
 
     assert dead.calls == 1 and alive.calls == 1
     assert result.mode == "generated"
-    assert result.provider == "groq"
+    assert result.provider == "cerebras"
     assert result.external_ai_used is True
     assert result.deterministic_action_label == "WATCH"
     assert result.deterministic_core_preserved is True
@@ -321,10 +322,10 @@ def test_verification_failure_does_not_fall_over_to_another_model(monkeypatch):
     """A hallucinating model fails closed — never laundered through a second model."""
     _enable_external(monkeypatch)
     bad = _FakeProvider(json.dumps({**_valid_draft(), "action_label": "LONG"}))
-    bad.name = "cerebras"
+    bad.name = "groq"  # chain leader since the cerebras demotion
     honest = _FakeProvider(_valid_draft())
-    honest.name = "groq"
-    service = AIExplainabilityService(providers={"cerebras": bad, "groq": honest})
+    honest.name = "cerebras"
+    service = AIExplainabilityService(providers={"groq": bad, "cerebras": honest})
 
     result = asyncio.run(service.explain(_request(provider="auto")))
 

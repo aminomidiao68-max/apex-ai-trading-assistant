@@ -458,9 +458,9 @@ def optional_current_user(
 # them; base URLs come from provider_secret_service.OPENAI_COMPATIBLE_BASE_URLS
 # so the probe, the explain layer and the chat/vision chains can never drift.
 _USER_AI_PROVIDERS = (
-    ("cerebras", "cerebras", "llama3.1-8b"),
     ("groq", "groq", "openai/gpt-oss-120b"),
     ("openrouter", "openrouter", "openai/gpt-4o-mini"),
+    ("cerebras", "cerebras", "llama3.1-8b"),
     ("openai", "openai_compatible", "gpt-4.1-mini"),
 )
 
@@ -548,13 +548,19 @@ def _openai_compat_headers(api_key: str, base_url: str) -> dict:
 
 
 def _system_ai_candidates(kind: str = "chat") -> list[dict]:
-    """System (env) candidates: Cerebras → Groq → OpenRouter → OpenAI."""
+    """System (env) candidates: Groq → OpenRouter → Cerebras → OpenAI.
+
+    Cerebras is last among the configured keys: its free tier became a
+    card-gated $5 trial (2026-07-21), so key holders without billing get 402s.
+    Keeping it registered costs nothing and revives it automatically once
+    billing exists.
+    """
     models = _BYOK_VISION_MODELS if kind == "vision" else _BYOK_CHAT_MODELS
     out: list[dict] = []
     env_map = {
-        "cerebras": ("AI_CEREBRAS_API_KEY", "AI_CEREBRAS_BASE_URL", "AI_CEREBRAS_MODEL"),
         "groq": ("AI_GROQ_API_KEY", "AI_GROQ_BASE_URL", "AI_GROQ_MODEL"),
         "openrouter": ("AI_OPENROUTER_API_KEY", "AI_OPENROUTER_BASE_URL", "AI_OPENROUTER_MODEL"),
+        "cerebras": ("AI_CEREBRAS_API_KEY", "AI_CEREBRAS_BASE_URL", "AI_CEREBRAS_MODEL"),
     }
     for vault_id, (key_env, base_env, model_env) in env_map.items():
         if vault_id not in models:
