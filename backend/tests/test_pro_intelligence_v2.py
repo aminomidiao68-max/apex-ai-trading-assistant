@@ -443,3 +443,40 @@ def test_strategy_backtest_endpoint_offline_and_cooldown(monkeypatch):
     body3 = client.get("/api/v1/backtest/strategies",
                        params={"symbol": "BTCUSDT", "timeframe": "15m", "candles": 400, "min_quality": 0, "force": "true"}).json()
     assert body3.get("cached") is True and body3.get("refresh_cooldown") is True
+
+
+def test_live_gate_flags_in_scan_all():
+    from app.services import strategy_pack_v2
+
+    items = []
+    price = 100.0
+    for i in range(320):
+        drift = 0.08
+        jitter = ((i * 37) % 7 - 3) / 50.0
+        o = price
+        c = price + drift + jitter
+        wick = 0.04 + ((i * 53) % 5) / 100.0
+        items.append({"t": 1_700_000_000.0 + i * 900.0, "o": o, "h": max(o, c) + wick,
+                      "l": min(o, c) - wick, "c": c, "v": 1000.0 + (i % 9) * 5})
+        price = c
+
+    scan = strategy_pack_v2.scan_all(items, "15m")
+    assert scan["available"] is True
+    g = scan.get("gates")
+    assert g and g["ema_span"] == 50 and g["vote_threshold"] == 15
+    assert isinstance(g["net_votes"], int)
+    assert g["ema50"] is not None and g["ema50"] < items[-1]["c"]  # uptrend: close above EMA50
+    for r in scan["active"] + scan["forming"]:
+        assert "trend_ok" in r and "votes_ok" in r and "gate_ok" in r and "perf_ok" in r
+        if r["direction"] in ("long", "short"):
+            assert isinstance(r["trend_ok"], bool)
+            # in a strong uptrend every long must pass the trend gate
+            if r["direction"] == "long":
+                assert r["trend_ok"] is True
+    # with_gates=False → no tagging cost, no gates section
+    scan_ng = strategy_pack_v2.scan_all(items, "15m", with_gates=False)
+    assert scan_ng.get("gates") is None
+    # context text mentions the live gate line
+    ctx = strategy_pack_v2.build_context_text(scan)
+    if scan["active"]:
+        assert "گیت هم‌جهتی زنده" in ctx

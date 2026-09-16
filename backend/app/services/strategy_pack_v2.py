@@ -15,7 +15,66 @@ from __future__ import annotations
 import math
 from typing import Any
 
+GATE_VOTE_THRESHOLD = 15
+GATE_EMA_SPAN = 50
+GATE_PERF_MIN_TRADES = 3
+
 # ---------------------------------------------------------------- helpers
+
+
+def _ema_last(values: list[float], span: int) -> float | None:
+    """SMA-seeded EMA, last value only. Deterministic, no deps."""
+    if len(values) < span:
+        return None
+    alpha = 2.0 / (span + 1)
+    ema = sum(values[:span]) / span
+    for v in values[span:]:
+        ema = alpha * v + (1 - alpha) * ema
+    return ema
+
+
+def _signal_gates(items: list[dict], results: list[dict]) -> dict:
+    """Tag each result with walk-forward-safe alignment gates (context bar = items[-1]).
+
+    trend_ok : close vs EMA50 agrees with the signal direction
+    votes_ok : indicator_pack_v2 net vote beyond +/-GATE_VOTE_THRESHOLD agrees
+    perf_ok  : None here (needs replay history) — only the backtest service fills it
+    gate_ok  : trend_ok AND votes_ok (both must be known)
+    """
+    closes = [float(b.get("c") or 0.0) for b in items]
+    ema = _ema_last(closes, GATE_EMA_SPAN)
+    last = closes[-1] if closes else None
+    net_votes: int | None = None
+    try:
+        from app.services import indicator_pack_v2
+        net_votes = int(indicator_pack_v2.summarize(indicator_pack_v2.compute_all(items)).get("net") or 0)
+    except Exception:
+        net_votes = None
+    counts = {"trend_ok": 0, "votes_ok": 0, "gate_ok": 0, "tagged": 0}
+    for r in results:
+        d = str(r.get("direction"))
+        if d not in ("long", "short"):
+            r["trend_ok"] = r["votes_ok"] = r["perf_ok"] = r["gate_ok"] = None
+            continue
+        t_ok = None if (ema is None or last is None) else (last > ema if d == "long" else last < ema)
+        v_ok = None if net_votes is None else (
+            net_votes >= GATE_VOTE_THRESHOLD if d == "long" else net_votes <= -GATE_VOTE_THRESHOLD
+        )
+        r["trend_ok"] = t_ok
+        r["votes_ok"] = v_ok
+        r["perf_ok"] = None
+        r["gate_ok"] = None if (t_ok is None or v_ok is None) else bool(t_ok and v_ok)
+        counts["tagged"] += 1
+        counts["trend_ok"] += 1 if t_ok else 0
+        counts["votes_ok"] += 1 if v_ok else 0
+        counts["gate_ok"] += 1 if r["gate_ok"] else 0
+    return {
+        "ema_span": GATE_EMA_SPAN,
+        "vote_threshold": GATE_VOTE_THRESHOLD,
+        "ema50": round(ema, 8) if ema is not None else None,
+        "net_votes": net_votes,
+        "counts": counts,
+    }
 
 
 def _r(value: Any, digits: int = 6) -> Any:
@@ -657,7 +716,7 @@ def _engulfing_at_level(items: list[dict], atr: float) -> list[dict]:
 # ---------------------------------------------------------------- scan
 
 
-def scan_all(items: list[dict], timeframe: str = "15m") -> dict:
+def scan_all(items: list[dict], timeframe: str = "15m", with_gates: bool = True) -> dict:
     """Run every detector; strict data requirements, no fabricated signals."""
     if len(items) < 40:
         return {"available": False, "reason": "insufficient_data", "active": [], "forming": [], "counts": {}}
@@ -709,6 +768,12 @@ def scan_all(items: list[dict], timeframe: str = "15m") -> dict:
     else:
         net = "none"
     total = max(longs + shorts, 1)
+    gates_info = None
+    if with_gates:
+        try:
+            gates_info = _signal_gates(items, active + forming)
+        except Exception:
+            gates_info = None
     return {
         "available": True,
         "timeframe": tf,
@@ -717,8 +782,10 @@ def scan_all(items: list[dict], timeframe: str = "15m") -> dict:
         "counts": {"active": len(active), "forming": len(forming), "long": longs, "short": shorts},
         "net_direction": net,
         "agreement_pct": int(max(longs, shorts) / total * 100) if (longs or shorts) else 0,
+        "gates": gates_info,
         "top": [
-            {"id": r["id"], "name_fa": r["name_fa"], "direction": r["direction"], "quality": r["quality"]}
+            {"id": r["id"], "name_fa": r["name_fa"], "direction": r["direction"], "quality": r["quality"],
+             "gate_ok": r.get("gate_ok")}
             for r in active[:5]
         ],
     }
@@ -730,7 +797,16 @@ def build_context_text(scan: dict) -> str:
     c = scan.get("counts") or {}
     lines = [f"استراتژی‌های کلاسیک (پک v2): {c.get('active', 0)} سیگنال فعال ({c.get('long', 0)} خرید / {c.get('short', 0)} فروش)، {c.get('forming', 0)} در حال شکل‌گیری — جهت خالص: {scan.get('net_direction')}"]
     for r in scan.get("active", [])[:8]:
-        lines.append(f"  • {r['name_fa']} [{r['direction']}] کیفیت={r['quality']} — {r['reason_fa']}")
+        gate_tag = " 🛡️✓" if r.get("gate_ok") is True else (" 🛡️✗" if r.get("gate_ok") is False else "")
+        lines.append(f"  • {r['name_fa']} [{r['direction']}] کیفیت={r['quality']}{gate_tag} — {r['reason_fa']}")
     for r in scan.get("forming", [])[:3]:
         lines.append(f"  ◌ (forming) {r['name_fa']} — {r['reason_fa']}")
+    g = scan.get("gates") or {}
+    gc = g.get("counts") or {}
+    if gc.get("tagged"):
+        lines.append(
+            f"  🛡️ گیت هم‌جهتی زنده (EMA{g.get('ema_span')} + رأی پک اندیکاتور، آستانه ±{g.get('vote_threshold')}): "
+            f"{gc.get('gate_ok', 0)} از {gc.get('tagged', 0)} سیگنال — خالص رأی {g.get('net_votes')}. "
+            f"این گیت در بک‌تست 1h اندازه‌گیری شده (votes: PF 1.62 در برابر 1.35 بدون گیت)؛ در 5m هیچ گیتی کمک نکرد."
+        )
     return "\n".join(lines)

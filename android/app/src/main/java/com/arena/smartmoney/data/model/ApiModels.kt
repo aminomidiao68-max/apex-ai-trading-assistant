@@ -1462,7 +1462,26 @@ data class StrategyV2Dto(
     @SerializedName("reason_fa") val reasonFa: String = "",
     val entry: Double? = null,
     val stop: Double? = null,
-    val target: Double? = null
+    val target: Double? = null,
+    @SerializedName("trend_ok") val trendOk: Boolean? = null,
+    @SerializedName("votes_ok") val votesOk: Boolean? = null,
+    @SerializedName("perf_ok") val perfOk: Boolean? = null,
+    @SerializedName("gate_ok") val gateOk: Boolean? = null
+)
+
+data class StrategyGateCountsDto(
+    val tagged: Int = 0,
+    @SerializedName("trend_ok") val trendOk: Int = 0,
+    @SerializedName("votes_ok") val votesOk: Int = 0,
+    @SerializedName("gate_ok") val gateOk: Int = 0
+)
+
+data class StrategyGatesInfoDto(
+    @SerializedName("ema_span") val emaSpan: Int = 0,
+    @SerializedName("vote_threshold") val voteThreshold: Int = 0,
+    @SerializedName("ema50") val ema50: Double? = null,
+    @SerializedName("net_votes") val netVotes: Int? = null,
+    val counts: StrategyGateCountsDto = StrategyGateCountsDto()
 )
 
 data class StrategiesV2Dto(
@@ -1471,7 +1490,8 @@ data class StrategiesV2Dto(
     val forming: List<StrategyV2Dto> = emptyList(),
     val counts: Map<String, Int> = emptyMap(),
     @SerializedName("net_direction") val netDirection: String = "none",
-    @SerializedName("agreement_pct") val agreementPct: Int = 0
+    @SerializedName("agreement_pct") val agreementPct: Int = 0,
+    val gates: StrategyGatesInfoDto? = null
 )
 
 data class FootprintSummaryDto(

@@ -1564,6 +1564,15 @@ private fun StrategyPackCard(s: StrategiesV2Dto) {
                 "$activeN سیگنال فعال • $formN در حال شکل‌گیری • توافق ${s.agreementPct}٪",
                 color = TL, fontSize = 11.sp
             )
+            val gi = s.gates
+            if (gi != null && gi.counts.tagged > 0) {
+                Text(
+                    "🛡️ گیت هم‌جهتی (EMA${gi.emaSpan}+رأی ±${gi.voteThreshold}): " +
+                        "${gi.counts.gateOk} از ${gi.counts.tagged} هم‌جهت • خالص رأی ${gi.netVotes ?: "—"}",
+                    color = if (gi.counts.gateOk * 2 >= gi.counts.tagged) Color(0xFF9BFFC8) else BearOB,
+                    fontSize = 10.sp
+                )
+            }
             if (s.active.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
                 s.active.take(6).forEach { st ->
@@ -1597,6 +1606,14 @@ private fun StrategyPackCard(s: StrategiesV2Dto) {
                                     Text(
                                         " ${st.quality}٪ ", color = col,
                                         fontSize = 11.sp, fontWeight = FontWeight.Black
+                                    )
+                                }
+                                if (st.gateOk != null) {
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        if (st.gateOk == true) "🛡️ هم‌جهت" else "⚠ ناهم‌جهت",
+                                        color = if (st.gateOk == true) Color(0xFF9BFFC8) else BearOB,
+                                        fontSize = 8.sp, fontWeight = FontWeight.Black
                                     )
                                 }
                                 if (st.entry != null && st.stop != null && st.target != null) {

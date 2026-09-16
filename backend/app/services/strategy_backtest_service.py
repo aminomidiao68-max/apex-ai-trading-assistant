@@ -239,11 +239,12 @@ def run(
         start = max(0, i + 1 - WINDOW)
         window = items[start:i + 1]
         try:
-            scan = strategy_pack_v2.scan_all(window, timeframe)
+            scan = strategy_pack_v2.scan_all(window, timeframe, with_gates=gates)
         except Exception:
             i += step
             continue
-        # gate context for this step — computed once, only from bars <= i
+        # gate fallback context — scan_all already tags trend_ok/votes_ok per signal;
+        # these are only used when a tag is missing (older/edge scan output)
         net_votes: int | None = None
         ema50: float | None = None
         close_i: float | None = None
@@ -251,10 +252,6 @@ def run(
             closes = [float(b["c"]) for b in window]
             close_i = closes[-1] if closes else None
             ema50 = _ema(closes, 50)
-            try:
-                net_votes = int(indicator_pack_v2.summarize(indicator_pack_v2.compute_all(window)).get("net") or 0)
-            except Exception:
-                net_votes = None
         for sig in scan.get("active") or []:
             direction = str(sig.get("direction"))
             if direction not in ("long", "short"):
@@ -289,15 +286,20 @@ def run(
             row["family"] = families[sid]
             row["quality"] = quality
             if gates:
-                row["gate_trend"] = bool(
-                    ema50 is not None and close_i is not None and
-                    (close_i > ema50 if direction == "long" else close_i < ema50)
-                )
-                row["gate_votes"] = bool(
-                    net_votes is not None and
-                    (net_votes >= GATE_VOTE_THRESHOLD if direction == "long"
-                     else net_votes <= -GATE_VOTE_THRESHOLD)
-                )
+                g_trend = sig.get("trend_ok")
+                if g_trend is None and ema50 is not None and close_i is not None:
+                    g_trend = close_i > ema50 if direction == "long" else close_i < ema50
+                g_votes = sig.get("votes_ok")
+                if g_votes is None:
+                    if net_votes is None:
+                        try:
+                            net_votes = int(indicator_pack_v2.summarize(indicator_pack_v2.compute_all(window)).get("net") or 0)
+                        except Exception:
+                            net_votes = 0
+                    g_votes = (net_votes >= GATE_VOTE_THRESHOLD if direction == "long"
+                               else net_votes <= -GATE_VOTE_THRESHOLD)
+                row["gate_trend"] = bool(g_trend)
+                row["gate_votes"] = bool(g_votes)
                 row["gate_perf"] = bool(
                     perf_count.get(sid, 0) >= GATE_PERF_MIN_TRADES and
                     perf_total.get(sid, 0.0) > 0
