@@ -87,6 +87,26 @@ class AIProvider(Protocol):
     async def generate(self, prompt: str) -> str | dict[str, Any]: ...
 
 
+# Per-provider model preferences. Groq shut down llama-3.3-70b-versatile on
+# 2026-08-16 and rotates models often; Cerebras' catalogue depends on the key's
+# tier. So the configured model is only the FIRST candidate — generate()
+# validates it against the provider's live /models list and falls over to the
+# next preference on model errors (400/404/422). Deprecation can never silence
+# the explain layer again.
+_MODEL_PREFERENCES = {
+    "groq": ("openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.6-27b",
+             "llama-3.1-8b-instant", "llama-3.3-70b-versatile"),
+    "cerebras": ("llama3.1-8b", "gpt-oss-120b", "qwen-3-32b",
+                 "llama-4-scout-17b-16e-instruct", "llama-3.3-70b"),
+    "openrouter": ("openai/gpt-4o-mini", "openai/gpt-4.1-mini",
+                   "meta-llama/llama-3.3-70b-instruct", "anthropic/claude-3.5-haiku"),
+    "openai_compatible": ("gpt-4.1-mini", "gpt-4o-mini"),
+}
+_MODELS_CACHE: dict[str, tuple[float, list[str]]] = {}
+_THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+_THINK_OPEN_RE = re.compile(r"<think>", re.IGNORECASE)
+
+
 class OpenAICompatibleProvider:
     name = "openai_compatible"
 
@@ -101,41 +121,118 @@ class OpenAICompatibleProvider:
         self.base_url = (base_url or settings.ai_openai_base_url).rstrip("/")
         self.api_key = settings.ai_openai_api_key if api_key is None else api_key
         self.model = model or settings.ai_openai_model
+        self.last_model: str | None = None  # the model that actually answered
+        self._last_prompt: str = ""
 
     @property
     def configured(self) -> bool:
         return bool(self.base_url and self.api_key and self.model)
 
-    async def generate(self, prompt: str) -> str:
-        api_key = self.api_key.strip()
+    def _clean_key(self) -> str:
+        api_key = (self.api_key or "").strip()
         if api_key.startswith("b'") and api_key.endswith("'"):
             api_key = api_key[2:-1]
         elif api_key.startswith('b"') and api_key.endswith('"'):
             api_key = api_key[2:-1]
-        api_key = api_key.strip("'\"")
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        return api_key.strip("'\"")
+
+    def _cache_key(self, api_key: str) -> str:
+        return f"{self.base_url}|{api_key[:12]}"
+
+    async def _live_models(self, api_key: str) -> list[str]:
+        cached = _MODELS_CACHE.get(self._cache_key(api_key))
+        now = time.monotonic()
+        if cached and now - cached[0] < 600:
+            return cached[1]
+        try:
+            async with httpx.AsyncClient(timeout=8.0, follow_redirects=False) as client:
+                response = await client.get(
+                    f"{self.base_url}/models",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                response.raise_for_status()
+                ids = [m.get("id") for m in response.json().get("data", []) if m.get("id")]
+        except Exception:
+            return []
+        _MODELS_CACHE[self._cache_key(api_key)] = (now, ids)
+        return ids
+
+    def _model_options(self, live: list[str]) -> list[str]:
+        """Ordered candidate models: configured first, then live-list preferences."""
+        prefs = _MODEL_PREFERENCES.get(self.name, ())
+        options: list[str] = []
+        if self.model:
+            options.append(self.model)
+        live_set = set(live)
+        if live:
+            # configured model not offered anymore → drop it, it would only 400
+            if options and options[0] not in live_set:
+                options.pop(0)
+            for pref in prefs:
+                if pref in live_set and pref not in options:
+                    options.append(pref)
+        else:
+            options.extend(p for p in prefs if p not in options)
+        return list(dict.fromkeys(options))[:3] or [self.model]
+
+    def _payload(self, model: str) -> dict:
         payload = {
-            "model": self.model,
+            "model": model,
             "temperature": 0,
             "max_tokens": 900,
             "messages": [
                 {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": self._last_prompt or ""},
             ],
         }
-        timeout = httpx.Timeout(settings.ai_timeout_seconds)
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-        return str(data["choices"][0]["message"]["content"])
+        lowered = model.lower()
+        base = self.base_url.lower()
+        if ("qwen" in lowered or "gpt-oss" in lowered) and ("groq" in base or "cerebras" in base):
+            payload["reasoning_format"] = "hidden"  # never leak chain-of-thought
+        return payload
+
+    async def generate(self, prompt: str) -> str:
+        self._last_prompt = prompt
+        api_key = self._clean_key()
+        live = await self._live_models(api_key)
+        options = self._model_options(live)
+        last_exc: Exception | None = None
+        for idx, model in enumerate(options):
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            if "openrouter" in self.base_url.lower():
+                headers["HTTP-Referer"] = "https://github.com/aminomidiao68-max/apex-ai-trading-assistant"
+                headers["X-Title"] = "APEX AI Trading Assistant"
+            timeout = httpx.Timeout(settings.ai_timeout_seconds)
+            try:
+                async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers=headers,
+                        json=self._payload(model),
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+            except httpx.HTTPStatusError as exc:
+                # model-level rejections fall over to the next candidate;
+                # auth/rate-limit/5xx do NOT (they would fail identically).
+                if exc.response.status_code in (400, 404, 422) and idx + 1 < len(options):
+                    _MODELS_CACHE.pop(self._cache_key(api_key), None)
+                    last_exc = exc
+                    continue
+                raise
+            self.last_model = model
+            text = str(data["choices"][0]["message"]["content"] or "")
+            text = _THINK_RE.sub("", text)
+            m = _THINK_OPEN_RE.search(text)
+            if m:
+                text = text[: m.start()]
+            return text.strip()
+        if last_exc:
+            raise last_exc
+        raise RuntimeError("no_model_candidates")
 
 
 class GeminiProvider:
