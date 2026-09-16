@@ -285,6 +285,21 @@ class _CacheEntry:
     response: AIExplainResponse
 
 
+def _safe_base_url(value: str | None) -> str | None:
+    """Sanitize a provider base URL for diagnostics: strip query/fragment and any
+    userinfo component so embedded credentials can never be echoed by /ai/status."""
+    if not value:
+        return None
+    text = str(value).split("?", 1)[0].split("#", 1)[0].strip()
+    if "://" in text:
+        scheme, rest = text.split("://", 1)
+        host_part = rest.split("/", 1)[0]
+        if "@" in host_part:
+            rest = rest.split("@", 1)[1]
+        text = f"{scheme}://{rest}"
+    return text[:120] or None
+
+
 def _safe_json(value: Any, limit: int = 240) -> str:
     try:
         text = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -570,6 +585,9 @@ class AIExplainabilityService:
                     name: {
                         "configured": bool(provider.configured),
                         "external": True,
+                        # The base URL is public API-endpoint info, not a secret —
+                        # exposing it (sanitized) makes panel typos diagnosable.
+                        "base_url": _safe_base_url(getattr(provider, "base_url", None)),
                         "circuit_open": self._circuit_is_open(name),
                         "failures": self._circuits.get(name).failures if self._circuits.get(name) else 0,
                         "last_failure": (
@@ -673,8 +691,15 @@ class AIExplainabilityService:
                 self._record_failure(name, f"http_{exc.response.status_code}")
                 issues_seen.append("provider_unavailable")
                 continue
+            except httpx.TransportError as exc:
+                # Transport detail is sanitized to the exception CLASS name only
+                # (ConnectError / ReadError / RemoteProtocolError ...) — enough to
+                # tell DNS/TLS resets from protocol glitches, never the error body.
+                self._record_failure(name, f"network_{type(exc).__name__.lower()}"[:40])
+                issues_seen.append("provider_unavailable")
+                continue
             except Exception:
-                self._record_failure(name, "network")
+                self._record_failure(name, "error")
                 issues_seen.append("provider_unavailable")
                 continue
 

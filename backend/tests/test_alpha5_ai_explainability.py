@@ -490,6 +490,41 @@ def test_verification_failure_reason_is_classified(monkeypatch):
     assert service.status()["providers"]["groq"]["last_failure"] == "verification"
 
 
+def test_transport_error_detail_is_the_exception_class_only(monkeypatch):
+    """network_* classification must expose the error CLASS, never its message."""
+    _enable_external(monkeypatch)
+    from app.services.ai_explainability_service import AIExplainabilityService
+
+    class _ConnProvider(_FakeProvider):
+        async def generate(self, prompt):
+            self.calls += 1
+            raise httpx.ConnectError("DNS failed for sk-secret-key material")
+
+    broken = _ConnProvider()
+    broken.name = "groq"
+    service = AIExplainabilityService(providers={"groq": broken})
+    asyncio.run(service.explain(_request(provider="auto")))
+    status = service.status()
+    assert status["providers"]["groq"]["last_failure"] == "network_connecterror"
+    blob = json.dumps(status).lower()
+    assert "sk-secret" not in blob and "dns failed" not in blob
+
+
+def test_status_exposes_sanitized_base_url(monkeypatch):
+    """base_url in /ai/status must drop query, fragment and any userinfo creds."""
+    _enable_external(monkeypatch)
+    from app.services.ai_explainability_service import AIExplainabilityService
+
+    p = _FakeProvider(_valid_draft())
+    p.name = "cerebras"
+    p.base_url = "https://user:hunter2@api.cerebras.ai/v1/models?debug=1#frag"
+    service = AIExplainabilityService(providers={"cerebras": p})
+    status = service.status()
+    assert status["providers"]["cerebras"]["base_url"] == "https://api.cerebras.ai/v1/models"
+    blob = json.dumps(status).lower()
+    assert "hunter2" not in blob and "debug=1" not in blob
+
+
 def test_response_reports_the_model_that_actually_answered(monkeypatch):
     _enable_external(monkeypatch)
     from app.services.ai_explainability_service import AIExplainabilityService
