@@ -3805,13 +3805,18 @@ async def backtest_prime_setups(
     timeframe: str = Query("15m"),
     market: str = Query(default="auto", pattern="^(auto|crypto|forex)$"),
     candles: int = Query(default=1000, ge=200, le=2000),
+    fee: float = Query(default=0.0, ge=0.0, le=0.25),
     force: bool = Query(default=False),
 ):
-    """Walk-forward replay of the live setup detector over real historical candles."""
+    """Walk-forward replay of the live setup detector over real historical candles.
+
+    ``fee`` = per-side fee/slippage in percent of notional (e.g. 0.05), converted
+    to R and subtracted from every simulated trade — honest post-fee results.
+    """
     symbol = symbol.upper()
     tf = _canonical_timeframe(timeframe)
     market_eff = _auto_market(symbol, None if market == "auto" else market)
-    cache_key = f"{symbol}|{tf}|{candles}"
+    cache_key = f"{symbol}|{tf}|{candles}|{fee}"
     now = _time.time()
     cached = _PRIME_BT_CACHE.get(cache_key)
     if cached and now - cached[0] < 600 and not force:
@@ -3845,7 +3850,7 @@ async def backtest_prime_setups(
             "required": 160,
         }
 
-    result = await prime_backtest_service.run_async(items, symbol=symbol, timeframe=tf)
+    result = await prime_backtest_service.run_async(items, symbol=symbol, timeframe=tf, fee_pct=fee)
     result["data_source"] = source
     if result.get("ok"):
         _PRIME_BT_CACHE[cache_key] = (_time.time(), result)
@@ -3859,17 +3864,20 @@ async def backtest_classic_strategies(
     market: str = Query(default="auto", pattern="^(auto|crypto|forex)$"),
     candles: int = Query(default=1000, ge=300, le=2000),
     min_quality: int = Query(default=55, ge=0, le=100),
+    fee: float = Query(default=0.0, ge=0.0, le=0.25),
     force: bool = Query(default=False),
 ):
     """Walk-forward replay of the 34-strategy classic pack over real history (raw pack — audit view).
 
     Answers the calibration question with data: does quality>=65 actually win
     more? Per-strategy books, conservative fills, honest small-sample verdicts.
+    ``fee`` = per-side fee/slippage in percent of notional (e.g. 0.05), applied
+    to every simulated trade so results are post-fee honest.
     """
     symbol = symbol.upper()
     tf = _canonical_timeframe(timeframe)
     market_eff = _auto_market(symbol, None if market == "auto" else market)
-    cache_key = f"{symbol}|{tf}|{candles}|{min_quality}"
+    cache_key = f"{symbol}|{tf}|{candles}|{min_quality}|{fee}"
     now = _time.time()
     cached = _STRATEGY_BT_CACHE.get(cache_key)
     if cached and now - cached[0] < 600 and not force:
@@ -3903,7 +3911,7 @@ async def backtest_classic_strategies(
         }
 
     result = await strategy_backtest_service.run_async(
-        items, symbol=symbol, timeframe=tf, min_quality=min_quality
+        items, symbol=symbol, timeframe=tf, min_quality=min_quality, fee_pct=fee
     )
     result["data_source"] = source
     if result.get("ok"):
