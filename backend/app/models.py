@@ -557,7 +557,10 @@ class AIExplainRequest(BaseModel):
     probability_label: str = Field(default="model_estimate_not_calibrated", max_length=80)
     calibration_id: Optional[str] = Field(default=None, max_length=120)
     language: Literal["fa", "en"] = "fa"
-    provider: Literal["auto", "deterministic", "openai_compatible", "groq", "gemini"] = "auto"
+    provider: Literal[
+        "auto", "deterministic", "openai_compatible", "groq", "gemini",
+        "openrouter", "cerebras",
+    ] = "auto"
 
     @model_validator(mode="after")
     def validate_ai_contract(self):
@@ -1179,8 +1182,8 @@ class ProviderSecretUpsertRequest(BaseModel):
 
 class ProviderSecretStatus(BaseModel):
     provider: Literal[
-        "groq", "openai", "twelvedata", "finnhub", "newsapi", "oanda",
-        "binance_testnet", "bybit_testnet",
+        "groq", "openai", "openrouter", "cerebras", "twelvedata", "finnhub",
+        "newsapi", "oanda", "binance_testnet", "bybit_testnet",
     ]
     configured: bool
     enabled: bool

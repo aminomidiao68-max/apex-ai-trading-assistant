@@ -168,7 +168,11 @@ from app.services.paper_oms_service import PaperOmsError, PaperOmsService
 from app.services.paper_private_testnet_service import PaperPrivateTestnetError, PaperPrivateTestnetService
 from app.services.paper_testnet_execution_service import PaperTestnetExecutionError, PaperTestnetExecutionService
 from app.services.paper_recovery_service import PaperRecoveryError, PaperRecoveryService
-from app.services.provider_secret_service import ProviderSecretService, ProviderVaultError
+from app.services.provider_secret_service import (
+    OPENAI_COMPATIBLE_BASE_URLS,
+    ProviderSecretService,
+    ProviderVaultError,
+)
 from app.services.production_guard_service import (
     client_identity,
     http_logger,
@@ -449,33 +453,133 @@ def optional_current_user(
     return auth_service.get_user_by_token(credentials.credentials)
 
 
+# Vault provider id -> (explain-layer provider name, preferred default model).
+# All of these are OpenAI-compatible, so one provider class serves every one of
+# them; base URLs come from provider_secret_service.OPENAI_COMPATIBLE_BASE_URLS
+# so the probe, the explain layer and the chat/vision chains can never drift.
+_USER_AI_PROVIDERS = (
+    ("cerebras", "cerebras", "llama-3.3-70b"),
+    ("groq", "groq", "openai/gpt-oss-120b"),
+    ("openrouter", "openrouter", "openai/gpt-4o-mini"),
+    ("openai", "openai_compatible", "gpt-4.1-mini"),
+)
+
+
 def _runtime_ai_provider_for_user(user_id: int, requested: str = "auto"):
-    selected = requested
-    if selected == "auto":
-        selected = (
-            "groq"
-            if provider_secret_service.get_material(user_id, "groq")
-            else "openai_compatible"
-        )
-    if selected == "groq":
-        material = provider_secret_service.get_material(user_id, "groq")
-        if material:
+    """Build the user's own (BYOK) explainer provider — never a system key.
+
+    "auto" walks the user's saved providers in latency order and returns the
+    first enabled one; an explicit id pins that provider only.
+    """
+    candidates = _USER_AI_PROVIDERS
+    if requested and requested != "auto":
+        wanted = "openai" if requested == "openai_compatible" else requested
+        candidates = tuple(c for c in _USER_AI_PROVIDERS if c[0] == wanted)
+        if not candidates:
+            return None
+    for vault_id, provider_name, default_model in candidates:
+        try:
+            material = provider_secret_service.get_material(user_id, vault_id)
+        except Exception:
+            material = None
+        if material and material.api_key:
             return OpenAICompatibleProvider(
-                base_url="https://api.groq.com/openai/v1",
+                base_url=OPENAI_COMPATIBLE_BASE_URLS[vault_id],
                 api_key=material.api_key,
-                model=material.model or "openai/gpt-oss-120b",
-                provider_name="groq",
-            )
-    if selected == "openai_compatible":
-        material = provider_secret_service.get_material(user_id, "openai")
-        if material:
-            return OpenAICompatibleProvider(
-                base_url="https://api.openai.com/v1",
-                api_key=material.api_key,
-                model=material.model or "gpt-4.1-mini",
-                provider_name="openai_compatible",
+                model=material.model or default_model,
+                provider_name=provider_name,
             )
     return None
+
+
+_BYOK_CHAT_MODELS = {
+    "cerebras": "llama-3.3-70b",
+    "groq": "openai/gpt-oss-120b",
+    "openrouter": "openai/gpt-4o-mini",
+    "openai": "gpt-4.1-mini",
+}
+# Vision needs a multimodal model; Cerebras has none, so it is excluded there.
+_BYOK_VISION_MODELS = {
+    "groq": "qwen/qwen3.6-27b",
+    "openrouter": "openai/gpt-4o-mini",
+    "openai": "gpt-4o-mini",
+}
+
+
+def _byok_candidates(user, kind: str = "chat") -> list[dict]:
+    """OpenAI-compatible candidates from the user's own saved keys (BYOK).
+
+    User keys always come before system keys: the user pays for them, and it
+    keeps system quota for anonymous sessions. Identical ordering in chat,
+    vision and deep-analysis so the three can never disagree.
+    """
+    models = _BYOK_VISION_MODELS if kind == "vision" else _BYOK_CHAT_MODELS
+    out: list[dict] = []
+    if not user:
+        return out
+    for vault_id, default_model in models.items():
+        try:
+            material = provider_secret_service.get_material(user.id, vault_id)
+        except Exception:
+            material = None
+        if not (material and material.api_key):
+            continue
+        out.append({
+            "provider": f"{vault_id.title()} (User BYOK)",
+            "base_url": OPENAI_COMPATIBLE_BASE_URLS[vault_id],
+            "api_key": material.api_key.strip(),
+            "model": (material.model or default_model).strip(),
+            # "is_groq" means "OpenAI-compatible with live model discovery"
+            "is_groq": vault_id in ("groq", "openrouter", "cerebras"),
+        })
+    return out
+
+
+def _openai_compat_headers(api_key: str, base_url: str) -> dict:
+    """Headers for an OpenAI-compatible request.
+
+    OpenRouter routes via HTTP-Referer / X-Title; harmless on other providers.
+    """
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    if "openrouter" in str(base_url or "").lower():
+        headers["HTTP-Referer"] = "https://github.com/aminomidiao68-max/apex-ai-trading-assistant"
+        headers["X-Title"] = "APEX AI Trading Assistant"
+    return headers
+
+
+def _system_ai_candidates(kind: str = "chat") -> list[dict]:
+    """System (env) candidates: Cerebras → Groq → OpenRouter → OpenAI."""
+    models = _BYOK_VISION_MODELS if kind == "vision" else _BYOK_CHAT_MODELS
+    out: list[dict] = []
+    env_map = {
+        "cerebras": ("AI_CEREBRAS_API_KEY", "AI_CEREBRAS_BASE_URL", "AI_CEREBRAS_MODEL"),
+        "groq": ("AI_GROQ_API_KEY", "AI_GROQ_BASE_URL", "AI_GROQ_MODEL"),
+        "openrouter": ("AI_OPENROUTER_API_KEY", "AI_OPENROUTER_BASE_URL", "AI_OPENROUTER_MODEL"),
+    }
+    for vault_id, (key_env, base_env, model_env) in env_map.items():
+        if vault_id not in models:
+            continue
+        key = os.getenv(key_env, "").strip()
+        if not key:
+            continue
+        out.append({
+            "provider": f"{vault_id.title()} (System)",
+            "base_url": os.getenv(base_env, OPENAI_COMPATIBLE_BASE_URLS[vault_id]),
+            "api_key": key,
+            "model": os.getenv(model_env, models[vault_id]),
+            "is_groq": True,
+        })
+    sys_openai_key = (settings.ai_openai_api_key or "").strip()
+    if sys_openai_key and "openai" in models:
+        sys_base = settings.ai_openai_base_url or OPENAI_COMPATIBLE_BASE_URLS["openai"]
+        out.append({
+            "provider": "OpenAI (System)",
+            "base_url": sys_base,
+            "api_key": sys_openai_key,
+            "model": models["openai"],
+            "is_groq": "groq" in sys_base.lower(),
+        })
+    return out
 
 
 import asyncio as _asyncio, time as _time
@@ -557,10 +661,40 @@ async def _groq_available_models(api_key: str, base_url: str) -> list[str]:
         return []
 
 
+# Per-base model preferences. OpenRouter and Cerebras have their own catalogues,
+# so a Groq-shaped preference list would silently pick wrong (or no) models there.
+_OPENROUTER_CHAT_PREFERENCE = (
+    "gpt-4o-mini", "gpt-4.1-mini", "llama-3.3-70b", "claude-3.5-haiku", "deepseek-chat",
+)
+_OPENROUTER_VISION_PREFERENCE = ("gpt-4o-mini", "gpt-4.1-mini", "llama-3.2-11b-vision", "qwen-vl")
+_CEREBRAS_CHAT_PREFERENCE = ("llama-3.3-70b", "llama3.1-8b", "qwen-3-32b", "gpt-oss-120b")
+
+
+def _preference_for(cand: dict, kind: str) -> tuple:
+    base = str(cand.get("base_url") or "").lower()
+    if "openrouter" in base:
+        return _OPENROUTER_VISION_PREFERENCE if kind == "vision" else _OPENROUTER_CHAT_PREFERENCE
+    if "cerebras" in base:
+        # Cerebras has no multimodal model; if a vision request ever lands here the
+        # caller fails over to the next candidate rather than sending a bad model id.
+        return _CEREBRAS_CHAT_PREFERENCE
+    return _GROQ_VISION_PREFERENCE if kind == "vision" else _GROQ_CHAT_PREFERENCE
+
+
+def _fallback_for(cand: dict, kind: str) -> list[str]:
+    base = str(cand.get("base_url") or "").lower()
+    if "openrouter" in base:
+        return ["openai/gpt-4o-mini", "anthropic/claude-3.5-haiku", "meta-llama/llama-3.3-70b-instruct"]
+    if "cerebras" in base:
+        return ["llama-3.3-70b", "gpt-oss-120b"]
+    return list(_GROQ_VISION_FALLBACK if kind == "vision" else _GROQ_CHAT_FALLBACK)
+
+
 def _groq_kind_compatible(model_lower: str, kind: str) -> bool:
     if kind != "vision":
         return True
-    return any(tag in model_lower for tag in ("qwen3", "vision", "scout", "maverick"))
+    return any(tag in model_lower for tag in
+               ("qwen3", "vision", "scout", "maverick", "gpt-4o", "gpt-4.1", "vl"))
 
 
 async def _model_options_for(cand: dict, kind: str) -> list[str]:
@@ -570,7 +704,7 @@ async def _model_options_for(cand: dict, kind: str) -> list[str]:
     options: list[str] = [configured] if configured else []
     live = await _groq_available_models(cand["api_key"], cand["base_url"])
     lowered_live = {m.lower(): m for m in live}
-    for pref in (_GROQ_VISION_PREFERENCE if kind == "vision" else _GROQ_CHAT_PREFERENCE):
+    for pref in _preference_for(cand, kind):
         for model_lower, model_id in lowered_live.items():
             if pref in model_lower and model_id not in options and _groq_kind_compatible(model_lower, kind):
                 options.append(model_id)
@@ -579,7 +713,7 @@ async def _model_options_for(cand: dict, kind: str) -> list[str]:
     if not live:
         # Discovery failed (network/invalid key): configured default first, then
         # known-good fallbacks so one dead model never kills the request.
-        for fb in (_GROQ_VISION_FALLBACK if kind == "vision" else _GROQ_CHAT_FALLBACK):
+        for fb in _fallback_for(cand, kind):
             if fb not in options:
                 options.append(fb)
             if len(options) >= 3:
@@ -1799,76 +1933,24 @@ async def analyze_chart_vision(
     import logging
     logger = logging.getLogger("apex.api.vision")
 
-    if not settings.ai_external_enabled:
+    if not settings.ai_external_enabled and not _byok_candidates(user, "vision"):
         return {
             "success": True,
-            "analysis": "⚠️ سرویس هوش مصنوعی خارجی غیرفعال است. برای استفاده زنده، متغیرهای OpenAI یا Groq را در رندر تنظیم کنید."
+            "analysis": "⚠️ هوش مصنوعی سیستمی غیرفعال است و کلید شخصی (BYOK) هم ذخیره نشده. "
+                        "برای تحلیل تصویر، کلید Cerebras/Groq/OpenRouter/OpenAI خود را در تنظیمات ذخیره کنید."
         }
 
     content = await file.read()
     base64_image = base64.b64encode(content).decode("utf-8")
 
-    # Build candidates list for Vision (OpenAI is preferred for vision accuracy, Groq is backup)
-    candidates = []
-
-    # 1. User BYOK OpenAI (Best for Vision)
-    if user:
-        try:
-            openai_material = provider_secret_service.get_material(user.id, "openai")
-            if openai_material and openai_material.api_key:
-                candidates.append({
-                    "provider": "OpenAI (User BYOK)",
-                    "base_url": "https://api.openai.com/v1",
-                    "api_key": openai_material.api_key.strip(),
-                    "model": openai_material.model or "gpt-4o-mini",
-                    "is_groq": False,
-                })
-        except Exception as e:
-            logger.warning(f"Error reading user openai material: {e}")
-
-    # 2. User BYOK Groq
-    if user:
-        try:
-            groq_material = provider_secret_service.get_material(user.id, "groq")
-            if groq_material and groq_material.api_key:
-                candidates.append({
-                    "provider": "Groq (User BYOK)",
-                    "base_url": "https://api.groq.com/openai/v1",
-                    "api_key": groq_material.api_key.strip(),
-                    "model": "qwen/qwen3.8-27b",
-                    "is_groq": True,
-                })
-        except Exception as e:
-            logger.warning(f"Error reading user groq material: {e}")
-
-    # 3. System OpenAI (From settings)
-    sys_openai_key = settings.ai_openai_api_key.strip() if settings.ai_openai_api_key else ""
-    if sys_openai_key:
-        sys_base = settings.ai_openai_base_url or "https://api.openai.com/v1"
-        is_groq_base = "groq" in sys_base.lower()
-        candidates.append({
-            "provider": "OpenAI (System Default)" if not is_groq_base else "Groq (System Base)",
-            "base_url": sys_base,
-            "api_key": sys_openai_key,
-            "model": "qwen/qwen3.8-27b" if is_groq_base else "gpt-4o-mini",
-            "is_groq": is_groq_base,
-        })
-
-    # 4. System Groq (From Env)
-    sys_groq_key = os.getenv("AI_GROQ_API_KEY", "").strip()
-    if sys_groq_key:
-        candidates.append({
-            "provider": "Groq (System Default)",
-            "base_url": os.getenv("AI_GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
-            "api_key": sys_groq_key,
-            "model": "qwen/qwen3.8-27b",
-            "is_groq": True,
-        })
+    # Vision: user BYOK first (multimodal only — Cerebras has no vision model),
+    # then system keys. Groq/OpenRouter/OpenAI are all OpenAI-compatible.
+    candidates = _byok_candidates(user, "vision") + _system_ai_candidates("vision")
 
     if not candidates:
         return {
             "success": True,
-            "analysis": "⚠️ کلیدهای API برای OpenAI یا Groq هنوز تنظیم نشده‌اند. لطفاً ابتدا کلیدها را در تنظیمات وارد کنید."
+            "analysis": "⚠️ هیچ کلید AI تنظیم نشده است. در تنظیمات، یکی از کلیدهای Cerebras، Groq، OpenRouter یا OpenAI را ذخیره کنید."
         }
 
     errors = []
@@ -1881,10 +1963,7 @@ async def analyze_chart_vision(
             api_key = api_key[2:-1]
         api_key = api_key.strip("'\"")
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = _openai_compat_headers(api_key, cand.get("base_url", ""))
 
         # Self-adaptive model selection (live Groq list, deprecation-proof)
         model_options = await _model_options_for(cand, kind="vision")
@@ -2086,73 +2165,21 @@ async def execute_ai_chat_assistant(
     import logging
     logger = logging.getLogger("apex.api.chat")
 
-    if not settings.ai_external_enabled:
+    if not settings.ai_external_enabled and not _byok_candidates(user, "chat"):
         return {
             "success": True,
-            "reply": "⚠️ سرویس هوش مصنوعی خارجی غیرفعال است. برای چت زنده, متغیرهای OpenAI یا Groq را در رندر تنظیم کنید."
+            "reply": "⚠️ هوش مصنوعی سیستمی غیرفعال است و کلید شخصی (BYOK) هم ذخیره نشده. "
+                     "برای چت زنده، کلید Cerebras/Groq/OpenRouter/OpenAI خود را در تنظیمات ذخیره کنید."
         }
 
-    # Build candidates list for Chat (Groq is preferred for chat speed, OpenAI is backup)
-    candidates = []
-
-    # 1. User BYOK Groq (Best for Chat speed!)
-    if user:
-        try:
-            groq_material = provider_secret_service.get_material(user.id, "groq")
-            if groq_material and groq_material.api_key:
-                candidates.append({
-                    "provider": "Groq (User BYOK)",
-                    "base_url": "https://api.groq.com/openai/v1",
-                    "api_key": groq_material.api_key.strip(),
-                    "model": groq_material.model or "openai/gpt-oss-120b",
-                    "is_groq": True,
-                })
-        except Exception as e:
-            logger.warning(f"Error reading user groq material for chat: {e}")
-
-    # 2. User BYOK OpenAI
-    if user:
-        try:
-            openai_material = provider_secret_service.get_material(user.id, "openai")
-            if openai_material and openai_material.api_key:
-                candidates.append({
-                    "provider": "OpenAI (User BYOK)",
-                    "base_url": "https://api.openai.com/v1",
-                    "api_key": openai_material.api_key.strip(),
-                    "model": openai_material.model or "gpt-4o-mini",
-                    "is_groq": False,
-                })
-        except Exception as e:
-            logger.warning(f"Error reading user openai material for chat: {e}")
-
-    # 3. System Groq (From Env)
-    sys_groq_key = os.getenv("AI_GROQ_API_KEY", "").strip()
-    if sys_groq_key:
-        candidates.append({
-            "provider": "Groq (System Default)",
-            "base_url": os.getenv("AI_GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
-            "api_key": sys_groq_key,
-            "model": "openai/gpt-oss-120b",
-            "is_groq": True,
-        })
-
-    # 4. System OpenAI (From settings)
-    sys_openai_key = settings.ai_openai_api_key.strip() if settings.ai_openai_api_key else ""
-    if sys_openai_key:
-        sys_base = settings.ai_openai_base_url or "https://api.openai.com/v1"
-        is_groq_base = "groq" in sys_base.lower()
-        candidates.append({
-            "provider": "OpenAI (System Default)" if not is_groq_base else "Groq (System Base)",
-            "base_url": sys_base,
-            "api_key": sys_openai_key,
-            "model": "openai/gpt-oss-120b" if is_groq_base else "gpt-4o-mini",
-            "is_groq": is_groq_base,
-        })
+    # Chat: user BYOK first (Cerebras for latency, then Groq/OpenRouter/OpenAI),
+    # then system keys. All OpenAI-compatible, so one request path serves them.
+    candidates = _byok_candidates(user, "chat") + _system_ai_candidates("chat")
 
     if not candidates:
         return {
             "success": True,
-            "reply": "⚠️ کلیدهای API برای OpenAI یا Groq هنوز تنظیم نشده‌اند. لطفاً ابتدا کلیدها را در تنظیمات وارد کنید."
+            "reply": "⚠️ هیچ کلید AI تنظیم نشده است. در تنظیمات، یکی از کلیدهای Cerebras، Groq، OpenRouter یا OpenAI را ذخیره کنید."
         }
 
     errors = []
@@ -2165,10 +2192,7 @@ async def execute_ai_chat_assistant(
             api_key = api_key[2:-1]
         api_key = api_key.strip("'\"")
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        headers = _openai_compat_headers(api_key, cand.get("base_url", ""))
 
         # Self-adaptive model selection (live Groq list, deprecation-proof)
         model_options = await _model_options_for(cand, kind="chat")
@@ -2325,10 +2349,10 @@ async def deep_institutional_analysis(
     if cached and now - cached[0] < 90:
         return {**cached[1], "cached": True, "cache_age_seconds": round(now - cached[0], 1)}
 
-    if not settings.ai_external_enabled:
+    if not settings.ai_external_enabled and not _byok_candidates(user, "chat"):
         return {
             "success": False,
-            "detail": "سرویس هوش مصنوعی خارجی غیرفعال است.",
+            "detail": "هوش مصنوعی سیستمی غیرفعال است و کلید شخصی (BYOK) هم ذخیره نشده است.",
             "cached": False,
         }
 
@@ -2464,55 +2488,13 @@ async def deep_institutional_analysis(
         f"حالا یادداشت تحلیل عمیق نهادی برای {symbol} در تایم‌فریم {tf} را طبق ساختار الزامی بنویس."
     )
 
-    candidates = []
-    if user:
-        try:
-            groq_material = provider_secret_service.get_material(user.id, "groq")
-            if groq_material and groq_material.api_key:
-                candidates.append({
-                    "provider": "Groq (User BYOK)",
-                    "base_url": "https://api.groq.com/openai/v1",
-                    "api_key": groq_material.api_key.strip(),
-                    "model": "openai/gpt-oss-120b",
-                    "is_groq": True,
-                })
-        except Exception as e:
-            logger.warning(f"deep: user groq material error: {e}")
-        try:
-            openai_material = provider_secret_service.get_material(user.id, "openai")
-            if openai_material and openai_material.api_key:
-                candidates.append({
-                    "provider": "OpenAI (User BYOK)",
-                    "base_url": "https://api.openai.com/v1",
-                    "api_key": openai_material.api_key.strip(),
-                    "model": openai_material.model or "gpt-4o-mini",
-                    "is_groq": False,
-                })
-        except Exception as e:
-            logger.warning(f"deep: user openai material error: {e}")
-    sys_groq_key = os.getenv("AI_GROQ_API_KEY", "").strip()
-    if sys_groq_key:
-        candidates.append({
-            "provider": "Groq (System Default)",
-            "base_url": os.getenv("AI_GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
-            "api_key": sys_groq_key,
-            "model": "openai/gpt-oss-120b",
-            "is_groq": True,
-        })
-    sys_openai_key = settings.ai_openai_api_key.strip() if settings.ai_openai_api_key else ""
-    if sys_openai_key:
-        candidates.append({
-            "provider": "OpenAI (System Default)",
-            "base_url": settings.ai_openai_base_url or "https://api.openai.com/v1",
-            "api_key": sys_openai_key,
-            "model": "gpt-4o-mini",
-            "is_groq": False,
-        })
+    # Deep analysis: user BYOK first (Cerebras/Groq/OpenRouter/OpenAI), then system keys.
+    candidates = _byok_candidates(user, "chat") + _system_ai_candidates("chat")
 
     if not candidates:
         return {
             "success": False,
-            "detail": "⚠️ کلیدهای API برای OpenAI یا Groq تنظیم نشده‌اند.",
+            "detail": "⚠️ هیچ کلید AI تنظیم نشده است (Cerebras/Groq/OpenRouter/OpenAI).",
             "deterministic": deterministic,
             "cached": False,
         }

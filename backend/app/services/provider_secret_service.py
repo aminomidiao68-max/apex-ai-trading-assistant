@@ -25,12 +25,27 @@ from app.services.database_service import DatabaseManager
 
 
 PROVIDERS = (
-    "groq", "openai", "twelvedata", "finnhub", "newsapi", "oanda",
-    "binance_testnet", "bybit_testnet",
+    "groq", "openai", "openrouter", "cerebras", "twelvedata", "finnhub", "newsapi",
+    "oanda", "binance_testnet", "bybit_testnet",
 )
 _DEFAULT_MODELS = {
     "groq": "llama-3.3-70b-versatile",
     "openai": "gpt-4.1-mini",
+    "openrouter": "openai/gpt-4o-mini",
+    "cerebras": "llama-3.3-70b",
+}
+
+# Providers whose key is an OpenAI-compatible LLM endpoint. Only these may serve
+# as the evidence explainer; data/news/testnet providers never can.
+AI_PROVIDER_IDS = ("cerebras", "groq", "openrouter", "openai")
+
+# Base URL per OpenAI-compatible provider. Centralised so the explain layer, the
+# vision/chat candidate chains and the connection probe can never disagree.
+OPENAI_COMPATIBLE_BASE_URLS = {
+    "groq": "https://api.groq.com/openai/v1",
+    "openai": "https://api.openai.com/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "cerebras": "https://api.cerebras.ai/v1",
 }
 
 
@@ -302,14 +317,9 @@ class ProviderSecretService:
     ) -> Literal["connected", "auth_failed", "unavailable"]:
         timeout = httpx.Timeout(12.0)
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-            if material.provider == "groq":
+            if material.provider in OPENAI_COMPATIBLE_BASE_URLS:
                 response = await client.get(
-                    "https://api.groq.com/openai/v1/models",
-                    headers={"Authorization": f"Bearer {material.api_key}"},
-                )
-            elif material.provider == "openai":
-                response = await client.get(
-                    "https://api.openai.com/v1/models",
+                    f"{OPENAI_COMPATIBLE_BASE_URLS[material.provider]}/models",
                     headers={"Authorization": f"Bearer {material.api_key}"},
                 )
             elif material.provider == "twelvedata":

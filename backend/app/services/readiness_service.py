@@ -96,25 +96,24 @@ class ReadinessService:
                 status="ready",
                 message="Deterministic evidence explainer is active; external AI is optional and cannot override decisions",
             )
-        configured = (
-            provider == "openai_compatible"
-            and bool(settings.ai_openai_api_key and settings.ai_openai_model)
-        ) or (
-            provider == "gemini"
-            and bool(settings.ai_gemini_api_key and settings.ai_gemini_model)
-        )
-        if configured:
+        from app.services.ai_explainability_service import _configured_chain, _default_providers
+
+        chain = _configured_chain(_default_providers(), provider if provider else None)
+        if chain:
             return ReadinessItem(
                 category="ai",
                 key="AI_PROVIDER",
                 status="ready",
-                message=f"External {provider} explainer is configured with deterministic fallback and verification",
+                message=(
+                    f"External explainer chain ready: {' → '.join(chain)} "
+                    "(each output is citation-verified; deterministic fallback stays authoritative)"
+                ),
             )
         return ReadinessItem(
             category="ai",
             key="AI_PROVIDER",
             status="warning",
-            message="Selected external AI provider is not configured; deterministic verified fallback remains active",
+            message="No external AI key is configured (Cerebras/Groq/OpenRouter/OpenAI/Gemini); deterministic verified fallback remains active",
         )
 
     def _provider_vault_check(self) -> ReadinessItem:

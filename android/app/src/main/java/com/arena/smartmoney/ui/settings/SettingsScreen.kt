@@ -487,7 +487,9 @@ private data class ProviderDefinition(
 )
 
 private val providerDefinitions = listOf(
+    ProviderDefinition("cerebras", "Cerebras", "سریع‌ترین توضیح‌دهنده (اولویت اول زنجیره AI)؛ تصمیم‌گیر نیست.", "llama-3.3-70b"),
     ProviderDefinition("groq", "Groq", "مدل توضیح‌دهنده سریع و سازگار با OpenAI؛ تصمیم‌گیر نیست.", "llama-3.3-70b-versatile"),
+    ProviderDefinition("openrouter", "OpenRouter", "دسترسی به صدها مدل با یک کلید؛ اولویت بعد از Cerebras/Groq.", "openai/gpt-4o-mini"),
     ProviderDefinition("openai", "OpenAI", "مدل توضیح‌دهنده اختیاری؛ موتور قطعی را Override نمی‌کند.", "gpt-4.1-mini"),
     ProviderDefinition("twelvedata", "Twelve", "داده Forex/Gold و Historical برای درخواست‌های حساب شما."),
     ProviderDefinition("finnhub", "Finnhub", "خبر و داده عمومی مالی برای حساب شما."),

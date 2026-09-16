@@ -379,10 +379,58 @@ def build_evidence_request_from_report(
         language="en" if language == "en" else "fa",
         provider=(
             provider
-            if provider in {"auto", "deterministic", "openai_compatible", "groq", "gemini"}
+            if provider in {
+                "auto", "deterministic", "openai_compatible", "groq", "gemini",
+                "openrouter", "cerebras",
+            }
             else "auto"
         ),
     )
+
+
+# OpenAI-compatible system providers, in fallback priority order. Cerebras is
+# first for latency, then Groq, then OpenRouter (widest model catalogue), then
+# the generic OpenAI-compatible slot, then Gemini. Each is only registered when
+# its own API key is present, and every one of them is still evidence-constrained
+# by _SYSTEM_PROMPT and verified by _verify_draft before anything is shown.
+SYSTEM_PROVIDER_ENV = (
+    ("cerebras", "AI_CEREBRAS_API_KEY", "AI_CEREBRAS_BASE_URL",
+     "https://api.cerebras.ai/v1", "AI_CEREBRAS_MODEL", "llama-3.3-70b"),
+    ("groq", "AI_GROQ_API_KEY", "AI_GROQ_BASE_URL",
+     "https://api.groq.com/openai/v1", "AI_GROQ_MODEL", "llama-3.3-70b-versatile"),
+    ("openrouter", "AI_OPENROUTER_API_KEY", "AI_OPENROUTER_BASE_URL",
+     "https://openrouter.ai/api/v1", "AI_OPENROUTER_MODEL", "openai/gpt-4o-mini"),
+)
+
+
+def _default_providers() -> dict[str, "AIProvider"]:
+    providers: dict[str, AIProvider] = {"openai_compatible": OpenAICompatibleProvider()}
+    for name, key_env, base_env, base_default, model_env, model_default in SYSTEM_PROVIDER_ENV:
+        providers[name] = OpenAICompatibleProvider(
+            base_url=os.getenv(base_env, base_default),
+            api_key=os.getenv(key_env, ""),
+            model=os.getenv(model_env, model_default),
+            provider_name=name,
+        )
+    providers["gemini"] = GeminiProvider()
+    return providers
+
+
+# Explicit latency-first priority. The generic openai_compatible slot sits last
+# among external providers on purpose: it is a catch-all, and letting it lead
+# would silently starve Cerebras/Groq whenever AI_OPENAI_API_KEY happens to be set.
+PROVIDER_PRIORITY = ("cerebras", "groq", "openrouter", "openai_compatible", "gemini")
+
+
+def _configured_chain(providers: dict[str, "AIProvider"], preferred: str | None = None) -> list[str]:
+    """Configured provider names, preferred first, then the standard priority order."""
+    order = list(PROVIDER_PRIORITY)
+    order += [name for name in providers if name not in order]
+    if preferred and preferred in order:
+        order.remove(preferred)
+        order.insert(0, preferred)
+    ready = [name for name in order if getattr(providers.get(name), "configured", False)]
+    return list(dict.fromkeys(ready))
 
 
 class AIExplainabilityService:
@@ -391,16 +439,7 @@ class AIExplainabilityService:
         providers: dict[str, AIProvider] | None = None,
         now_fn=time.monotonic,
     ) -> None:
-        self.providers: dict[str, AIProvider] = providers or {
-            "openai_compatible": OpenAICompatibleProvider(),
-            "groq": OpenAICompatibleProvider(
-                base_url=os.getenv("AI_GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
-                api_key=os.getenv("AI_GROQ_API_KEY", ""),
-                model=os.getenv("AI_GROQ_MODEL", "llama-3.3-70b-versatile"),
-                provider_name="groq",
-            ),
-            "gemini": GeminiProvider(),
-        }
+        self.providers: dict[str, AIProvider] = providers or _default_providers()
         self._now = now_fn
         self._cache: dict[str, _CacheEntry] = {}
         self._circuits: dict[str, _CircuitState] = {
@@ -414,6 +453,10 @@ class AIExplainabilityService:
             "external_ai_enabled": settings.ai_external_enabled,
             "deterministic_fallback_ready": True,
             "deterministic_core_can_be_overridden": False,
+            "fallback_chain": _configured_chain(
+                self.providers,
+                selected if selected in self.providers else None,
+            ),
             "providers": {
                 "deterministic": {"configured": True, "external": False},
                 **{
@@ -445,80 +488,106 @@ class AIExplainabilityService:
                 refusal_reason="missing_critical_data",
             )
 
-        selected = runtime_provider.name if runtime_provider is not None else self._select_provider(request.provider)
-        if selected == "deterministic":
+        # Ordered candidate chain: an explicit request pins ONE provider (and falls
+        # back to deterministic only), "auto" walks every configured provider so a
+        # dead key or an unverified draft degrades to the next model, not to silence.
+        deterministic_requested = request.provider == "deterministic"
+        if deterministic_requested:
+            # An explicit request for the local, evidence-only explainer must never
+            # call an external model — no key, no network, no fallback ambiguity.
+            return self._deterministic_response(
+                request, mode="deterministic", provider_attempted=None,
+                issues=[], started=started,
+            )
+        if runtime_provider is not None:
+            chain: list[tuple[str, AIProvider]] = [(runtime_provider.name, runtime_provider)]
+        elif request.provider != "auto":
+            pinned = self.providers.get(request.provider)
+            chain = [(request.provider, pinned)] if pinned is not None else []
+        else:
+            preferred = settings.ai_provider if settings.ai_provider in self.providers else None
+            chain = [
+                (name, self.providers[name])
+                for name in _configured_chain(self.providers, preferred)
+            ]
+
+        if not chain or (not settings.ai_external_enabled and runtime_provider is None):
+            # Nothing external is usable: report the deterministic explainer as the
+            # mode it actually is, with the reason kept in verifier_issues.
+            reason = (
+                "external_ai_disabled" if not settings.ai_external_enabled
+                else "no_provider_configured"
+            )
             return self._deterministic_response(
                 request,
                 mode="deterministic",
-                provider_attempted=None,
-                issues=[],
-                started=started,
-            )
-
-        cache_key = self._cache_key(f"{cache_namespace}:{selected}", request)
-        cached = self._cache.get(cache_key)
-        now = self._now()
-        if cached and cached.expires_at > now:
-            return cached.response.model_copy(update={"cached": True, "latency_ms": 0})
-        if cached:
-            self._cache.pop(cache_key, None)
-
-        provider = runtime_provider or self.providers.get(selected)
-        if (
-            (not settings.ai_external_enabled and runtime_provider is None)
-            or provider is None
-            or not provider.configured
-            or self._circuit_is_open(selected)
-        ):
-            reason = "external_ai_disabled"
-            if provider is None or not getattr(provider, "configured", False):
-                reason = "provider_not_configured"
-            elif self._circuit_is_open(selected):
-                reason = "provider_circuit_open"
-            return self._deterministic_response(
-                request,
-                mode="fallback",
-                provider_attempted=selected,
+                provider_attempted=request.provider if request.provider != "auto" else None,
                 issues=[reason],
                 started=started,
             )
 
-        try:
-            raw = await provider.generate(self._prompt(request))
-            draft = _extract_json(raw)
+        prompt = self._prompt(request)
+        issues_seen: list[str] = []
+        last_attempted: str | None = None
+        response: AIExplainResponse | None = None
+
+        for name, provider in chain:
+            if not settings.ai_external_enabled and runtime_provider is None:
+                issues_seen.append("external_ai_disabled")
+                break
+            if not provider.configured:
+                issues_seen.append("provider_not_configured")
+                continue
+            if self._circuit_is_open(name):
+                issues_seen.append("provider_circuit_open")
+                continue
+
+            cache_key = self._cache_key(f"{cache_namespace}:{name}", request)
+            cached = self._cache.get(cache_key)
+            if cached and cached.expires_at > self._now():
+                return cached.response.model_copy(update={"cached": True, "latency_ms": 0})
+            if cached:
+                self._cache.pop(cache_key, None)
+
+            last_attempted = name
+            try:
+                draft = _extract_json(await provider.generate(prompt))
+            except Exception:
+                self._record_failure(name)
+                issues_seen.append("provider_unavailable")
+                continue
+
             issues = self._verify_draft(request, draft)
             if issues:
-                self._record_failure(selected)
-                response = self._deterministic_response(
-                    request,
-                    mode="fallback",
-                    provider_attempted=selected,
-                    issues=issues,
-                    started=started,
-                )
-            else:
-                self._record_success(selected)
-                response = self._response_from_verified_draft(
-                    request,
-                    selected,
-                    provider.model,
-                    draft,
-                    started,
-                )
-        except Exception:
-            self._record_failure(selected)
+                self._record_failure(name)
+                # Verification failures are SECURITY findings, not transport noise:
+                # keep the bare issue codes (the UI/tests assert on them) and stop
+                # immediately — never launder a hallucinating model into another one.
+                issues_seen.extend(issues)
+                last_attempted = name
+                response = None
+                break
+
+            self._record_success(name)
+            response = self._response_from_verified_draft(
+                request, name, provider.model, draft, started
+            )
+            self._cache[cache_key] = _CacheEntry(
+                expires_at=self._now() + max(1, settings.ai_cache_ttl_seconds),
+                response=response,
+            )
+            return response
+
+        if response is None:
             response = self._deterministic_response(
                 request,
                 mode="fallback",
-                provider_attempted=selected,
-                issues=["provider_unavailable"],
+                provider_attempted=last_attempted,
+                issues=list(dict.fromkeys(issues_seen))[:12],
                 started=started,
             )
+            response.provider_attempted = last_attempted
 
-        self._cache[cache_key] = _CacheEntry(
-            expires_at=self._now() + max(1, settings.ai_cache_ttl_seconds),
-            response=response,
-        )
         self._trim_cache()
         return response
 

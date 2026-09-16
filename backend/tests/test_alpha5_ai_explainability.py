@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 
@@ -244,3 +245,145 @@ def test_user_runtime_provider_is_opt_in_and_cache_is_user_scoped(monkeypatch):
     assert second_user.cached is False
     assert cached_first_user.cached is True
     assert provider.calls == 2
+
+
+# ------------------------------------------------- v3.18 multi-provider AI chain
+
+
+def test_new_providers_registered_with_distinct_base_urls(monkeypatch):
+    """Cerebras/Groq/OpenRouter are first-class providers with their own endpoints."""
+    from app.services.provider_secret_service import (
+        OPENAI_COMPATIBLE_BASE_URLS,
+        PROVIDERS,
+        _DEFAULT_MODELS,
+    )
+    for provider in ("cerebras", "groq", "openrouter", "openai"):
+        assert provider in PROVIDERS
+        assert provider in _DEFAULT_MODELS
+    bases = list(OPENAI_COMPATIBLE_BASE_URLS.values())
+    assert len(bases) == len(set(bases)), "base URLs must not collide"
+    assert "cerebras.ai" in OPENAI_COMPATIBLE_BASE_URLS["cerebras"]
+    assert "openrouter.ai" in OPENAI_COMPATIBLE_BASE_URLS["openrouter"]
+
+    monkeypatch.setenv("AI_CEREBRAS_API_KEY", "cerebras-test-key")
+    monkeypatch.setenv("AI_OPENROUTER_API_KEY", "openrouter-test-key")
+    from app.services.ai_explainability_service import _default_providers
+
+    providers = _default_providers()
+    assert providers["cerebras"].configured is True
+    assert providers["openrouter"].configured is True
+    assert providers["cerebras"].base_url != providers["openrouter"].base_url
+    assert "cerebras.ai" in providers["cerebras"].base_url
+
+
+def test_status_exposes_fallback_chain_without_leaking_keys(monkeypatch):
+    _enable_external(monkeypatch)
+    monkeypatch.setenv("AI_CEREBRAS_API_KEY", "cerebras-secret-key")
+    monkeypatch.setenv("AI_GROQ_API_KEY", "groq-secret-key")
+    monkeypatch.setenv("AI_OPENROUTER_API_KEY", "openrouter-secret-key")
+    from app.services.ai_explainability_service import AIExplainabilityService, _default_providers
+
+    service = AIExplainabilityService(providers=_default_providers())
+    status = service.status()
+    chain = status["fallback_chain"]
+    assert chain, "at least one configured provider must be listed"
+    assert chain[0] == "cerebras", "cerebras leads the latency-ordered chain"
+    assert "openrouter" in chain and "groq" in chain
+    serialized = json.dumps(status).lower()
+    assert "cerebras-secret-key" not in serialized
+    assert "groq-secret-key" not in serialized
+    assert "openrouter-secret-key" not in serialized
+    assert "api_key" not in serialized
+
+
+def test_chain_falls_over_to_next_provider_on_transport_error(monkeypatch):
+    """A dead key must degrade to the next configured model, not to silence."""
+    _enable_external(monkeypatch)
+    dead = _FakeProvider(error=RuntimeError("401 invalid key"))
+    dead.name = "cerebras"
+    alive = _FakeProvider(_valid_draft())
+    alive.name = "groq"
+    service = AIExplainabilityService(providers={"cerebras": dead, "groq": alive})
+
+    result = asyncio.run(service.explain(_request(provider="auto")))
+
+    assert dead.calls == 1 and alive.calls == 1
+    assert result.mode == "generated"
+    assert result.provider == "groq"
+    assert result.external_ai_used is True
+    assert result.deterministic_action_label == "WATCH"
+    assert result.deterministic_core_preserved is True
+
+
+def test_verification_failure_does_not_fall_over_to_another_model(monkeypatch):
+    """A hallucinating model fails closed — never laundered through a second model."""
+    _enable_external(monkeypatch)
+    bad = _FakeProvider(json.dumps({**_valid_draft(), "action_label": "LONG"}))
+    bad.name = "cerebras"
+    honest = _FakeProvider(_valid_draft())
+    honest.name = "groq"
+    service = AIExplainabilityService(providers={"cerebras": bad, "groq": honest})
+
+    result = asyncio.run(service.explain(_request(provider="auto")))
+
+    assert bad.calls == 1
+    assert honest.calls == 0, "a verification failure must not retry with another model"
+    assert result.mode == "fallback"
+    assert result.provider == "deterministic"
+    assert result.external_ai_used is False
+    assert "forbidden_control_fields" in result.verifier_issues
+
+
+def test_explicit_provider_request_pins_that_provider_only(monkeypatch):
+    _enable_external(monkeypatch)
+    pinned = _FakeProvider(_valid_draft())
+    pinned.name = "openrouter"
+    other = _FakeProvider(_valid_draft())
+    other.name = "cerebras"
+    service = AIExplainabilityService(providers={"openrouter": pinned, "cerebras": other})
+
+    result = asyncio.run(service.explain(_request(provider="openrouter")))
+
+    assert pinned.calls == 1 and other.calls == 0
+    assert result.provider == "openrouter" and result.mode == "generated"
+
+
+def test_all_providers_down_falls_back_to_deterministic(monkeypatch):
+    _enable_external(monkeypatch)
+    dead_a = _FakeProvider(error=RuntimeError("timeout"))
+    dead_a.name = "cerebras"
+    dead_b = _FakeProvider(error=RuntimeError("503"))
+    dead_b.name = "openrouter"
+    service = AIExplainabilityService(providers={"cerebras": dead_a, "openrouter": dead_b})
+
+    result = asyncio.run(service.explain(_request(provider="auto")))
+
+    assert dead_a.calls == dead_b.calls == 1
+    assert result.mode == "fallback"
+    assert result.provider == "deterministic"
+    assert result.external_ai_used is False
+    assert "provider_unavailable" in result.verifier_issues
+    assert result.deterministic_action_label == "WATCH"
+
+
+def test_ai_explain_layer_cannot_reach_execution(monkeypatch):
+    """Hard invariant: enabling external AI must not touch any execution switch."""
+    _enable_external(monkeypatch)
+    monkeypatch.setenv("AI_CEREBRAS_API_KEY", "cerebras-secret-key")
+    monkeypatch.setenv("AI_OPENROUTER_API_KEY", "openrouter-secret-key")
+    from app.services.ai_explainability_service import AIExplainabilityService, _default_providers
+    from pathlib import Path
+
+    service = AIExplainabilityService(providers=_default_providers())
+    result = asyncio.run(service.explain(_request(provider="auto")))
+
+    assert result.deterministic_core_preserved is True
+    # the explainer can only ever return evidence text + citations
+    assert result.grounded is True or result.mode == "fallback"
+    assert service.status()["deterministic_core_can_be_overridden"] is False
+
+    # and the release blueprint keeps execution off while AI is on
+    render = (Path(__file__).resolve().parents[2] / "render.yaml").read_text()
+    assert "ENABLE_LIVE_EXECUTION\n        value: false" in render
+    assert "ENABLE_TESTNET_EXECUTION\n        value: false" in render
+    assert "AI_EXTERNAL_ENABLED\n        value: true" in render

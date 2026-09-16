@@ -303,4 +303,16 @@ def test_release_manifest_and_production_blueprint_are_traceable(tmp_path):
     assert "healthCheckPath: /ready" in render
     assert "postgresMajorVersion: \"16\"" in render
     assert "ENABLE_LIVE_EXECUTION\n        value: false" in render
-    assert "AI_EXTERNAL_ENABLED\n        value: false" in render
+    # v3.18: the system-wide AI kill-switch is intentionally ON, because the
+    # explain layer is now evidence-constrained AND citation-verified. The
+    # invariants that actually matter are asserted explicitly below so the
+    # blueprint cannot drift: AI may never be able to reach execution, and the
+    # deterministic core may never be overridable.
+    assert "AI_PROVIDER\n        value: auto" in render
+    assert "AI_EXTERNAL_ENABLED\n        value: true" in render
+    # system AI keys must stay dashboard-only (sync:false) — never committed
+    for key in ("AI_CEREBRAS_API_KEY", "AI_GROQ_API_KEY", "AI_OPENROUTER_API_KEY"):
+        assert f"- key: {key}\n        sync: false" in render, f"{key} must not carry a value"
+    assert "sk-" not in render and "gsk_" not in render and "csk-" not in render
+    # the AI layer is advisory-only: no execution flag may ever be enabled
+    assert "ENABLE_TESTNET_EXECUTION\n        value: false" in render
