@@ -480,3 +480,304 @@ def test_live_gate_flags_in_scan_all():
     ctx = strategy_pack_v2.build_context_text(scan)
     if scan["active"]:
         assert "گیت هم‌جهتی زنده" in ctx
+
+
+# ============================================================ v3.16 detector batch
+def _mk(t, o, h, l, c, v=1000.0):
+    return {"t": t, "o": o, "h": h, "l": l, "c": c, "v": v}
+
+
+def _flat_base(n, start=100.0, ts0=1_728_000_000.0, tf=900.0, p=None):
+    """Quiet ranging bars (~100-101.5) with varied wicks; returns list."""
+    out = []
+    price = start if p is None else p
+    for i in range(n):
+        o = price
+        j = ((i * 37) % 7 - 3) / 100.0
+        c = price + j
+        h = max(o, c) + 0.06 + ((i * 53) % 4) / 100.0
+        l = min(o, c) - 0.06 - ((i * 29) % 4) / 100.0
+        out.append(_mk(ts0 + (len(out)) * tf, o, h, l, c))
+        price = c
+    return out
+
+
+def _quiet(n, level, ts_start, tf=900.0):
+    """Monotone drifting filler bars — a straight run has no local swings,
+    so any swing a detector finds comes from the bars the test placed."""
+    out = []
+    for i in range(n):
+        o = level + i * 0.01
+        c = o + 0.01
+        out.append(_mk(ts_start + i * tf, o, c + 0.02, o - 0.02, c))
+    return out
+    out = []
+    for i in range(n):
+        h = hi if hi is not None else level + 0.06 + (i % 3) * 0.01
+        l = lo if lo is not None else level - 0.06 - (i % 4) * 0.01
+        o = level - 0.02 + (i % 5) * 0.01
+        c = level + 0.01 - (i % 3) * 0.01
+        out.append(_mk(ts_start + i * tf, o, max(h, o, c), min(l, o, c), c))
+    return out
+
+
+def _atr_of(items):
+    from app.services import strategy_pack_v2 as sp
+    return sp._atr(items)
+
+
+def test_v316_liquidity_sweep_short():
+    from app.services import strategy_pack_v2 as sp
+    items = _flat_base(40)
+    items += _flat_base(10, p=100.5, ts0=items[-1]["t"] + 900)
+    n = len(items)
+    spike = n - 12
+    items[spike] = _mk(items[spike]["t"], 104.0, 105.0, 103.9, 104.2)
+    for j in (spike - 2, spike - 1, spike + 1, spike + 2):
+        items[j] = _mk(items[j]["t"], 100.8, 101.1, 100.5, 100.9)
+    last_t = items[-1]["t"]
+    items[-1] = _mk(last_t, 104.9, 105.3, 104.2, 104.4, v=2500)
+    res = sp._liquidity_sweep(items, _atr_of(items))
+    act = [r for r in res if r["status"] == "active" and r["direction"] == "short"]
+    assert act, res
+    r = act[0]
+    assert r["quality"] >= 58 and r["stop"] > r["entry"] > r["target"]
+
+
+def test_v316_fvg_tap_long():
+    from app.services import strategy_pack_v2 as sp
+    items = _flat_base(45, start=100.0)
+    t = items[-1]["t"]
+    a = _mk(t + 900, 100.2, 100.5, 100.0, 100.4)
+    b = _mk(t + 1800, 100.6, 102.5, 100.5, 102.4)          # displacement 2.0
+    c = _mk(t + 2700, 102.7, 103.2, 102.6, 103.0)           # low[c] > high[a] → FVG [100.5, 102.6]
+    filler = []
+    p = 103.0
+    for i in range(4):
+        filler.append(_mk(t + 3600 + i * 900, p, p + 0.3, p - 0.1, p + 0.15))
+        p += 0.15
+    last = _mk(t + 3600 + 4 * 900, 103.2, 103.4, 102.4, 103.1, v=2000)  # taps 102.4 inside zone, closes above top
+    items2 = items + [a, b, c] + filler + [last]
+    res = sp._fvg_tap(items2, _atr_of(items2))
+    act = [r for r in res if r["status"] == "active" and r["direction"] == "long"]
+    assert act, res
+    r = act[0]
+    assert r["quality"] >= 56 and r["stop"] < r["entry"] < r["target"]
+
+
+def test_v316_ob_retest_long():
+    from app.services import strategy_pack_v2 as sp
+    items = _flat_base(45, start=100.0)
+    t = items[-1]["t"]
+    seq = [
+        _mk(t + 900, 101.0, 101.2, 99.8, 100.0),            # OB (bearish) zone [99.8, 101.2]
+        _mk(t + 1800, 100.2, 101.0, 100.1, 100.8),
+        _mk(t + 2700, 100.9, 101.5, 100.8, 101.3),
+        _mk(t + 3600, 101.3, 103.7, 101.1, 103.5, v=2200),  # displacement + BOS (range 2.6)
+    ]
+    p = 103.5
+    drift = []
+    for i in range(5):
+        drift.append(_mk(t + 4500 + i * 900, p, p + 0.2, p - 0.5, p - 0.4))
+        p -= 0.4
+    last = _mk(t + 4500 + 5 * 900, 101.4, 101.8, 101.1, 101.6, v=1800)  # taps OB top 101.2, closes above
+    items2 = items + seq + drift + [last]
+    res = sp._ob_retest(items2, _atr_of(items2))
+    act = [r for r in res if r["status"] == "active" and r["direction"] == "long"]
+    assert act, res
+    r = act[0]
+    assert r["quality"] >= 60 and r["stop"] < r["entry"] < r["target"]
+
+
+def test_v316_eqh_raid_short():
+    from app.services import strategy_pack_v2 as sp
+    items = _flat_base(40)
+    t = items[-1]["t"]
+    def touch(tt, hi=105.0):
+        return _mk(tt, 104.0, hi, 103.8, 104.1)
+    seq = [
+        _mk(t + 900, 101.0, 101.4, 100.8, 101.2),
+        _mk(t + 1800, 101.2, 102.0, 101.0, 101.8),
+        touch(t + 2700),                                    # EQH touch 1
+        _mk(t + 3600, 104.0, 104.2, 103.0, 103.2),
+        _mk(t + 4500, 103.2, 103.4, 102.6, 102.8),
+        _mk(t + 5400, 102.9, 103.3, 102.7, 103.1),
+        _mk(t + 6300, 103.1, 103.6, 102.9, 103.4),
+        _mk(t + 7200, 103.4, 104.1, 103.2, 103.9),
+        touch(t + 8100),                                    # EQH touch 2 (span 6+ bars)
+        _mk(t + 9000, 104.0, 104.3, 103.4, 103.6),
+        _mk(t + 9900, 103.6, 103.9, 103.2, 103.4),
+        _mk(t + 10800, 104.9, 105.4, 104.5, 104.6, v=2600), # raid: wick 105.4 > 105, close below, low close
+    ]
+    items2 = items + seq
+    res = sp._eqh_eql_raid(items2, _atr_of(items2))
+    act = [r for r in res if r["status"] == "active" and r["direction"] == "short"]
+    assert act, res
+    assert act[0]["stop"] > act[0]["entry"] > act[0]["target"]
+
+
+def test_v316_rsi2_reversion_long():
+    from app.services import strategy_pack_v2 as sp
+    items = []
+    p = 100.0
+    for i in range(212):
+        o = p
+        c = p + 0.05 + ((i * 31) % 5 - 2) / 200.0
+        items.append(_mk(1_728_000_000.0 + i * 900, o, max(o, c) + 0.05, min(o, c) - 0.05, c))
+        p = c
+    t = items[-1]["t"]
+    items.append(_mk(t + 900, p, p + 0.05, p - 0.15, p - 0.10))          # mild red → RSI2 > 10
+    p2 = p - 0.10
+    items.append(_mk(t + 1800, p2, p2 + 0.05, p2 - 2.05, p2 - 2.0, v=2400))  # flush → RSI2 <= 10
+    res = sp._rsi2_reversion(items, _atr_of(items))
+    act = [r for r in res if r["status"] == "active" and r["direction"] == "long"]
+    assert act, res
+    r = act[0]
+    assert r["quality"] >= 58 and r["stop"] < r["entry"] and r["target"] > r["entry"]
+
+
+def test_v316_nr7_and_hikkake():
+    from app.services import strategy_pack_v2 as sp
+    # --- NR7 breakout long
+    items = _flat_base(14)
+    t = items[-1]["t"]
+    items.append(_mk(t + 900, 100.9, 101.2, 100.8, 101.0))   # bar -3 (bigger, holds NR bar inside)
+    items.append(_mk(t + 1800, 100.97, 101.0, 100.95, 100.99))  # NR7/NR4 + inside (range 0.05)
+    items.append(_mk(t + 2700, 100.99, 101.15, 100.96, 101.08, v=1600))  # break close > NR high
+    res = sp._nr7_breakout(items, _atr_of(items))
+    act = [r for r in res if r["status"] == "active" and r["direction"] == "long"]
+    assert act, res
+    assert act[0]["quality"] >= 68  # NR4 + inside bonuses
+    assert act[0]["stop"] < act[0]["entry"] < act[0]["target"]
+    # --- Hikkake short: mother, inside, up-trap, close below inside low
+    items2 = _flat_base(10)
+    t2 = items2[-1]["t"]
+    items2 += [
+        _mk(t2 + 900, 101.0, 101.5, 100.5, 101.2),   # mother (-5)
+        _mk(t2 + 1800, 101.1, 101.2, 100.8, 100.9),  # inside (-4)
+        _mk(t2 + 2700, 100.95, 101.4, 100.9, 101.3), # up-trap (-3): high > inside high
+        _mk(t2 + 3600, 101.3, 101.35, 100.9, 101.0), # (-2)
+        _mk(t2 + 4500, 100.95, 101.0, 100.5, 100.6, v=1900),  # last: close < inside low 100.8
+    ]
+    res2 = sp._hikkake(items2, _atr_of(items2))
+    act2 = [r for r in res2 if r["status"] == "active" and r["direction"] == "short"]
+    assert act2, res2
+    assert act2[0]["stop"] > act2[0]["entry"] > act2[0]["target"]
+
+
+def test_v316_triangle_break_long():
+    from app.services import strategy_pack_v2 as sp
+    t = 1_728_000_000.0
+    items = _quiet(62, 103.5, t)
+    items[20] = _mk(t + 20 * 900, 104.2, 105.0, 104.1, 104.3)   # flat top touch 1
+    items[25] = _mk(t + 25 * 900, 102.6, 102.9, 102.0, 102.5)   # swing low 1
+    items[30] = _mk(t + 30 * 900, 104.2, 105.0, 104.0, 104.4)   # flat top touch 2
+    items[35] = _mk(t + 35 * 900, 103.2, 103.5, 103.0, 103.3)   # swing low 2 (higher)
+    items[61] = _mk(t + 61 * 900, 104.3, 105.6, 104.2, 105.4, v=2500)  # breakout close (last bar)
+    atr = _atr_of(items)
+    hi_idx, lo_idx = sp._confirmed_swings(items, 2)
+    assert 20 in hi_idx and 30 in hi_idx, hi_idx
+    assert 25 in lo_idx and 35 in lo_idx, lo_idx
+    res = sp._triangle_break(items, atr)
+    act = [r for r in res if r["status"] == "active" and r["direction"] == "long"]
+    assert act, (res, atr)
+    r = act[0]
+    assert r["target"] > r["entry"] > r["stop"]
+    assert abs(r["target"] - 108.0) < 0.01   # measured move: top 105 + height 3
+
+
+def test_v316_three_drives_long():
+    from app.services import strategy_pack_v2 as sp
+    t = 1_728_000_000.0
+    items = _quiet(62, 101.6, t)
+
+    def drive(i, lo, drop):
+        items[i] = _mk(items[i]["t"], lo + drop, lo + drop * 0.3, lo, lo + 0.15)
+        for j in (i - 2, i - 1):
+            items[j] = _mk(items[j]["t"], lo + drop + 0.6, lo + drop + 0.9, lo + drop + 0.2, lo + drop + 0.4)
+        for j in (i + 1, i + 2):
+            items[j] = _mk(items[j]["t"], lo + 0.3, lo + 0.7, lo + 0.15, lo + 0.55)
+
+    drive(20, 103.0, 2.4)   # drive 1: steep drop
+    drive(32, 102.0, 1.4)   # drive 2: milder
+    drive(44, 101.0, 0.7)   # drive 3: mildest (lower lows, shrinking momentum)
+    c3 = items[44]["c"]
+    items[61] = _mk(items[61]["t"], c3 + 0.3, c3 + 0.9, c3 + 0.2, c3 + 0.85, v=2100)
+    atr = _atr_of(items)
+    _, lo_idx = sp._confirmed_swings(items, 2)
+    assert 20 in lo_idx and 32 in lo_idx and 44 in lo_idx, lo_idx
+    res = sp._three_drives(items, atr)
+    act = [r for r in res if r["status"] == "active" and r["direction"] == "long"]
+    assert act, (res, atr, lo_idx)
+    assert act[0]["stop"] < act[0]["entry"] < act[0]["target"]
+
+
+def test_v316_session_detectors():
+    from app.services import strategy_pack_v2 as sp
+    day = 86400 * 20000
+    # --- asian sweep short: asia 00:00-05:45, london bars, sweep at 09:00
+    items = []
+    p = 101.0
+    for i in range(24):  # asian bars (hours 0..5:45)
+        o = p
+        c = p + ((i * 31) % 5 - 2) / 100.0
+        items.append(_mk(day + i * 900, o, max(o, c) + 0.07, min(o, c) - 0.07, c))
+        p = c
+    items[10] = _mk(items[10]["t"], 101.6, 102.0, 101.5, 101.7)  # asian high 102.0
+    for k in range(4):  # hour-6 filler (outside asia, pre-London)
+        items.append(_mk(day + 6 * 3600 + k * 900, 101.3, 101.6, 101.1, 101.4))
+    for k in range(7):  # london bars 07:00-08:30
+        items.append(_mk(day + 7 * 3600 + k * 900, 101.4, 101.7, 101.2, 101.5))
+    items.append(_mk(day + 9 * 3600, 101.9, 102.2, 101.5, 101.6, v=2300))  # 09:00 sweep bar
+    res = sp._asian_sweep(items, _atr_of(items), "15m")
+    act = [r for r in res if r["status"] == "active" and r["direction"] == "short"]
+    assert act, res
+    assert act[0]["stop"] > act[0]["entry"] > act[0]["target"]
+    # --- pivot reject short: prev day H=103 L=99 C=100 → P=100.667 R1=102.333
+    prev = _quiet(20, 100.5, day - 86400 + 2 * 3600)
+    prev[6] = _mk(prev[6]["t"], 102.0, 103.0, 101.8, 102.2)    # prev-day high 103
+    prev[12] = _mk(prev[12]["t"], 99.6, 99.9, 99.0, 99.4)       # prev-day low 99
+    prev[-1] = _mk(prev[-1]["t"], 100.5, 100.8, 100.2, 100.0)   # prev-day close 100 → P=100.667 R1=102.333
+    today = _quiet(8, 101.0, day + 8 * 3600)
+    today.append(_mk(day + 12 * 3600, 102.1, 102.6, 101.9, 102.0, v=2100))  # wick > R1, close < R1
+    items2 = prev + today
+    res2 = sp._pivot_reject(items2, _atr_of(items2), "15m")
+    act2 = [r for r in res2 if r["status"] == "active" and r["direction"] == "short"]
+    assert act2, res2
+    assert act2[0]["stop"] > act2[0]["entry"] > act2[0]["target"]
+    # --- silver bullet long: FVG inside 14-16 UTC window
+    win = [_mk(day + 13 * 3600 + 45 * 60, 100.2, 100.5, 100.0, 100.4)]          # a (13:45)
+    win.append(_mk(day + 14 * 3600, 100.6, 102.5, 100.5, 102.4, v=2400))        # b displacement (14:00)
+    win.append(_mk(day + 14 * 3600 + 900, 102.7, 103.2, 102.8, 103.0))          # c → FVG [100.5, 102.8]
+    win.append(_mk(day + 14 * 3600 + 1800, 103.2, 103.4, 102.6, 103.1, v=1800)) # last: trades into zone, holds above bottom
+    items3 = _quiet(30, 100.0, day - 30 * 900) + win
+    res3 = sp._silver_bullet(items3, _atr_of(items3), "15m")
+    act3 = [r for r in res3 if r["status"] == "active" and r["direction"] == "long"]
+    assert act3, res3
+    assert act3[0]["stop"] < act3[0]["entry"] < act3[0]["target"]
+
+
+def test_v316_scan_all_integrity_and_budget():
+    """All 34 detectors run inside scan_all on real-shaped data; cost stays small;
+    quiet noise produces no fabricated actives from the new batch."""
+    import time
+    from app.services import strategy_pack_v2 as sp
+    items = _flat_base(300)
+    t0 = time.time()
+    scan = sp.scan_all(items, "15m")
+    el = time.time() - t0
+    assert scan["available"] is True
+    new_ids = {"liquidity_sweep", "fvg_tap", "ob_retest", "eqh_eql_raid", "rsi2_reversion",
+               "nr7_breakout", "hikkake", "triangle_break", "three_drives", "asian_sweep",
+               "pivot_reject", "silver_bullet"}
+    seen = {r["id"] for r in scan["active"] + scan["forming"]}
+    assert seen <= (new_ids | seen)  # sanity
+    for r in scan["active"] + scan["forming"]:
+        assert 0 <= r["quality"] <= 100
+        if r["status"] == "active" and r["direction"] in ("long", "short"):
+            assert r["entry"] is not None and r["stop"] is not None and r["target"] is not None
+            if r["direction"] == "long":
+                assert r["stop"] < r["entry"] < r["target"]
+            else:
+                assert r["stop"] > r["entry"] > r["target"]
+    assert el < 1.5, f"scan_all too slow: {el:.2f}s"

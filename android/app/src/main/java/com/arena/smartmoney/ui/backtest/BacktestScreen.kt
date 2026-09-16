@@ -156,7 +156,7 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
             item {
                 PremiumGlassCard(borderColor = Color(0x40B08CFF)) {
                     Text(
-                        t("Classic Strategy Backtest (22 Strategies)", "بک‌تست استراتژی‌های کلاسیک (۲۲ استراتژی)"),
+                        t("Classic Strategy Backtest (34 Strategies)", "بک‌تست استراتژی‌های کلاسیک (۳۴ استراتژی)"),
                         style = MaterialTheme.typography.titleLarge,
                         color = Color.White,
                         fontWeight = FontWeight.Bold
@@ -164,7 +164,7 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
                     Text(
                         t(
                             "Replays all 22 classic strategies from the scanner over real history and grades them by quality bucket. Answers: does higher quality actually win more?",
-                            "هر ۲۲ استراتژی کلاسیک اسکنر را روی تاریخچه واقعی بازپخش و بر اساس سبد کیفی ارزیابی می‌کند. پاسخ می‌دهد: آیا کیفیت بالاتر واقعاً برد بیشتری دارد؟"
+                            "هر ۳۴ استراتژی کلاسیک/ICT اسکنر را روی تاریخچه واقعی بازپخش و بر اساس سبد کیفی ارزیابی می‌کند. پاسخ می‌دهد: آیا کیفیت بالاتر واقعاً برد بیشتری دارد؟"
                         ),
                         color = Color(0xFFE7DEFF)
                     )

@@ -1,11 +1,15 @@
 """Strategy Pack v2 — deterministic classic/professional strategy detectors.
 
-22 validated strategies scanned on real candles (no repainting, no look-ahead):
+34 validated strategies scanned on real candles (no repainting, no look-ahead):
 Wyckoff (Spring / Upthrust / SOS), Turtle-Donchian breakout, ORB, Inside-Bar,
 Double Top/Bottom, Head & Shoulders (+inverse), Rising/Falling Wedge,
 Flag/Pennant, EMA 9/21 pullback, Golden/Death cross, TTM Squeeze breakout,
 VWAP reversion & bounce, Judas Swing, Power-of-3 (AMD), RSI/MACD divergence
-reversal, Supertrend flip, Ichimoku system, SAR flip, Engulfing-at-level.
+reversal, Supertrend flip, Ichimoku system, SAR flip, Engulfing-at-level,
+plus the v3.16 professional batch: liquidity sweep (stop-hunt), FVG tap,
+order-block retest, EQH/EQL raid, Connors RSI(2) reversion, NR7/NR4 breakout,
+Hikkake trap, ascending/descending triangle measured-move, three-drive
+divergence, Asian-range killzone sweep, floor-pivot rejection, ICT Silver Bullet.
 
 Every detector returns status=active|forming|none with a strict quality score.
 """
@@ -716,6 +720,766 @@ def _engulfing_at_level(items: list[dict], atr: float) -> list[dict]:
 # ---------------------------------------------------------------- scan
 
 
+# ---------------------------------------------------------------- v3.16 batch
+# 12 additional professional detectors (liquidity/ICT/SMC/quant/session/levels).
+# Same contract as the rest: strict geometry + confirmation, no repainting
+# (only closed bars decide active/forming), honest quality scoring, and a real
+# entry/stop/target plan or nothing at all.
+
+
+def _vol_avg(items: list[dict], n: int = 20) -> float:
+    vs = [float(it.get("v") or 0.0) for it in items[-n:]]
+    return sum(vs) / len(vs) if vs else 0.0
+
+
+def _hour_utc(ts: float) -> int:
+    return int(ts // 3600) % 24
+
+
+_TF_MIN = {"1m": 1, "3m": 3, "5m": 5, "15m": 15, "30m": 30, "60m": 60, "1h": 60,
+         "2h": 120, "4h": 240, "6h": 360, "12h": 720, "1d": 1440}
+
+
+def _tf_minutes(timeframe: str) -> int:
+    return _TF_MIN.get(str(timeframe or "").replace("min", "m").lower(), 0)
+
+
+def _bar_pos(bar: dict) -> float:
+    """Close position inside the bar range: 1=at high, 0=at low."""
+    rng = float(bar["h"]) - float(bar["l"])
+    if rng <= 0:
+        return 0.5
+    return (float(bar["c"]) - float(bar["l"])) / rng
+
+
+def _confirmed_swings(items: list[dict], k: int = 2) -> tuple[list[int], list[int]]:
+    """Swings already confirmed by k later closed bars (no repainting)."""
+    hi, lo = _swings(items, k)
+    limit = len(items) - 1 - k
+    return [i for i in hi if i <= limit], [i for i in lo if i <= limit]
+
+
+def _fvg_zones(items: list[dict], lookback: int = 40) -> list[dict]:
+    """Unmitigated 3-candle fair value gaps, newest last.
+
+    Bullish FVG at (a, b, c): low[c] > high[a] -> zone [high[a], low[c]].
+    Mitigated when any later bar trades through the far side of the zone.
+    """
+    n = len(items)
+    out: list[dict] = []
+    start = max(1, n - lookback)
+    for c in range(start + 1, n):
+        a, b = c - 2, c - 1
+        ha, la = float(items[a]["h"]), float(items[a]["l"])
+        hc, lc = float(items[c]["h"]), float(items[c]["l"])
+        disp = float(items[b]["h"]) - float(items[b]["l"])
+        if lc > ha:
+            zone = {"dir": "bull", "top": lc, "bottom": ha, "c": c, "disp": disp}
+        elif hc < la:
+            zone = {"dir": "bear", "top": la, "bottom": hc, "c": c, "disp": disp}
+        else:
+            continue
+        mitigated = False
+        for j in range(c + 1, n):
+            if zone["dir"] == "bull" and float(items[j]["l"]) <= zone["bottom"]:
+                mitigated = True
+                break
+            if zone["dir"] == "bear" and float(items[j]["h"]) >= zone["top"]:
+                mitigated = True
+                break
+        if not mitigated:
+            out.append(zone)
+    return out
+
+
+def _liquidity_sweep(items: list[dict], atr: float) -> list[dict]:
+    """Stop-hunt / liquidity sweep reversal: wick beyond a confirmed swing pool,
+    close back inside, close at the rejecting end of the bar."""
+    n = len(items)
+    if n < 25 or atr <= 0:
+        return []
+    hi_idx, lo_idx = _confirmed_swings(items, 2)
+    last = items[-1]
+    vol_hit = float(last.get("v") or 0) >= 1.3 * _vol_avg(items)
+    recent_h = [i for i in hi_idx if n - 1 - i <= 40]
+    recent_l = [i for i in lo_idx if n - 1 - i <= 40]
+    if not recent_h and not recent_l:
+        return []
+    out: list[dict] = []
+    if recent_h:
+        level = max(float(items[i]["h"]) for i in recent_h)
+        touches = sum(1 for j in range(max(0, n - 41), n - 1) if float(items[j]["h"]) >= level - 0.05 * atr)
+        beyond = float(last["h"]) - level
+        if beyond > 0.10 * atr and beyond < 1.5 * atr and float(last["c"]) < level and _bar_pos(last) <= 0.45:
+            q = 58 + (6 if vol_hit else 0) + (4 if beyond >= 0.25 * atr else 0) + (6 if touches >= 3 else 0)
+            risk = float(last["h"]) + 0.25 * atr - float(last["c"])
+            struct = min((float(items[i]["l"]) for i in recent_l), default=None)
+            target = float(last["c"]) - 2 * risk
+            if struct is not None and struct < float(last["c"]) - 1.2 * risk:
+                target = struct
+            out.append(_result("liquidity_sweep", "جاروی نقدینگی سقف (Stop-Hunt)", "Liquidity", "short", "active", q,
+                               f"ویک تا {beyond / atr:.2f}×ATR بالای استخر نقدینگی {level:.6g} ({touches} برخورد) رفت و زیر سطح با بدنه پایین بسته شد — شکار استاپ‌ها و بازگشت.",
+                               entry=last["c"], stop=float(last["h"]) + 0.25 * atr, target=target))
+        elif abs(float(last["c"]) - level) <= 0.15 * atr and float(last["h"]) <= level:
+            out.append(_result("liquidity_sweep", "استخر نقدینگی سقف", "Liquidity", "none", "forming", 46,
+                               f"قیمت {abs(float(last['c']) - level) / atr:.2f}×ATR زیر استخر نقدینگی {level:.6g} ({touches} برخورد) — جاروی بالقوه در کمین."))
+    if recent_l:
+        level = min(float(items[i]["l"]) for i in recent_l)
+        touches = sum(1 for j in range(max(0, n - 41), n - 1) if float(items[j]["l"]) <= level + 0.05 * atr)
+        beyond = level - float(last["l"])
+        if beyond > 0.10 * atr and beyond < 1.5 * atr and float(last["c"]) > level and _bar_pos(last) >= 0.55:
+            q = 58 + (6 if vol_hit else 0) + (4 if beyond >= 0.25 * atr else 0) + (6 if touches >= 3 else 0)
+            risk = float(last["c"]) - (float(last["l"]) - 0.25 * atr)
+            struct = max((float(items[i]["h"]) for i in recent_h), default=None)
+            target = float(last["c"]) + 2 * risk
+            if struct is not None and struct > float(last["c"]) + 1.2 * risk:
+                target = struct
+            out.append(_result("liquidity_sweep", "جاروی نقدینگی کف (Stop-Hunt)", "Liquidity", "long", "active", q,
+                               f"ویک تا {beyond / atr:.2f}×ATR زیر استخر نقدینگی {level:.6g} ({touches} برخورد) رفت و بالای سطح با بدنه بالا بسته شد — شکار استاپ‌ها و بازگشت.",
+                               entry=last["c"], stop=float(last["l"]) - 0.25 * atr, target=target))
+        elif abs(float(last["c"]) - level) <= 0.15 * atr and float(last["l"]) >= level:
+            out.append(_result("liquidity_sweep", "استخر نقدینگی کف", "Liquidity", "none", "forming", 46,
+                               f"قیمت {abs(float(last['c']) - level) / atr:.2f}×ATR بالای استخر نقدینگی {level:.6g} ({touches} برخورد) — جاروی بالقوه در کمین."))
+    return out
+
+
+def _fvg_tap(items: list[dict], atr: float) -> list[dict]:
+    """Tap-and-reject of an unmitigated Fair Value Gap (ICT)."""
+    n = len(items)
+    if n < 20 or atr <= 0:
+        return []
+    last = items[-1]
+    vol_hit = float(last.get("v") or 0) >= 1.3 * _vol_avg(items)
+    out: list[dict] = []
+    hi_idx, lo_idx = _confirmed_swings(items, 2)
+    for z in _fvg_zones(items, 40)[-4:]:
+        fresh = n - 1 - z["c"] <= 20
+        strong_disp = z["disp"] >= 1.2 * atr
+        tall = (z["top"] - z["bottom"]) >= 0.3 * atr
+        q = 56 + (6 if strong_disp else 0) + (4 if tall else 0) + (4 if fresh else 0) + (4 if vol_hit else 0)
+        if z["dir"] == "bull":
+            tapped = float(last["l"]) <= z["top"] and float(last["l"]) > z["bottom"] - 0.3 * atr
+            rejected = float(last["c"]) >= z["top"] and _bar_pos(last) >= 0.55
+            if tapped and rejected:
+                risk = float(last["c"]) - (z["bottom"] - 0.2 * atr)
+                if risk <= 0:
+                    continue
+                target = float(last["c"]) + 2 * risk
+                struct = max((float(items[i]["h"]) for i in hi_idx if n - 1 - i <= 40), default=None)
+                if struct is not None and struct >= float(last["c"]) + 1.2 * risk:
+                    target = struct
+                out.append(_result("fvg_tap", "واکنش به FVG صعودی (ICT)", "ICT", "long", "active", q,
+                                   f"قیمت داخل FVG بی‌مصرف [{z['bottom']:.6g}–{z['top']:.6g}] نشست و با بدنه بالا رد شد — جابه‌جایی {z['disp'] / atr:.1f}×ATR.",
+                                   entry=last["c"], stop=z["bottom"] - 0.2 * atr, target=target))
+            elif float(last["c"]) > z["top"] and float(last["l"]) - z["top"] <= 0.5 * atr:
+                out.append(_result("fvg_tap", "FVG صعودی در انتظار لمس", "ICT", "none", "forming", 46,
+                                   f"FVG بی‌مصرف [{z['bottom']:.6g}–{z['top']:.6g}] زیر قیمت — {max(float(last['l']) - z['top'], 0) / atr:.2f}×ATR فاصله تا ناحیه."))
+        else:
+            tapped = float(last["h"]) >= z["bottom"] and float(last["h"]) < z["top"] + 0.3 * atr
+            rejected = float(last["c"]) <= z["bottom"] and _bar_pos(last) <= 0.45
+            if tapped and rejected:
+                risk = (z["top"] + 0.2 * atr) - float(last["c"])
+                if risk <= 0:
+                    continue
+                target = float(last["c"]) - 2 * risk
+                struct = min((float(items[i]["l"]) for i in lo_idx if n - 1 - i <= 40), default=None)
+                if struct is not None and struct <= float(last["c"]) - 1.2 * risk:
+                    target = struct
+                out.append(_result("fvg_tap", "واکنش به FVG نزولی (ICT)", "ICT", "short", "active", q,
+                                   f"قیمت داخل FVG بی‌مصرف [{z['bottom']:.6g}–{z['top']:.6g}] نشست و با بدنه پایین رد شد — جابه‌جایی {z['disp'] / atr:.1f}×ATR.",
+                                   entry=last["c"], stop=z["top"] + 0.2 * atr, target=target))
+            elif float(last["c"]) < z["bottom"] and z["bottom"] - float(last["h"]) <= 0.5 * atr:
+                out.append(_result("fvg_tap", "FVG نزولی در انتظار لمس", "ICT", "none", "forming", 46,
+                                   f"FVG بی‌مصرف [{z['bottom']:.6g}–{z['top']:.6g}] بالای قیمت — {max(z['bottom'] - float(last['h']), 0) / atr:.2f}×ATR فاصله تا ناحیه."))
+    return out[:4]
+
+
+def _ob_retest(items: list[dict], atr: float) -> list[dict]:
+    """Order block created by a displacement impulse that broke structure,
+    retested and defended."""
+    n = len(items)
+    if n < 25 or atr <= 0:
+        return []
+    last = items[-1]
+    vol_hit = float(last.get("v") or 0) >= 1.3 * _vol_avg(items)
+    out: list[dict] = []
+    for j in range(max(12, n - 40), n - 2):
+        rng = float(items[j]["h"]) - float(items[j]["l"])
+        body = abs(float(items[j]["c"]) - float(items[j]["o"]))
+        if rng < 1.3 * atr or body < 0.7 * rng:
+            continue
+        bull = float(items[j]["c"]) > float(items[j]["o"])
+        prior = [float(items[k]["h"] if bull else items[k]["l"]) for k in range(j - 10, j)]
+        bos = float(items[j]["c"]) > max(prior) if bull else float(items[j]["c"]) < min(prior)
+        if not bos:
+            continue
+        k = None
+        for m in range(j - 1, max(j - 8, -1), -1):
+            bear_bar = float(items[m]["c"]) < float(items[m]["o"])
+            if bear_bar == bull:
+                k = m
+                break
+        if k is None:
+            continue
+        top, bottom = float(items[k]["h"]), float(items[k]["l"])
+        mitigated = any(
+            (float(items[q]["l"]) <= bottom) if bull else (float(items[q]["h"]) >= top)
+            for q in range(k + 1, n - 1)
+        )
+        if mitigated:
+            continue
+        age = n - 1 - k
+        q_score = 56 + 6 + (4 if rng >= 1.8 * atr else 0) + (4 if vol_hit else 0) + (2 if age >= 5 else 0)
+        if bull:
+            tapped = float(last["l"]) <= top and float(last["l"]) > bottom - 0.3 * atr
+            if tapped and float(last["c"]) > top and _bar_pos(last) >= 0.55:
+                risk = float(last["c"]) - (bottom - 0.2 * atr)
+                if risk <= 0:
+                    continue
+                struct = max(float(items[m]["h"]) for m in range(j, n - 1))
+                target = struct if struct >= float(last["c"]) + 1.2 * risk else float(last["c"]) + 2 * risk
+                out.append(_result("ob_retest", "واکنش به اوردر بلاک صعودی (SMC)", "SMC", "long", "active", q_score,
+                                   f"اوردر بلاک [{bottom:.6g}–{top:.6g}] از جابه‌جایی {rng / atr:.1f}×ATR با شکست ساختار — لمس شد و با بدنه بالا دفاع شد.",
+                                   entry=last["c"], stop=bottom - 0.2 * atr, target=target))
+            elif float(last["c"]) > top and float(last["l"]) - top <= 0.5 * atr:
+                out.append(_result("ob_retest", "اوردر بلاک صعودی در انتظار", "SMC", "none", "forming", 46,
+                                   f"اوردر بلاک بی‌مصرف [{bottom:.6g}–{top:.6g}] زیر قیمت — منتظر بازگشت و واکنش."))
+        else:
+            tapped = float(last["h"]) >= bottom and float(last["h"]) < top + 0.3 * atr
+            if tapped and float(last["c"]) < bottom and _bar_pos(last) <= 0.45:
+                risk = (top + 0.2 * atr) - float(last["c"])
+                if risk <= 0:
+                    continue
+                struct = min(float(items[m]["l"]) for m in range(j, n - 1))
+                target = struct if struct <= float(last["c"]) - 1.2 * risk else float(last["c"]) - 2 * risk
+                out.append(_result("ob_retest", "واکنش به اوردر بلاک نزولی (SMC)", "SMC", "short", "active", q_score,
+                                   f"اوردر بلاک [{bottom:.6g}–{top:.6g}] از جابه‌جایی {rng / atr:.1f}×ATR با شکست ساختار — لمس شد و با بدنه پایین دفاع شد.",
+                                   entry=last["c"], stop=top + 0.2 * atr, target=target))
+            elif float(last["c"]) < bottom and bottom - float(last["h"]) <= 0.5 * atr:
+                out.append(_result("ob_retest", "اوردر بلاک نزولی در انتظار", "SMC", "none", "forming", 46,
+                                   f"اوردر بلاک بی‌مصرف [{bottom:.6g}–{top:.6g}] بالای قیمت — منتظر بازگشت و واکنش."))
+    return out[:3]
+
+
+def _eqh_eql_raid(items: list[dict], atr: float) -> list[dict]:
+    """Equal highs/lows (retail double top/bottom stop cluster) raided and reversed."""
+    n = len(items)
+    if n < 25 or atr <= 0:
+        return []
+    hi_idx, lo_idx = _confirmed_swings(items, 2)
+    last = items[-1]
+    vol_hit = float(last.get("v") or 0) >= 1.3 * _vol_avg(items)
+    out: list[dict] = []
+    hs = [i for i in hi_idx if n - 1 - i <= 45]
+    ls = [i for i in lo_idx if n - 1 - i <= 45]
+    pools_h: list[tuple[int, float]] = []
+    for a in range(len(hs)):
+        anchor = float(items[hs[a]]["h"])
+        grp = [hs[a]]
+        for b in range(a + 1, len(hs)):
+            if abs(anchor - float(items[hs[b]]["h"])) <= 0.10 * atr:
+                grp.append(hs[b])
+            else:
+                break
+        if len(grp) >= 2 and (grp[-1] - grp[0]) >= 6:
+            level = max(float(items[i]["h"]) for i in grp)
+            if not any(abs(level - lv) <= 0.10 * atr for _, lv in pools_h):
+                pools_h.append((len(grp), level))
+    best_h = None
+    for touches, level in pools_h:
+        beyond = float(last["h"]) - level
+        raided = 0.05 * atr < beyond < 1.2 * atr and float(last["c"]) < level
+        if raided and (best_h is None or touches > best_h[0]):
+            best_h = (touches, level)
+    if best_h is None:
+        # forming: nearest pool the price is approaching from below
+        near = [(t_, lv) for t_, lv in pools_h
+                if abs(float(last["c"]) - lv) <= 0.3 * atr and float(last["h"]) <= lv]
+        if near:
+            best_h = min(near, key=lambda x: abs(float(last["c"]) - x[1]))
+    if best_h:
+        touches, level = best_h
+        beyond = float(last["h"]) - level
+        if beyond > 0.05 * atr and beyond < 1.2 * atr and float(last["c"]) < level and _bar_pos(last) <= 0.45:
+            q = 60 + (4 if touches >= 3 else 0) + (6 if vol_hit else 0) + (4 if beyond >= 0.20 * atr else 0)
+            risk = float(last["h"]) + 0.25 * atr - float(last["c"])
+            struct = min((float(items[i]["l"]) for i in ls), default=None)
+            target = float(last["c"]) - 2 * risk
+            if struct is not None and struct < float(last["c"]) - 1.2 * risk:
+                target = struct
+            out.append(_result("eqh_eql_raid", "شکار سقف‌های برابر (EQH Raid)", "Liquidity", "short", "active", q,
+                               f"{touches} سقف برابر روی {level:.6g} جارو شد (ویک {beyond / atr:.2f}×ATR) و قیمت زیر استخر بسته شد — نقدینگی خرده‌فروش جمع شد.",
+                               entry=last["c"], stop=float(last["h"]) + 0.25 * atr, target=target))
+        elif abs(float(last["c"]) - level) <= 0.3 * atr and float(last["h"]) <= level:
+            out.append(_result("eqh_eql_raid", "استخر EQH بالای قیمت", "Liquidity", "none", "forming", 48,
+                               f"{touches} سقف برابر روی {level:.6g} — استخر نقدینگی بالای قیمت؛ شکست یا جارو هر دو محتمل."))
+    pools_l: list[tuple[int, float]] = []
+    for a in range(len(ls)):
+        anchor = float(items[ls[a]]["l"])
+        grp = [ls[a]]
+        for b in range(a + 1, len(ls)):
+            if abs(anchor - float(items[ls[b]]["l"])) <= 0.10 * atr:
+                grp.append(ls[b])
+            else:
+                break
+        if len(grp) >= 2 and (grp[-1] - grp[0]) >= 6:
+            level = min(float(items[i]["l"]) for i in grp)
+            if not any(abs(level - lv) <= 0.10 * atr for _, lv in pools_l):
+                pools_l.append((len(grp), level))
+    best_l = None
+    for touches, level in pools_l:
+        beyond = level - float(last["l"])
+        raided = 0.05 * atr < beyond < 1.2 * atr and float(last["c"]) > level
+        if raided and (best_l is None or touches > best_l[0]):
+            best_l = (touches, level)
+    if best_l is None:
+        near = [(t_, lv) for t_, lv in pools_l
+                if abs(float(last["c"]) - lv) <= 0.3 * atr and float(last["l"]) >= lv]
+        if near:
+            best_l = min(near, key=lambda x: abs(float(last["c"]) - x[1]))
+    if best_l:
+        touches, level = best_l
+        beyond = level - float(last["l"])
+        if beyond > 0.05 * atr and beyond < 1.2 * atr and float(last["c"]) > level and _bar_pos(last) >= 0.55:
+            q = 60 + (4 if touches >= 3 else 0) + (6 if vol_hit else 0) + (4 if beyond >= 0.20 * atr else 0)
+            risk = float(last["c"]) - (float(last["l"]) - 0.25 * atr)
+            struct = max((float(items[i]["h"]) for i in hs), default=None)
+            target = float(last["c"]) + 2 * risk
+            if struct is not None and struct > float(last["c"]) + 1.2 * risk:
+                target = struct
+            out.append(_result("eqh_eql_raid", "شکار کف‌های برابر (EQL Raid)", "Liquidity", "long", "active", q,
+                               f"{touches} کف برابر زیر {level:.6g} جارو شد (ویک {beyond / atr:.2f}×ATR) و قیمت بالای استخر بسته شد — نقدینگی خرده‌فروش جمع شد.",
+                               entry=last["c"], stop=float(last["l"]) - 0.25 * atr, target=target))
+        elif abs(float(last["c"]) - level) <= 0.3 * atr and float(last["l"]) >= level:
+            out.append(_result("eqh_eql_raid", "استخر EQL زیر قیمت", "Liquidity", "none", "forming", 48,
+                               f"{touches} کف برابر روی {level:.6g} — استخر نقدینگی زیر قیمت؛ شکست یا جارو هر دو محتمل."))
+    return out
+
+
+def _rsi2_reversion(items: list[dict], atr: float) -> list[dict]:
+    """Connors RSI(2) mean reversion with EMA200 trend filter (quant classic)."""
+    n = len(items)
+    if n < 210 or atr <= 0:
+        return []
+    closes = [float(it["c"]) for it in items]
+    ema200 = _ema_series(closes, 200)
+    if len(ema200) < 6:
+        return []
+    rsi2 = _rsi_series(closes, 2)
+    if len(rsi2) < 3:
+        return []
+    r_now, r_prev = rsi2[-1], rsi2[-2]
+    last = items[-1]
+    ma5 = _sma(closes, 5)
+    slope_up = ema200[-1] > ema200[-5]
+    slope_dn = ema200[-1] < ema200[-5]
+    out: list[dict] = []
+    if closes[-1] > ema200[-1] and slope_up and r_prev > 10 and r_now <= 10:
+        q = 58 + (8 if r_now <= 5 else 0) + (4 if ma5 is not None and closes[-1] < ma5 else 0)
+        stop = closes[-1] - 1.5 * atr
+        target = ma5 if (ma5 is not None and ma5 >= closes[-1] + 0.9 * atr) else closes[-1] + 1.0 * atr
+        out.append(_result("rsi2_reversion", "بازگشت RSI(2) کانرز (هم‌روند)", "Quant", "long", "active", q,
+                           f"RSI(2)={r_now:.1f} (زیر ۱۰) در حالی که قیمت بالای EMA200 صعودی است — کشش کوتاه‌مدت در جهت روند اصلی. خروج کلاسیک: میانگین ۵ کندلی.",
+                           entry=closes[-1], stop=stop, target=target))
+    if closes[-1] < ema200[-1] and slope_dn and r_prev < 90 and r_now >= 90:
+        q = 58 + (8 if r_now >= 95 else 0) + (4 if ma5 is not None and closes[-1] > ma5 else 0)
+        stop = closes[-1] + 1.5 * atr
+        target = ma5 if (ma5 is not None and ma5 <= closes[-1] - 0.9 * atr) else closes[-1] - 1.0 * atr
+        out.append(_result("rsi2_reversion", "بازگشت RSI(2) کانرز (هم‌روند)", "Quant", "short", "active", q,
+                           f"RSI(2)={r_now:.1f} (بالای ۹۰) در حالی که قیمت زیر EMA200 نزولی است — کشش کوتاه‌مدت در جهت روند اصلی. خروج کلاسیک: میانگین ۵ کندلی.",
+                           entry=closes[-1], stop=stop, target=target))
+    return out
+
+
+def _nr7_breakout(items: list[dict], atr: float) -> list[dict]:
+    """NR7/NR4 (Crabel): narrowest range of the last 7 bars, trade the break."""
+    n = len(items)
+    if n < 12 or atr <= 0:
+        return []
+    if n < 13:
+        return []
+    last = items[-1]          # trigger bar (closed)
+    nr = items[-2]            # narrow-range bar
+    nr_rng = float(nr["h"]) - float(nr["l"])
+    if nr_rng <= 0:
+        return []
+    prev7 = [float(items[j]["h"]) - float(items[j]["l"]) for j in range(n - 9, n - 2)]
+    if not prev7 or nr_rng >= min(prev7):
+        return []
+    prev4 = [float(items[j]["h"]) - float(items[j]["l"]) for j in range(n - 6, n - 2)]
+    is_nr4 = bool(prev4) and nr_rng < min(prev4)
+    inside = float(nr["h"]) <= float(items[-3]["h"]) and float(nr["l"]) >= float(items[-3]["l"])
+    vol_hit = float(last.get("v") or 0) >= 1.3 * _vol_avg(items)
+    q = 58 + (6 if is_nr4 else 0) + (6 if inside else 0) + (4 if vol_hit else 0)
+    tag = "NR7" + ("/NR4" if is_nr4 else "") + (" + اینساید" if inside else "")
+    plan_stop_long = float(nr["l"])
+    plan_stop_short = float(nr["h"])
+    if float(last["h"]) <= float(nr["h"]) and float(last["l"]) >= float(nr["l"]):
+        return [_result("nr7_breakout", f"{tag} شکل گرفت", "Volatility", "none", "forming", 50,
+                        f"انقباض نوسان {tag} (دامنه {nr_rng / atr:.2f}×ATR) — منتظر شکست سقف {float(nr['h']):.6g} یا کف {float(nr['l']):.6g}.")]
+    if float(last["c"]) > float(nr["h"]):
+        risk = float(nr["h"]) - plan_stop_long
+        if risk <= 0:
+            return []
+        return [_result("nr7_breakout", f"شکست {tag} (انقباض نوسان)", "Volatility", "long", "active", q,
+                        f"کندل {tag} با دامنه {nr_rng / atr:.2f}×ATR (کمینه ۷ کندل) — شکست سقف آن با بسته‌شدن بیرون، نشانه شروع موج جدید.",
+                        entry=float(nr["h"]), stop=plan_stop_long, target=float(nr["h"]) + 1.5 * risk)]
+    if float(last["c"]) < float(nr["l"]):
+        risk = plan_stop_short - float(nr["l"])
+        if risk <= 0:
+            return []
+        return [_result("nr7_breakout", f"شکست {tag} (انقباض نوسان)", "Volatility", "short", "active", q,
+                        f"کندل {tag} با دامنه {nr_rng / atr:.2f}×ATR (کمینه ۷ کندل) — شکست کف آن با بسته‌شدن بیرون، نشانه شروع موج جدید.",
+                        entry=float(nr["l"]), stop=plan_stop_short, target=float(nr["l"]) - 1.5 * risk)]
+    return [_result("nr7_breakout", f"{tag} شکل گرفت", "Volatility", "none", "forming", 50,
+                    f"انقباض نوسان {tag} (دامنه {nr_rng / atr:.2f}×ATR) — منتظر شکست سقف {float(nr['h']):.6g} یا کف {float(nr['l']):.6g}.")]
+
+
+def _hikkake(items: list[dict], atr: float) -> list[dict]:
+    """Hikkake: inside-bar trap — false break of an inside bar reversed within 3 bars."""
+    n = len(items)
+    if n < 8 or atr <= 0:
+        return []
+    mother, inside = items[-5], items[-4]
+    if not (float(inside["h"]) <= float(mother["h"]) and float(inside["l"]) >= float(mother["l"])):
+        return []
+    trap_hi = max(float(items[j]["h"]) for j in range(n - 3, n))
+    trap_lo = min(float(items[j]["l"]) for j in range(n - 3, n))
+    up_trap = trap_hi > float(inside["h"])
+    dn_trap = trap_lo < float(inside["l"])
+    last = items[-1]
+    vol_hit = float(last.get("v") or 0) >= 1.3 * _vol_avg(items)
+    out: list[dict] = []
+    if up_trap and float(last["c"]) < float(inside["l"]):
+        depth = trap_hi - float(inside["h"])
+        q = 58 + (6 if vol_hit else 0) + (4 if depth >= 0.3 * atr else 0)
+        stop = trap_hi + 0.25 * atr
+        risk = stop - float(last["c"])
+        target = float(mother["l"]) if float(mother["l"]) <= float(last["c"]) - 1.2 * risk else float(last["c"]) - 2 * risk
+        out.append(_result("hikkake", "هیکاکی نزولی (تله اینساید بار)", "Price Action", "short", "active", q,
+                           f"شکست ناموفق سقف اینساید بار (تله تا {trap_hi:.6g}) و حالا بسته‌شدن زیر کف آن {float(inside['l']):.6g} — گیرافتادن خریداران.",
+                           entry=last["c"], stop=stop, target=target))
+    if dn_trap and float(last["c"]) > float(inside["h"]):
+        depth = float(inside["l"]) - trap_lo
+        q = 58 + (6 if vol_hit else 0) + (4 if depth >= 0.3 * atr else 0)
+        stop = trap_lo - 0.25 * atr
+        risk = float(last["c"]) - stop
+        target = float(mother["h"]) if float(mother["h"]) >= float(last["c"]) + 1.2 * risk else float(last["c"]) + 2 * risk
+        out.append(_result("hikkake", "هیکاکی صعودی (تله اینساید بار)", "Price Action", "long", "active", q,
+                           f"شکست ناموفق کف اینساید بار (تله تا {trap_lo:.6g}) و حالا بسته‌شدن بالای سقف آن {float(inside['h']):.6g} — گیرافتادن فروشندگان.",
+                           entry=last["c"], stop=stop, target=target))
+    if not out and (up_trap or dn_trap):
+        out.append(_result("hikkake", "هیکاکی (تله شکل گرفت)", "Price Action", "none", "forming", 46,
+                           f"اینساید بار و شکست {'سقف' if up_trap else 'کف'} آن (تله بالقوه) — منتظر بسته‌شدن پشت سمت مخالف برای تأیید."))
+    return out
+
+
+def _triangle_break(items: list[dict], atr: float) -> list[dict]:
+    """Ascending/descending triangle (flat side + sloped side) measured-move break."""
+    n = len(items)
+    if n < 30 or atr <= 0:
+        return []
+    hi_idx, lo_idx = _confirmed_swings(items, 2)
+    win_h = [i for i in hi_idx if n - 1 - i <= 60]
+    win_l = [i for i in lo_idx if n - 1 - i <= 60]
+    if len(win_h) < 2 or len(win_l) < 2:
+        return []
+    last = items[-1]
+    vol_hit = float(last.get("v") or 0) >= 1.3 * _vol_avg(items)
+    out: list[dict] = []
+    best_asc = 0
+    best_desc = 0
+    # ---- ascending: flat highs + rising lows
+    for a in range(len(win_h)):
+        top = float(items[win_h[a]]["h"])
+        grp = [win_h[a]]
+        for b in range(a + 1, len(win_h)):
+            if abs(top - float(items[win_h[b]]["h"])) <= 0.15 * atr:
+                grp.append(win_h[b])
+            else:
+                break
+        if len(grp) < 2 or (grp[-1] - grp[0]) < 10:
+            continue
+        top = max(float(items[i]["h"]) for i in grp)
+        lows_after = [i for i in win_l if i >= grp[0]]
+        if len(lows_after) < 2:
+            continue
+        lv = [float(items[i]["l"]) for i in lows_after]
+        rising = all(lv[b] > lv[b - 1] for b in range(1, len(lv))) and lv[-1] < top
+        if not rising:
+            best_asc = max(best_asc, len(grp)) if best_asc else len(grp)
+            continue
+        height = top - min(lv)
+        touches = len(grp)
+        broke = float(last["c"]) > top + 0.05 * atr and float(items[grp[-1]]["h"]) <= top + 1e-9
+        if broke:
+            q = 60 + min(6, 3 * (touches - 2)) + (6 if vol_hit else 0) + (4 if height <= 6 * atr else 0)
+            stop = lv[-1] - 0.1 * atr
+            if float(last["c"]) - stop <= 0:
+                continue
+            out.append(_result("triangle_break", "شکست مثلث صعودی", "Classic Pattern", "long", "active", q,
+                               f"سقف صاف {top:.6g} با {touches} برخورد + کف‌های بالا‌رونده — شکست با بدنه بیرون؛ هدف اندازه حرکت (ارتفاع {height / atr:.1f}×ATR).",
+                               entry=float(last["c"]), stop=stop, target=top + height))
+            break
+        if top - float(last["c"]) <= 0.3 * atr and float(last["c"]) > lv[-1]:
+            out.append(_result("triangle_break", "مثلث صعودی (فشردگی)", "Classic Pattern", "none", "forming", 48,
+                               f"{touches} برخورد با سقف صاف {top:.6g} و کف‌های بالا‌رونده — فنر فشرده؛ منتظر شکست سقف."))
+            break
+    # ---- descending: flat lows + falling highs
+    for a in range(len(win_l)):
+        bot = float(items[win_l[a]]["l"])
+        grp = [win_l[a]]
+        for b in range(a + 1, len(win_l)):
+            if abs(bot - float(items[win_l[b]]["l"])) <= 0.15 * atr:
+                grp.append(win_l[b])
+            else:
+                break
+        if len(grp) < 2 or (grp[-1] - grp[0]) < 10:
+            continue
+        bot = min(float(items[i]["l"]) for i in grp)
+        highs_after = [i for i in win_h if i >= grp[0]]
+        if len(highs_after) < 2:
+            continue
+        hv = [float(items[i]["h"]) for i in highs_after]
+        falling = all(hv[b] < hv[b - 1] for b in range(1, len(hv))) and hv[-1] > bot
+        if not falling:
+            continue
+        height = max(hv) - bot
+        touches = len(grp)
+        broke = float(last["c"]) < bot - 0.05 * atr and float(items[grp[-1]]["l"]) >= bot - 1e-9
+        if broke:
+            q = 60 + min(6, 3 * (touches - 2)) + (6 if vol_hit else 0) + (4 if height <= 6 * atr else 0)
+            stop = hv[-1] + 0.1 * atr
+            if stop - float(last["c"]) <= 0:
+                continue
+            out.append(_result("triangle_break", "شکست مثلث نزولی", "Classic Pattern", "short", "active", q,
+                               f"کف صاف {bot:.6g} با {touches} برخورد + سقف‌های پایین‌رونده — شکست با بدنه بیرون؛ هدف اندازه حرکت (ارتفاع {height / atr:.1f}×ATR).",
+                               entry=float(last["c"]), stop=stop, target=bot - height))
+            break
+        if float(last["c"]) - bot <= 0.3 * atr and float(last["c"]) < hv[-1]:
+            out.append(_result("triangle_break", "مثلث نزولی (فشردگی)", "Classic Pattern", "none", "forming", 48,
+                               f"{touches} برخورد با کف صاف {bot:.6g} و سقف‌های پایین‌رونده — فنر فشرده؛ منتظر شکست کف."))
+            break
+    return out
+
+
+def _three_drives(items: list[dict], atr: float) -> list[dict]:
+    """Three-drive pattern: 3 successive pushes with momentum divergence."""
+    n = len(items)
+    if n < 35 or atr <= 0:
+        return []
+    closes = [float(it["c"]) for it in items]
+    rsi = _rsi_series(closes, 14)
+    rsi_off = n - len(rsi) if rsi else 0   # rsi[k] corresponds to items[k + rsi_off]
+    hi_idx, lo_idx = _confirmed_swings(items, 2)
+    last = items[-1]
+    vol_hit = float(last.get("v") or 0) >= 1.3 * _vol_avg(items)
+    out: list[dict] = []
+    # ---- 3-drive bottom (bullish reversal): lower lows, higher RSI at each low
+    lows = [i for i in lo_idx if n - 1 - i <= 50][-3:]
+    if len(lows) == 3 and lows[0] < lows[1] < lows[2]:
+        l1, l2, l3 = (float(items[i]["l"]) for i in lows)
+        idx_ok = rsi and all(0 <= i - rsi_off < len(rsi) for i in lows)
+        r1 = r2 = r3 = None
+        if idx_ok:
+            r1, r2, r3 = (rsi[i - rsi_off] for i in lows)
+        drives_down = l1 > l2 > l3
+        div = idx_ok and r1 < r2 < r3
+        gaps = (l1 - l2, l2 - l3)
+        symmetric = gaps[1] > 0 and 0.3 <= gaps[0] / gaps[1] <= 3.0
+        reacted = float(last["c"]) > float(items[lows[2]]["c"]) + 0.5 * atr and _bar_pos(last) >= 0.55
+        if drives_down and reacted:
+            q = 56 + (8 if div else 0) + (4 if symmetric else 0) + (4 if vol_hit else 0)
+            stop = l3 - 0.25 * atr
+            risk = float(last["c"]) - stop
+            struct = max(float(items[i]["h"]) for i in range(lows[0], n - 1))
+            target = struct if struct >= float(last["c"]) + 1.2 * risk else float(last["c"]) + 2 * risk
+            div_fa = f" با واگرایی RSI ({r1:.0f}→{r2:.0f}→{r3:.0f})" if div else " بدون واگرایی تأییدشده RSI"
+            if risk > 0:
+                out.append(_result("three_drives", "سه پرس نزولی (3-Drive)", "Harmonic", "long", "active", q,
+                                   f"سه کف پیاپی ({l1:.6g} → {l2:.6g} → {l3:.6g}){div_fa} — فرسایش فروشندگان و واکنش تأییدشده.",
+                                   entry=last["c"], stop=stop, target=target))
+    # ---- 3-drive top (bearish reversal)
+    highs = [i for i in hi_idx if n - 1 - i <= 50][-3:]
+    if len(highs) == 3 and highs[0] < highs[1] < highs[2]:
+        h1, h2, h3 = (float(items[i]["h"]) for i in highs)
+        idx_ok = rsi and all(0 <= i - rsi_off < len(rsi) for i in highs)
+        r1 = r2 = r3 = None
+        if idx_ok:
+            r1, r2, r3 = (rsi[i - rsi_off] for i in highs)
+        drives_up = h1 < h2 < h3
+        div = idx_ok and r1 > r2 > r3
+        gaps = (h2 - h1, h3 - h2)
+        symmetric = gaps[1] > 0 and 0.3 <= gaps[0] / gaps[1] <= 3.0
+        reacted = float(last["c"]) < float(items[highs[2]]["c"]) - 0.5 * atr and _bar_pos(last) <= 0.45
+        if drives_up and reacted:
+            q = 56 + (8 if div else 0) + (4 if symmetric else 0) + (4 if vol_hit else 0)
+            stop = h3 + 0.25 * atr
+            risk = stop - float(last["c"])
+            struct = min(float(items[i]["l"]) for i in range(highs[0], n - 1))
+            target = struct if struct <= float(last["c"]) - 1.2 * risk else float(last["c"]) - 2 * risk
+            div_fa = f" با واگرایی RSI ({r1:.0f}→{r2:.0f}→{r3:.0f})" if div else " بدون واگرایی تأییدشده RSI"
+            if risk > 0:
+                out.append(_result("three_drives", "سه پرس صعودی (3-Drive)", "Harmonic", "short", "active", q,
+                                   f"سه سقف پیاپی ({h1:.6g} → {h2:.6g} → {h3:.6g}){div_fa} — فرسایش خریداران و واکنش تأییدشده.",
+                                   entry=last["c"], stop=stop, target=target))
+    return out
+
+
+def _asian_sweep(items: list[dict], atr: float, timeframe: str) -> list[dict]:
+    """Asian-range liquidity raid during London/NY killzones (ICT)."""
+    n = len(items)
+    tf_min = _tf_minutes(timeframe)
+    if atr <= 0 or tf_min == 0 or tf_min > 60:
+        return []
+    last = items[-1]
+    day = int(float(last["t"]) // 86400)
+    # bar OPEN hour in UTC — a 1h bar opened at 05:00 belongs to the Asian range
+    asian = [it for it in items
+             if int(float(it["t"]) // 86400) == day and 0 <= _hour_utc(float(it["t"])) < 6]
+    if len(asian) < 3:
+        return []
+    hour = _hour_utc(float(last["t"]))
+    in_london = 7 <= hour < 10
+    in_ny = 12 <= hour < 15
+    if not (in_london or in_ny):
+        return []
+    a_hi = max(float(it["h"]) for it in asian)
+    a_lo = min(float(it["l"]) for it in asian)
+    a_mid = (a_hi + a_lo) / 2
+    vol_hit = float(last.get("v") or 0) >= 1.3 * _vol_avg(items)
+    kz_name = "لندن" if in_london else "نیویورک"
+    q_base = 60 + (6 if in_london else 4) + (6 if vol_hit else 0)
+    out: list[dict] = []
+    beyond = float(last["h"]) - a_hi
+    if beyond > 0.05 * atr and beyond < 1.5 * atr and float(last["c"]) < a_hi and _bar_pos(last) <= 0.45:
+        q = q_base + (4 if beyond >= 0.2 * atr else 0)
+        stop = float(last["h"]) + 0.25 * atr
+        risk = stop - float(last["c"])
+        target = a_mid if (float(last["c"]) - a_mid) >= 1.0 * risk else float(last["c"]) - 2 * risk
+        if risk > 0:
+            out.append(_result("asian_sweep", f"جاروی سقف آسیا در کیلزون {kz_name}", "Killzone", "short", "active", q,
+                               f"ویک {beyond / atr:.2f}×ATR بالای سقف رنج آسیا ({a_hi:.6g}) در کیلزون {kz_name} و بسته‌شدن زیر آن — تله صعودی کلاسیک ICT.",
+                               entry=last["c"], stop=stop, target=target))
+    beyond = a_lo - float(last["l"])
+    if beyond > 0.05 * atr and beyond < 1.5 * atr and float(last["c"]) > a_lo and _bar_pos(last) >= 0.55:
+        q = q_base + (4 if beyond >= 0.2 * atr else 0)
+        stop = float(last["l"]) - 0.25 * atr
+        risk = float(last["c"]) - stop
+        target = a_mid if (a_mid - float(last["c"])) >= 1.0 * risk else float(last["c"]) + 2 * risk
+        if risk > 0:
+            out.append(_result("asian_sweep", f"جاروی کف آسیا در کیلزون {kz_name}", "Killzone", "long", "active", q,
+                               f"ویک {beyond / atr:.2f}×ATR زیر کف رنج آسیا ({a_lo:.6g}) در کیلزون {kz_name} و بسته‌شدن بالای آن — تله نزولی کلاسیک ICT.",
+                               entry=last["c"], stop=stop, target=target))
+    if not out:
+        if abs(float(last["c"]) - a_hi) <= 0.2 * atr:
+            out.append(_result("asian_sweep", "قیمت لب سقف رنج آسیا", "Killzone", "none", "forming", 48,
+                               f"کیلزون {kz_name} فعال؛ قیمت {abs(float(last['c']) - a_hi) / atr:.2f}×ATR از سقف آسیا ({a_hi:.6g}) — نقدینگی بالا در کمین."))
+        elif abs(float(last["c"]) - a_lo) <= 0.2 * atr:
+            out.append(_result("asian_sweep", "قیمت لب کف رنج آسیا", "Killzone", "none", "forming", 48,
+                               f"کیلزون {kz_name} فعال؛ قیمت {abs(float(last['c']) - a_lo) / atr:.2f}×ATR از کف آسیا ({a_lo:.6g}) — نقدینگی پایین در کمین."))
+    return out
+
+
+def _pivot_reject(items: list[dict], atr: float, timeframe: str) -> list[dict]:
+    """Classic floor-pivot (P/R1/S1 from the previous UTC day) rejection."""
+    n = len(items)
+    tf_min = _tf_minutes(timeframe)
+    if atr <= 0 or tf_min == 0 or tf_min > 60:
+        return []
+    last = items[-1]
+    day = int(float(last["t"]) // 86400)
+    prev = [it for it in items if int(float(it["t"]) // 86400) == day - 1]
+    today = [it for it in items if int(float(it["t"]) // 86400) == day]
+    if len(prev) < 3 or len(today) < 1:
+        return []
+    ph = max(float(it["h"]) for it in prev)
+    pl = min(float(it["l"]) for it in prev)
+    pc = float(prev[-1]["c"])
+    p = (ph + pl + pc) / 3
+    r1, s1 = 2 * p - pl, 2 * p - ph
+    vol_hit = float(last.get("v") or 0) >= 1.3 * _vol_avg(items)
+    out: list[dict] = []
+    for lvl, name, side in ((r1, "R1", "short"), (s1, "S1", "long")):
+        if side == "short":
+            wicked = float(last["h"]) > lvl and float(last["c"]) < lvl
+            deep = (float(last["h"]) - lvl) >= 0.25 * atr
+            pos_ok = _bar_pos(last) <= 0.45
+        else:
+            wicked = float(last["l"]) < lvl and float(last["c"]) > lvl
+            deep = (lvl - float(last["l"])) >= 0.25 * atr
+            pos_ok = _bar_pos(last) >= 0.55
+        near = abs(float(last["c"]) - lvl) <= 0.15 * atr
+        if wicked and pos_ok:
+            q = 59 + (4 if deep else 0) + (6 if vol_hit else 0)
+            if side == "short":
+                stop = float(last["h"]) + 0.2 * atr
+                risk = stop - float(last["c"])
+                target = p if (float(last["c"]) - p) >= 0.8 * risk else float(last["c"]) - 2 * risk
+                if risk > 0:
+                    out.append(_result("pivot_reject", f"رد شدن از پیوت {name} (کلاسیک)", "Levels", "short", "active", q,
+                                       f"ویک بالای {name} روز قبل ({lvl:.6g}) و بسته‌شدن زیر آن — هدف طبیعی، پیوت {p:.6g}.",
+                                       entry=last["c"], stop=stop, target=target))
+            else:
+                stop = float(last["l"]) - 0.2 * atr
+                risk = float(last["c"]) - stop
+                target = p if (p - float(last["c"])) >= 0.8 * risk else float(last["c"]) + 2 * risk
+                if risk > 0:
+                    out.append(_result("pivot_reject", f"رد شدن از پیوت {name} (کلاسیک)", "Levels", "long", "active", q,
+                                       f"ویک زیر {name} روز قبل ({lvl:.6g}) و بسته‌شدن بالای آن — هدف طبیعی، پیوت {p:.6g}.",
+                                       entry=last["c"], stop=stop, target=target))
+        elif near and not out:
+            out.append(_result("pivot_reject", f"قیمت روی پیوت {name}", "Levels", "none", "forming", 45,
+                               f"قیمت {abs(float(last['c']) - lvl) / atr:.2f}×ATR از {name} روز قبل ({lvl:.6g}) — منتظر واکنش معتبر."))
+    return out
+
+
+def _silver_bullet(items: list[dict], atr: float, timeframe: str) -> list[dict]:
+    """ICT Silver Bullet: an FVG formed inside the 14:00-16:00 UTC window
+    (NY AM 10-11 across DST) with price trading into it during the window."""
+    n = len(items)
+    tf_min = _tf_minutes(timeframe)
+    if atr <= 0 or tf_min == 0 or tf_min > 30:
+        return []
+    last = items[-1]
+    hour = _hour_utc(float(last["t"]))
+    if not (14 <= hour < 16):
+        return []
+    day = int(float(last["t"]) // 86400)
+    vol_hit = float(last.get("v") or 0) >= 1.3 * _vol_avg(items)
+    out: list[dict] = []
+    for z in _fvg_zones(items, 24)[-3:]:
+        b_idx = z["c"] - 1
+        if int(float(items[b_idx]["t"]) // 86400) != day or not (14 <= _hour_utc(float(items[b_idx]["t"])) < 16):
+            continue
+        q = 58 + (6 if z["disp"] >= 1.5 * atr else 0) + (4 if vol_hit else 0)
+        if z["dir"] == "bull":
+            in_zone = float(last["l"]) <= z["top"] and float(last["h"]) >= z["bottom"] and float(last["c"]) > z["bottom"]
+            if in_zone:
+                stop = z["bottom"] - 0.2 * atr
+                risk = float(last["c"]) - stop
+                if risk > 0:
+                    out.append(_result("silver_bullet", "سیلور بولت صعودی (ICT)", "Killzone", "long", "active", q,
+                                       f"FVG [{z['bottom']:.6g}–{z['top']:.6g}] داخل پنجره سیلور بولت (۱۴-۱۶ UTC) ساخته شد و قیمت داخل آن معامله می‌شود — ورود در جهت جابه‌جایی {z['disp'] / atr:.1f}×ATR.",
+                                       entry=last["c"], stop=stop, target=float(last["c"]) + 2 * risk))
+            elif float(last["c"]) > z["top"]:
+                out.append(_result("silver_bullet", "سیلور بولت در انتظار (صعودی)", "Killzone", "none", "forming", 47,
+                                   f"FVG سیلور بولت [{z['bottom']:.6g}–{z['top']:.6g}] زیر قیمت — منتظر بازگشت قیمت داخل ناحیه تا پایان پنجره."))
+        else:
+            in_zone = float(last["h"]) >= z["bottom"] and float(last["l"]) <= z["top"] and float(last["c"]) < z["top"]
+            if in_zone:
+                stop = z["top"] + 0.2 * atr
+                risk = stop - float(last["c"])
+                if risk > 0:
+                    out.append(_result("silver_bullet", "سیلور بولت نزولی (ICT)", "Killzone", "short", "active", q,
+                                       f"FVG [{z['bottom']:.6g}–{z['top']:.6g}] داخل پنجره سیلور بولت (۱۴-۱۶ UTC) ساخته شد و قیمت داخل آن معامله می‌شود — ورود در جهت جابه‌جایی {z['disp'] / atr:.1f}×ATR.",
+                                       entry=last["c"], stop=stop, target=float(last["c"]) - 2 * risk))
+            elif float(last["c"]) < z["bottom"]:
+                out.append(_result("silver_bullet", "سیلور بولت در انتظار (نزولی)", "Killzone", "none", "forming", 47,
+                                   f"FVG سیلور بولت [{z['bottom']:.6g}–{z['top']:.6g}] بالای قیمت — منتظر بازگشت قیمت داخل ناحیه تا پایان پنجره."))
+    return out[:2]
+
+
 def scan_all(items: list[dict], timeframe: str = "15m", with_gates: bool = True) -> dict:
     """Run every detector; strict data requirements, no fabricated signals."""
     if len(items) < 40:
@@ -743,6 +1507,19 @@ def scan_all(items: list[dict], timeframe: str = "15m", with_gates: bool = True)
         lambda: _ichimoku_system(items),
         lambda: _sar_flip(items),
         lambda: _engulfing_at_level(items, atr),
+        # --- v3.16 professional batch (liquidity / ICT / SMC / quant / session / levels)
+        lambda: _liquidity_sweep(items, atr),
+        lambda: _fvg_tap(items, atr),
+        lambda: _ob_retest(items, atr),
+        lambda: _eqh_eql_raid(items, atr),
+        lambda: _rsi2_reversion(items, atr),
+        lambda: _nr7_breakout(items, atr),
+        lambda: _hikkake(items, atr),
+        lambda: _triangle_break(items, atr),
+        lambda: _three_drives(items, atr),
+        lambda: _asian_sweep(items, atr, tf),
+        lambda: _pivot_reject(items, atr, tf),
+        lambda: _silver_bullet(items, atr, tf),
     ):
         try:
             results.extend(fn() or [])
