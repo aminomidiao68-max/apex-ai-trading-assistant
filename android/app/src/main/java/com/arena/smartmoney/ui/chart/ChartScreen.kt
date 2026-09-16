@@ -327,6 +327,8 @@ fun ChartScreen(
                                 item { LegendDot(BearOB, "Bear OB") }
                                 item { LegendDot(FvgC, "FVG") }
                                 item { LegendDot(BrkC.copy(alpha = 0.55f), "Breaker") }
+                                item { LegendDot(Color(0xFF10B981), "RTM S/D") }
+                                item { LegendDot(Color(0xFFF59E0B), "QML/MPL") }
                                 item { LegendDot(LiqC, "BSL / SSL") }
                                 item { LegendDot(UpC, "BOS / CHoCH") }
                                 item { LegendDot(KzLon.copy(alpha=0.7f), "Sessions") }
@@ -948,7 +950,7 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
         // ======== زون‌ها: OB/FVG/BRK پشت کندل‌ها ========
         for (z in report.overlay.zones) {
             if (z.kind == "KZ") continue
-            if (z.kind !in listOf("OB", "FVG", "iFVG", "BRK")) continue
+            if (z.kind !in listOf("OB", "FVG", "iFVG", "BRK", "SD")) continue
             if (!ChartRenderPolicy.isZoneLifecycleValid(z, totalCandles)) continue
             val zoneStart = z.index
             val zoneEnd = if (z.endIdx >= zoneStart) z.endIdx else totalCandles - 1
@@ -967,6 +969,7 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
                 "FVG" -> FvgC
                 "iFVG" -> iFvgC
                 "BRK" -> BrkC
+                "SD" -> if (z.side == "bullish") Color(0xFF10B981) else Color(0xFFEF4444)
                 else -> Color.Transparent
             }
             if (color == Color.Transparent || xend <= xstart) continue
@@ -975,12 +978,14 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
                 "OB" -> 0.20f
                 "FVG", "iFVG" -> 0.11f
                 "BRK" -> 0.055f
+                "SD" -> 0.14f
                 else -> 0.1f
             }
             val borderAlpha = when (z.kind) {
                 "OB" -> 0.88f
                 "FVG", "iFVG" -> 0.62f
                 "BRK" -> 0.42f
+                "SD" -> 0.7f
                 else -> 0.6f
             }
             drawRect(
@@ -1229,6 +1234,25 @@ private fun SmcCanvas(modifier: Modifier = Modifier, report: SmcReport, scale: F
             val bg = NativePaint().apply { color = android.graphics.Color.argb(200, 10, 12, 18) }
             drawContext.canvas.nativeCanvas.drawRect(bx, by, bx + br.width() + pad * 2, by + br.height() + pad * 2, bg)
             drawContext.canvas.nativeCanvas.drawText(label, bx + pad, y + br.height() / 2f - 1f, lp)
+        }
+
+        // ======== v3.19: خطوط RTM (QML / MPL / هدف نقدینگی DOL) ========
+        for (ln in report.overlay.lines) {
+            if (ln.price <= 0f) continue
+            val (c, label, dash) = when (ln.kind) {
+                "QML" -> Triple(Color(0xFFF59E0B), ln.label.ifEmpty { "QML" }, floatArrayOf(6f, 4f))
+                "MPL" -> Triple(Color(0xFF8B5CF6), ln.label.ifEmpty { "MPL" }, floatArrayOf(2f, 4f))
+                "DOL" -> Triple(Color(0xFF38BDF8), ln.label.ifEmpty { "DOL" }, floatArrayOf(8f, 4f))
+                else -> continue
+            }
+            val y = priceY(ln.price)
+            if (y < chartT - 2f || y > chartB + 2f) continue
+            drawLine(
+                c.copy(alpha = 0.85f), Offset(chartL, y), Offset(chartR, y), strokeWidth = 1.4f,
+                pathEffect = PathEffect.dashPathEffect(dash)
+            )
+            val lp = NativePaint().apply { color = c.toArgb(); textSize = 11f; isAntiAlias = true; isFakeBoldText = true }
+            drawContext.canvas.nativeCanvas.drawText(label, chartL + 6f, y - 5f, lp)
         }
 
         // ======== v3.11: خطوط مقایسه هم‌زمان (نرمال‌شده به محور قیمت نماد اصلی) ========

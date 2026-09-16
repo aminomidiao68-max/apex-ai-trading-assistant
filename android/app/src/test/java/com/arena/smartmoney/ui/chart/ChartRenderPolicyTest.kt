@@ -32,6 +32,8 @@ class ChartRenderPolicyTest {
         assertEquals("Bear OB", ChartRenderPolicy.compactZoneLabel(SmcZone(kind = "OB", side = "bearish")))
         assertEquals("FVG", ChartRenderPolicy.compactZoneLabel(SmcZone(kind = "FVG")))
         assertEquals("Breaker", ChartRenderPolicy.compactZoneLabel(SmcZone(kind = "BRK")))
+        assertEquals("Demand RTM", ChartRenderPolicy.compactZoneLabel(SmcZone(kind = "SD", side = "bullish")))
+        assertEquals("Supply RTM", ChartRenderPolicy.compactZoneLabel(SmcZone(kind = "SD", side = "bearish")))
     }
 
     @Test

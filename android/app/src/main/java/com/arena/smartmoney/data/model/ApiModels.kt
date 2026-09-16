@@ -1025,7 +1025,10 @@ data class SmcZone(
     @SerializedName("volume_pct") val volumePct: Float? = null
 )
 data class SmcLabel(val kind: String = "", val dir: String = "", val index: Int = 0, val price: Float = 0f)
-data class SmcLine(val kind: String = "", val price: Float = 0f)
+data class SmcLine(
+    val kind: String = "", val price: Float = 0f, val index: Int = 0,
+    val label: String = "", val color: String = "", val style: String = ""
+)
 data class SmcOverlay(
     val lines: List<SmcLine> = emptyList(),
     val zones: List<SmcZone> = emptyList(),

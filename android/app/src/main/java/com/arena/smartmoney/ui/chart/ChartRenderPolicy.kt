@@ -22,6 +22,7 @@ internal object ChartRenderPolicy {
         "FVG" -> "FVG"
         "iFVG" -> "iFVG"
         "BRK" -> "Breaker"
+        "SD" -> if (zone.side == "bullish") "Demand RTM" else "Supply RTM"
         else -> zone.kind
     }
 
