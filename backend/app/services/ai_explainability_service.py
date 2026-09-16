@@ -276,6 +276,7 @@ class GeminiProvider:
 class _CircuitState:
     failures: int = 0
     open_until: float = 0.0
+    last_reason: str | None = None  # sanitized class only, never provider text
 
 
 @dataclass
@@ -492,9 +493,9 @@ def build_evidence_request_from_report(
 # by _SYSTEM_PROMPT and verified by _verify_draft before anything is shown.
 SYSTEM_PROVIDER_ENV = (
     ("cerebras", "AI_CEREBRAS_API_KEY", "AI_CEREBRAS_BASE_URL",
-     "https://api.cerebras.ai/v1", "AI_CEREBRAS_MODEL", "llama-3.3-70b"),
+     "https://api.cerebras.ai/v1", "AI_CEREBRAS_MODEL", "llama3.1-8b"),
     ("groq", "AI_GROQ_API_KEY", "AI_GROQ_BASE_URL",
-     "https://api.groq.com/openai/v1", "AI_GROQ_MODEL", "llama-3.3-70b-versatile"),
+     "https://api.groq.com/openai/v1", "AI_GROQ_MODEL", "openai/gpt-oss-120b"),
     ("openrouter", "AI_OPENROUTER_API_KEY", "AI_OPENROUTER_BASE_URL",
      "https://openrouter.ai/api/v1", "AI_OPENROUTER_MODEL", "openai/gpt-4o-mini"),
 )
@@ -570,6 +571,10 @@ class AIExplainabilityService:
                         "configured": bool(provider.configured),
                         "external": True,
                         "circuit_open": self._circuit_is_open(name),
+                        "failures": self._circuits.get(name).failures if self._circuits.get(name) else 0,
+                        "last_failure": (
+                            self._circuits.get(name).last_reason if self._circuits.get(name) else None
+                        ),
                     }
                     for name, provider in self.providers.items()
                 },
@@ -658,14 +663,24 @@ class AIExplainabilityService:
             last_attempted = name
             try:
                 draft = _extract_json(await provider.generate(prompt))
+            except httpx.TimeoutException:
+                self._record_failure(name, "timeout")
+                issues_seen.append("provider_unavailable")
+                continue
+            except httpx.HTTPStatusError as exc:
+                # sanitized: only the status class leaves the process, never the
+                # provider's error body (it could echo key material)
+                self._record_failure(name, f"http_{exc.response.status_code}")
+                issues_seen.append("provider_unavailable")
+                continue
             except Exception:
-                self._record_failure(name)
+                self._record_failure(name, "network")
                 issues_seen.append("provider_unavailable")
                 continue
 
             issues = self._verify_draft(request, draft)
             if issues:
-                self._record_failure(name)
+                self._record_failure(name, "verification")
                 # Verification failures are SECURITY findings, not transport noise:
                 # keep the bare issue codes (the UI/tests assert on them) and stop
                 # immediately — never launder a hallucinating model into another one.
@@ -676,7 +691,11 @@ class AIExplainabilityService:
 
             self._record_success(name)
             response = self._response_from_verified_draft(
-                request, name, provider.model, draft, started
+                request,
+                name,
+                getattr(provider, "last_model", None) or provider.model,
+                draft,
+                started,
             )
             self._cache[cache_key] = _CacheEntry(
                 expires_at=self._now() + max(1, settings.ai_cache_ttl_seconds),
@@ -994,9 +1013,10 @@ class AIExplainabilityService:
     def _record_success(self, provider_name: str) -> None:
         self._circuits[provider_name] = _CircuitState()
 
-    def _record_failure(self, provider_name: str) -> None:
+    def _record_failure(self, provider_name: str, reason: str = "unavailable") -> None:
         state = self._circuits.setdefault(provider_name, _CircuitState())
         state.failures += 1
+        state.last_reason = reason
         if state.failures >= max(1, settings.ai_circuit_failure_threshold):
             state.open_until = self._now() + max(1, settings.ai_circuit_cooldown_seconds)
 

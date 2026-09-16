@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 
+import httpx
+
 import pytest
 
 from app.config import settings
@@ -408,3 +410,94 @@ def test_auto_and_deterministic_preferences_do_not_pin_the_chain(monkeypatch):
     pinned = _configured_chain(providers, "openai_compatible")
     assert pinned[0] == "openai_compatible"
     assert set(pinned) == set(latency_first)
+
+
+# ---------------------------- v3.18.1 deprecation-proof model resolution
+
+
+def _provider(base="https://api.groq.com/openai/v1", name="groq", model="llama-3.3-70b-versatile"):
+    from app.services.ai_explainability_service import OpenAICompatibleProvider
+    return OpenAICompatibleProvider(base_url=base, api_key="k" * 20, model=model,
+                                    provider_name=name)
+
+
+def test_dead_configured_model_is_replaced_by_live_preference():
+    """Groq shut down llama-3.3-70b-versatile; the live list must win."""
+    p = _provider()
+    live = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"]
+    options = p._model_options(live)
+    assert "llama-3.3-70b-versatile" not in options, "a dead model must not be attempted"
+    assert options[0] == "openai/gpt-oss-120b"
+
+
+def test_configured_model_wins_when_still_offered():
+    p = _provider(model="openai/gpt-oss-20b")
+    options = p._model_options(["openai/gpt-oss-120b", "openai/gpt-oss-20b"])
+    assert options[0] == "openai/gpt-oss-20b", "an explicit user choice must be respected"
+
+
+def test_model_options_survive_unreachable_models_endpoint():
+    p = _provider()
+    options = p._model_options([])
+    assert options and options[0] == "llama-3.3-70b-versatile"
+    assert len(options) <= 3
+
+
+def test_reasoning_models_never_leak_chain_of_thought():
+    p = _provider()
+    p._last_prompt = "EVIDENCE_PACKET_JSON:{}"
+    assert p._payload("openai/gpt-oss-120b").get("reasoning_format") == "hidden"
+    assert p._payload("qwen/qwen3.6-27b").get("reasoning_format") == "hidden"
+    assert "reasoning_format" not in p._payload("llama-3.1-8b-instant")
+    openai_p = _provider(base="https://api.openai.com/v1", name="openai_compatible",
+                         model="gpt-4.1-mini")
+    openai_p._last_prompt = "x"
+    assert "reasoning_format" not in openai_p._payload("gpt-4.1-mini")
+
+
+def test_failure_reason_is_recorded_sanitized_and_exposed(monkeypatch):
+    """Diagnostics must show WHY a provider failed without echoing its error body."""
+    _enable_external(monkeypatch)
+    from app.services.ai_explainability_service import AIExplainabilityService
+
+    class _TimeoutProvider(_FakeProvider):
+        async def generate(self, prompt):
+            self.calls += 1
+            raise httpx.ReadTimeout("read timeout after 8s")
+
+    broken = _TimeoutProvider()
+    broken.name = "cerebras"
+    service = AIExplainabilityService(providers={"cerebras": broken})
+    result = asyncio.run(service.explain(_request(provider="auto")))
+
+    assert result.mode == "fallback"
+    status = service.status()
+    cerebras = status["providers"]["cerebras"]
+    assert cerebras["last_failure"] == "timeout"
+    assert cerebras["failures"] >= 1
+    blob = json.dumps(status).lower()
+    assert "api_key" not in blob and "secret" not in blob
+
+
+def test_verification_failure_reason_is_classified(monkeypatch):
+    _enable_external(monkeypatch)
+    from app.services.ai_explainability_service import AIExplainabilityService
+
+    bad = _FakeProvider(json.dumps({**_valid_draft(), "action_label": "LONG"}))
+    bad.name = "groq"
+    service = AIExplainabilityService(providers={"groq": bad})
+    asyncio.run(service.explain(_request(provider="auto")))
+    assert service.status()["providers"]["groq"]["last_failure"] == "verification"
+
+
+def test_response_reports_the_model_that_actually_answered(monkeypatch):
+    _enable_external(monkeypatch)
+    from app.services.ai_explainability_service import AIExplainabilityService
+
+    provider = _FakeProvider(_valid_draft())
+    provider.name = "groq"
+    provider.last_model = "openai/gpt-oss-120b"
+    service = AIExplainabilityService(providers={"groq": provider})
+    result = asyncio.run(service.explain(_request(provider="auto")))
+    assert result.mode == "generated"
+    assert result.model == "openai/gpt-oss-120b"

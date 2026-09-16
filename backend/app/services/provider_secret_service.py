@@ -28,11 +28,13 @@ PROVIDERS = (
     "groq", "openai", "openrouter", "cerebras", "twelvedata", "finnhub", "newsapi",
     "oanda", "binance_testnet", "bybit_testnet",
 )
+# llama-3.3-70b-versatile was shut down on Groq 2026-08-16; gpt-oss-120b is the
+# vendor-recommended replacement. Cerebras' free tier ships llama3.1-8b.
 _DEFAULT_MODELS = {
-    "groq": "llama-3.3-70b-versatile",
+    "groq": "openai/gpt-oss-120b",
     "openai": "gpt-4.1-mini",
     "openrouter": "openai/gpt-4o-mini",
-    "cerebras": "llama-3.3-70b",
+    "cerebras": "llama3.1-8b",
 }
 
 # Providers whose key is an OpenAI-compatible LLM endpoint. Only these may serve

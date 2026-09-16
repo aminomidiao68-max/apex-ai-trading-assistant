@@ -24,8 +24,8 @@ android {
         applicationId = "com.arena.smartmoney"
         minSdk = 26
         targetSdk = 35
-        versionCode = 114
-        versionName = "3.18.0-pro-alpha63"
+        versionCode = 115
+        versionName = "3.18.1-pro-alpha64"
 
         buildConfigField("String", "API_BASE_URL", "\"$debugApiBaseUrl\"")
         buildConfigField("String", "WS_BASE_URL", "\"$debugWsBaseUrl\"")

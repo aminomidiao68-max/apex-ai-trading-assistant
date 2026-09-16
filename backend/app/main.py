@@ -458,7 +458,7 @@ def optional_current_user(
 # them; base URLs come from provider_secret_service.OPENAI_COMPATIBLE_BASE_URLS
 # so the probe, the explain layer and the chat/vision chains can never drift.
 _USER_AI_PROVIDERS = (
-    ("cerebras", "cerebras", "llama-3.3-70b"),
+    ("cerebras", "cerebras", "llama3.1-8b"),
     ("groq", "groq", "openai/gpt-oss-120b"),
     ("openrouter", "openrouter", "openai/gpt-4o-mini"),
     ("openai", "openai_compatible", "gpt-4.1-mini"),
@@ -493,7 +493,7 @@ def _runtime_ai_provider_for_user(user_id: int, requested: str = "auto"):
 
 
 _BYOK_CHAT_MODELS = {
-    "cerebras": "llama-3.3-70b",
+    "cerebras": "llama3.1-8b",
     "groq": "openai/gpt-oss-120b",
     "openrouter": "openai/gpt-4o-mini",
     "openai": "gpt-4.1-mini",
@@ -667,7 +667,7 @@ _OPENROUTER_CHAT_PREFERENCE = (
     "gpt-4o-mini", "gpt-4.1-mini", "llama-3.3-70b", "claude-3.5-haiku", "deepseek-chat",
 )
 _OPENROUTER_VISION_PREFERENCE = ("gpt-4o-mini", "gpt-4.1-mini", "llama-3.2-11b-vision", "qwen-vl")
-_CEREBRAS_CHAT_PREFERENCE = ("llama-3.3-70b", "llama3.1-8b", "qwen-3-32b", "gpt-oss-120b")
+_CEREBRAS_CHAT_PREFERENCE = ("llama3.1-8b", "gpt-oss-120b", "qwen-3-32b", "llama-3.3-70b")
 
 
 def _preference_for(cand: dict, kind: str) -> tuple:
@@ -686,7 +686,7 @@ def _fallback_for(cand: dict, kind: str) -> list[str]:
     if "openrouter" in base:
         return ["openai/gpt-4o-mini", "anthropic/claude-3.5-haiku", "meta-llama/llama-3.3-70b-instruct"]
     if "cerebras" in base:
-        return ["llama-3.3-70b", "gpt-oss-120b"]
+        return ["llama3.1-8b", "gpt-oss-120b"]
     return list(_GROQ_VISION_FALLBACK if kind == "vision" else _GROQ_CHAT_FALLBACK)
 
 
