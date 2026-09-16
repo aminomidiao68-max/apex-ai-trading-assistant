@@ -98,7 +98,8 @@ class ReadinessService:
             )
         from app.services.ai_explainability_service import _configured_chain, _default_providers
 
-        chain = _configured_chain(_default_providers(), provider if provider else None)
+        # provider may be "auto"/"deterministic"; _configured_chain ignores those
+        chain = _configured_chain(_default_providers(), provider)
         if chain:
             return ReadinessItem(
                 category="ai",

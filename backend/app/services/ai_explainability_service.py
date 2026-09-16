@@ -423,7 +423,13 @@ PROVIDER_PRIORITY = ("cerebras", "groq", "openrouter", "openai_compatible", "gem
 
 
 def _configured_chain(providers: dict[str, "AIProvider"], preferred: str | None = None) -> list[str]:
-    """Configured provider names, preferred first, then the standard priority order."""
+    """Configured provider names, preferred first, then the standard priority order.
+
+    "auto" and "deterministic" are NOT providers — they must never pin the chain,
+    otherwise the generic catch-all slot would starve the faster dedicated ones.
+    """
+    if preferred in (None, "auto", "deterministic"):
+        preferred = None
     order = list(PROVIDER_PRIORITY)
     order += [name for name in providers if name not in order]
     if preferred and preferred in order:
@@ -453,9 +459,12 @@ class AIExplainabilityService:
             "external_ai_enabled": settings.ai_external_enabled,
             "deterministic_fallback_ready": True,
             "deterministic_core_can_be_overridden": False,
+            # AI_PROVIDER=auto/deterministic is not a provider preference; only a
+            # real provider name may pin the chain (otherwise the reported order
+            # would differ from what "auto" actually runs).
             "fallback_chain": _configured_chain(
                 self.providers,
-                selected if selected in self.providers else None,
+                selected if selected in self.providers and selected not in ("auto", "deterministic") else None,
             ),
             "providers": {
                 "deterministic": {"configured": True, "external": False},

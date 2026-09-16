@@ -387,3 +387,24 @@ def test_ai_explain_layer_cannot_reach_execution(monkeypatch):
     assert "ENABLE_LIVE_EXECUTION\n        value: false" in render
     assert "ENABLE_TESTNET_EXECUTION\n        value: false" in render
     assert "AI_EXTERNAL_ENABLED\n        value: true" in render
+
+
+def test_auto_and_deterministic_preferences_do_not_pin_the_chain(monkeypatch):
+    """AI_PROVIDER=auto/deterministic must not make the catch-all slot lead."""
+    _enable_external(monkeypatch)
+    from app.services.ai_explainability_service import _configured_chain, _default_providers
+
+    providers = _default_providers()
+    providers["cerebras"].api_key = "cerebras-key"
+    providers["openai_compatible"].api_key = "openai-key"
+    providers["gemini"].api_key = "gemini-key"
+
+    latency_first = _configured_chain(providers, "auto")
+    assert latency_first[0] == "cerebras"
+    assert latency_first == _configured_chain(providers, None)
+    assert latency_first == _configured_chain(providers, "deterministic")
+
+    # an explicit provider choice is still respected as a preference
+    pinned = _configured_chain(providers, "openai_compatible")
+    assert pinned[0] == "openai_compatible"
+    assert set(pinned) == set(latency_first)
