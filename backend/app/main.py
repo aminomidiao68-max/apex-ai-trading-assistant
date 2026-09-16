@@ -3249,7 +3249,8 @@ async def scan_signals(min_confluence: int = Query(default=55, ge=0, le=100)):
                     "strategies_net": (r.get("strategies_v2") or {}).get("net_direction"),
                     "strategies_agreement_pct": (r.get("strategies_v2") or {}).get("agreement_pct"),
                     "strategies_active": [
-                        {"name_fa": s.get("name_fa"), "direction": s.get("direction"), "quality": s.get("quality")}
+                        {"name_fa": s.get("name_fa"), "direction": s.get("direction"), "quality": s.get("quality"),
+                         "gate_ok": s.get("gate_ok")}
                         for s in ((r.get("strategies_v2") or {}).get("active") or [])[:3]
                     ],
                     "indicators_v2_net": ((r.get("indicators_v2") or {}).get("summary") or {}).get("net"),
@@ -3447,7 +3448,8 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
         "strategies_agreement_pct": strat_agree,
         "strategies_conflict": strat_conflict,
         "strategies_active": [
-            {"name_fa": s.get("name_fa"), "direction": s.get("direction"), "quality": s.get("quality")}
+            {"name_fa": s.get("name_fa"), "direction": s.get("direction"), "quality": s.get("quality"),
+             "gate_ok": s.get("gate_ok")}
             for s in ((report.get("strategies_v2") or {}).get("active") or [])[:4]
         ],
         "indicators_v2_net": ((report.get("indicators_v2") or {}).get("summary") or {}).get("net"),

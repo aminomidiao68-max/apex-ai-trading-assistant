@@ -582,7 +582,12 @@ private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
                                     }
                                     setup.strategiesActive.take(3).forEach { st ->
                                         Text(
-                                            "  • ${st.nameFa} [${if (st.direction == "long") "خرید" else "فروش"}] کیفیت ${st.quality}٪",
+                                            "  • ${st.nameFa} [${if (st.direction == "long") "خرید" else "فروش"}] کیفیت ${st.quality}٪" +
+                                                when (st.gateOk) {
+                                                    true -> " 🛡️ هم‌جهت"
+                                                    false -> " ⚠ ناهم‌جهت"
+                                                    null -> ""
+                                                },
                                             color = if (st.direction == setup.direction) SetupGreen else SetupRed,
                                             fontSize = 11.sp
                                         )

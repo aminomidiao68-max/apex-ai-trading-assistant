@@ -1290,7 +1290,8 @@ data class TradeSetupDto(
 data class StrategyV2BriefDto(
     @SerializedName("name_fa") val nameFa: String = "",
     val direction: String = "none",
-    val quality: Int = 0
+    val quality: Int = 0,
+    @SerializedName("gate_ok") val gateOk: Boolean? = null
 )
 
 data class TradeSetupsResponseDto(
