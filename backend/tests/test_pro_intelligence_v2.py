@@ -120,13 +120,22 @@ def test_strategy_pack_wyckoff_spring_detected():
     items = flat_items(70)
     # sweep candle: deep wick below the range, close back inside with strength
     items[68] = {"t": items[68]["t"], "o": 100.0, "h": 100.6, "l": 97.8, "c": 100.5, "v": 2200.0}
-    scan = strategy_pack_v2.scan_all(items, "15m")
+    # raw detector behavior (calibration off): spring must fire active
+    scan = strategy_pack_v2.scan_all(items, "15m", calibrated=False)
     assert scan["available"] is True
     spring = [r for r in scan["active"] if r["id"] == "wyckoff_spring"]
     assert spring, "spring must fire on a constructed sweep-and-reclaim"
     assert spring[0]["direction"] == "long"
     assert 0 <= spring[0]["quality"] <= 100
     assert spring[0]["stop"] < spring[0]["entry"] < spring[0]["target"]
+    # calibrated (production default): wyckoff_spring measured -0.51R after fees
+    # on real data → demoted to watch-only forming with perf_ok=False
+    scan_c = strategy_pack_v2.scan_all(items, "15m")
+    assert not [r for r in scan_c["active"] if r["id"] == "wyckoff_spring"]
+    dem = [r for r in scan_c["forming"] if r["id"] == "wyckoff_spring"]
+    assert dem and dem[0].get("calibration_demoted") is True
+    assert dem[0]["perf_ok"] is False and dem[0]["measured_edge"]["avgR"] < 0
+    assert "رصد" in dem[0]["reason_fa"]
 
 
 def test_strategy_pack_turtle_breakout_detected():
@@ -781,3 +790,69 @@ def test_v316_scan_all_integrity_and_budget():
             else:
                 assert r["stop"] > r["entry"] > r["target"]
     assert el < 1.5, f"scan_all too slow: {el:.2f}s"
+
+
+# ---------------------------------------------------------------- v3.17 calibration
+
+
+def test_v317_calib_rules_preregistered():
+    """The quality-adjustment rules are pre-registered and deterministic."""
+    from app.services.strategy_pack_v2 import _calib_adj
+    assert _calib_adj(10, 0.50, 2.0) == 0      # thin sample -> untouched
+    assert _calib_adj(60, 0.31, 1.00) == 6     # strong measured edge
+    assert _calib_adj(60, 0.16, 1.20) == 6
+    assert _calib_adj(60, 0.09, 1.06) == 3
+    assert _calib_adj(60, 0.16, 1.00) == 0     # edge without profit-factor support
+    assert _calib_adj(60, -0.11, 1.00) == -10
+    assert _calib_adj(60, 0.05, 0.84) == -10
+    assert _calib_adj(60, -0.05, 0.94) == -5
+    assert _calib_adj(60, 0.02, 1.00) == 0
+
+
+def test_v317_apply_calibration_and_demotion():
+    """Measured winners get boosted quality; proven losers are demoted to watch."""
+    from app.services import strategy_pack_v2 as sp
+    saved = dict(sp._EDGE_CALIBRATION)
+    try:
+        sp._EDGE_CALIBRATION.clear()
+        sp._EDGE_CALIBRATION["winner"] = {"n": 120, "wr": 0.55, "avgR": 0.30, "pf": 1.40}
+        sp._EDGE_CALIBRATION["loser"] = {"n": 80, "wr": 0.35, "avgR": -0.20, "pf": 0.70}
+        res = [
+            {"id": "winner", "status": "active", "direction": "long", "quality": 60, "reason_fa": "x"},
+            {"id": "loser", "status": "active", "direction": "short", "quality": 60, "reason_fa": "y"},
+            {"id": "unknown", "status": "active", "direction": "long", "quality": 60, "reason_fa": "z"},
+        ]
+        adjusted = sp._apply_calibration(res)
+        assert adjusted == 2
+        assert res[0]["quality"] == 66 and res[0]["perf_ok"] is True
+        assert res[0]["measured_edge"]["n"] == 120
+        assert res[1]["quality"] == 50 and res[1]["perf_ok"] is False
+        assert res[1]["status"] == "forming" and "رصد" in res[1]["reason_fa"]
+        assert res[2]["quality"] == 60 and res[2]["perf_ok"] is None
+        assert res[2]["measured_edge"] is None
+    finally:
+        sp._EDGE_CALIBRATION.clear()
+        sp._EDGE_CALIBRATION.update(saved)
+
+
+def test_v317_scan_all_reports_calibration_provenance():
+    """scan_all exposes calibration provenance and perf_ok/measured_edge keys survive gates."""
+    from app.services import strategy_pack_v2 as sp
+    items = []
+    price = 100.0
+    for i in range(320):
+        jitter = ((i * 37) % 7 - 3) / 50.0
+        o = price
+        c = price + 0.08 + jitter
+        wick = 0.04 + ((i * 53) % 5) / 100.0
+        items.append({"t": 1_700_000_000.0 + i * 900.0, "o": o, "h": max(o, c) + wick,
+                      "l": min(o, c) - wick, "c": c, "v": 1000.0 + (i % 9) * 5})
+        price = c
+    scan = sp.scan_all(items, "15m")
+    cal = scan.get("calibration")
+    assert cal and cal["source"] and cal["min_n"] == sp.EDGE_CALIBRATION_MIN_N
+    assert isinstance(cal["detectors_measured"], int) and isinstance(cal["adjusted"], int)
+    for r in scan["active"] + scan["forming"]:
+        assert "perf_ok" in r and "measured_edge" in r
+    ctx = sp.build_context_text(scan)
+    assert isinstance(ctx, str)

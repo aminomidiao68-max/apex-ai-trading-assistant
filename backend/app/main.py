@@ -3250,7 +3250,7 @@ async def scan_signals(min_confluence: int = Query(default=55, ge=0, le=100)):
                     "strategies_agreement_pct": (r.get("strategies_v2") or {}).get("agreement_pct"),
                     "strategies_active": [
                         {"name_fa": s.get("name_fa"), "direction": s.get("direction"), "quality": s.get("quality"),
-                         "gate_ok": s.get("gate_ok")}
+                         "gate_ok": s.get("gate_ok"), "perf_ok": s.get("perf_ok")}
                         for s in ((r.get("strategies_v2") or {}).get("active") or [])[:3]
                     ],
                     "indicators_v2_net": ((r.get("indicators_v2") or {}).get("summary") or {}).get("net"),
@@ -3449,7 +3449,7 @@ def _setup_payload(report: dict, symbol: str, market: str, timeframe: str, statu
         "strategies_conflict": strat_conflict,
         "strategies_active": [
             {"name_fa": s.get("name_fa"), "direction": s.get("direction"), "quality": s.get("quality"),
-             "gate_ok": s.get("gate_ok")}
+             "gate_ok": s.get("gate_ok"), "perf_ok": s.get("perf_ok")}
             for s in ((report.get("strategies_v2") or {}).get("active") or [])[:4]
         ],
         "indicators_v2_net": ((report.get("indicators_v2") or {}).get("summary") or {}).get("net"),
@@ -3825,7 +3825,7 @@ async def backtest_classic_strategies(
     min_quality: int = Query(default=55, ge=0, le=100),
     force: bool = Query(default=False),
 ):
-    """Walk-forward replay of the 22-strategy classic pack over real history.
+    """Walk-forward replay of the 34-strategy classic pack over real history (raw pack — audit view).
 
     Answers the calibration question with data: does quality>=65 actually win
     more? Per-strategy books, conservative fills, honest small-sample verdicts.

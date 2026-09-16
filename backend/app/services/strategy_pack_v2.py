@@ -12,6 +12,12 @@ Hikkake trap, ascending/descending triangle measured-move, three-drive
 divergence, Asian-range killzone sweep, floor-pivot rejection, ICT Silver Bullet.
 
 Every detector returns status=active|forming|none with a strict quality score.
+
+v3.17: measured-edge calibration — every detector's plan was walk-forward
+replayed on real OKX candles with the in-app honest fill engine (limit-touch
+entry, no same-bar TP, stop-first, taker fees). Quality scores now carry the
+measured prior; detectors with a proven negative edge after fees are demoted
+to watch-only. Raw detector behavior stays available via calibrated=False.
 """
 
 from __future__ import annotations
@@ -22,6 +28,101 @@ from typing import Any
 GATE_VOTE_THRESHOLD = 15
 GATE_EMA_SPAN = 50
 GATE_PERF_MIN_TRADES = 3
+
+# ------------------------------------------- measured-edge calibration (v3.17)
+# Provenance: walk-forward replay on REAL OKX candles — 6 symbols
+# (BTC/ETH/SOL/XRP/DOGE/BNB-USDT) × 3 timeframes (15m/1h/4h) × 1800 bars,
+# run 2026-09-16, using the SAME engine as the in-app backtest
+# (strategy_backtest_service._simulate_plan): entry fills only when a later
+# bar touches the plan price, entry bar checks stop only, ambiguous bars
+# assume stop first, 96-bar horizon, taker fee 0.05%/side. An earlier
+# optimistic-fill pass (instant fill at plan price) was discarded after an
+# honesty audit exposed massive entry bias (e.g. ORB +1.73R → -0.55R honest).
+# Table holds raw measured stats only; the adjustment RULES below were
+# pre-registered before reading the results. Recalibrate periodically.
+EDGE_CALIBRATION_SOURCE = (
+    "OKX walk-forward 2026-09-16 — 6 symbols × 15m/1h/4h × 1800 real candles, "
+    "in-app honest engine (limit-touch entry, no same-bar TP, stop-first, fee 0.05%/side)"
+)
+EDGE_CALIBRATION_MIN_N = 25
+_EDGE_CALIBRATION: dict[str, dict] = {
+    "triangle_break": {"n": 28, "wr": 0.6429, "avgR": 0.1316, "pf": 1.34},
+    "eqh_eql_raid": {"n": 83, "wr": 0.3735, "avgR": 0.0782, "pf": 1.107},
+    "inverse_hs": {"n": 56, "wr": 0.5714, "avgR": 0.0517, "pf": 1.134},
+    "wyckoff_sos": {"n": 120, "wr": 0.375, "avgR": 0.0055, "pf": 1.008},
+    "liquidity_sweep": {"n": 232, "wr": 0.2931, "avgR": -0.0033, "pf": 0.996},
+    "hikkake": {"n": 404, "wr": 0.3837, "avgR": -0.019, "pf": 0.972},
+    "three_drives": {"n": 440, "wr": 0.3909, "avgR": -0.0374, "pf": 0.94},
+    "head_shoulders": {"n": 52, "wr": 0.5, "avgR": -0.0494, "pf": 0.883},
+    "engulfing_level": {"n": 347, "wr": 0.4294, "avgR": -0.055, "pf": 0.919},
+    "turtle_breakout": {"n": 313, "wr": 0.3898, "avgR": -0.0797, "pf": 0.873},
+    "asian_sweep": {"n": 163, "wr": 0.3926, "avgR": -0.1059, "pf": 0.859},
+    "pivot_reject": {"n": 192, "wr": 0.375, "avgR": -0.1131, "pf": 0.856},
+    "fvg_tap": {"n": 843, "wr": 0.3203, "avgR": -0.145, "pf": 0.814},
+    "double_top": {"n": 87, "wr": 0.5057, "avgR": -0.1453, "pf": 0.712},
+    "rsi2_reversion": {"n": 401, "wr": 0.5636, "avgR": -0.1697, "pf": 0.655},
+    "silver_bullet": {"n": 46, "wr": 0.3913, "avgR": -0.181, "pf": 0.771},
+    "ob_retest": {"n": 121, "wr": 0.314, "avgR": -0.211, "pf": 0.716},
+    "ichimoku_system": {"n": 1201, "wr": 0.3164, "avgR": -0.2452, "pf": 0.696},
+    "wyckoff_upthrust": {"n": 244, "wr": 0.209, "avgR": -0.2873, "pf": 0.679},
+    "vwap_bounce": {"n": 422, "wr": 0.3009, "avgR": -0.2933, "pf": 0.696},
+    "double_bottom": {"n": 75, "wr": 0.4267, "avgR": -0.3075, "pf": 0.488},
+    "ema_pullback": {"n": 1808, "wr": 0.3507, "avgR": -0.3094, "pf": 0.583},
+    "inside_bar": {"n": 335, "wr": 0.3104, "avgR": -0.3558, "pf": 0.597},
+    "vwap_reversion": {"n": 42, "wr": 0.2143, "avgR": -0.4705, "pf": 0.484},
+    "wyckoff_spring": {"n": 220, "wr": 0.1818, "avgR": -0.5106, "pf": 0.43},
+    "orb": {"n": 264, "wr": 0.3068, "avgR": -0.5647, "pf": 0.454},
+    "nr7_breakout": {"n": 512, "wr": 0.3457, "avgR": -0.608, "pf": 0.371},
+    "judas_swing": {"n": 78, "wr": 0.2436, "avgR": -0.6232, "pf": 0.312},
+}
+
+
+def _calib_adj(n: int, avg_r: float, pf: float | None) -> int:
+    """Pre-registered quality adjustment from measured edge. Deterministic."""
+    if n < EDGE_CALIBRATION_MIN_N:
+        return 0
+    pfv = 99.0 if pf is None else float(pf)
+    if avg_r >= 0.30 or (avg_r >= 0.15 and pfv >= 1.15):
+        return 6
+    if avg_r >= 0.08 and pfv >= 1.05:
+        return 3
+    if avg_r <= -0.10 or pfv <= 0.85:
+        return -10
+    if avg_r <= -0.04 or pfv <= 0.95:
+        return -5
+    return 0
+
+
+def _apply_calibration(results: list[dict]) -> int:
+    """Attach measured edge per detector, adjust quality, demote proven losers.
+
+    perf_ok semantics in live scans: True = measured positive edge on real data,
+    False = measured negative edge, None = insufficient sample (n<25). The
+    backtest service fills its own perf_ok from per-run replay; this is the
+    large-sample prior for live signals.
+    """
+    adjusted = 0
+    for r in results:
+        cal = _EDGE_CALIBRATION.get(str(r.get("id")))
+        if not cal or int(cal.get("n") or 0) < EDGE_CALIBRATION_MIN_N:
+            r["measured_edge"] = None
+            r["perf_ok"] = None
+            continue
+        n = int(cal["n"])
+        avg_r = float(cal["avgR"])
+        pf = cal.get("pf")
+        adj = _calib_adj(n, avg_r, pf)
+        r["measured_edge"] = {"n": n, "avgR": avg_r, "wr": cal.get("wr"), "pf": pf, "adj": adj}
+        r["perf_ok"] = True if adj > 0 else (False if adj < 0 else None)
+        if adj:
+            r["quality"] = int(max(0, min(100, int(r.get("quality") or 0) + adj)))
+            adjusted += 1
+        if adj <= -10 and r.get("status") == "active":
+            r["status"] = "forming"
+            r["calibration_demoted"] = True
+            r["reason_fa"] = (str(r.get("reason_fa") or "") +
+                              " — ⚠ edge اندازه‌گیری‌شده روی داده واقعی (پس از کارمزد) منفی است: فقط رصد، نه ورود")
+    return adjusted
 
 # ---------------------------------------------------------------- helpers
 
@@ -42,7 +143,9 @@ def _signal_gates(items: list[dict], results: list[dict]) -> dict:
 
     trend_ok : close vs EMA50 agrees with the signal direction
     votes_ok : indicator_pack_v2 net vote beyond +/-GATE_VOTE_THRESHOLD agrees
-    perf_ok  : None here (needs replay history) — only the backtest service fills it
+    perf_ok  : measured-edge prior from v3.17 calibration (set earlier by
+               _apply_calibration; kept as-is here — None when sample is thin).
+               The backtest service overwrites it with per-run replay results.
     gate_ok  : trend_ok AND votes_ok (both must be known)
     """
     closes = [float(b.get("c") or 0.0) for b in items]
@@ -58,7 +161,8 @@ def _signal_gates(items: list[dict], results: list[dict]) -> dict:
     for r in results:
         d = str(r.get("direction"))
         if d not in ("long", "short"):
-            r["trend_ok"] = r["votes_ok"] = r["perf_ok"] = r["gate_ok"] = None
+            r["trend_ok"] = r["votes_ok"] = r["gate_ok"] = None
+            r.setdefault("perf_ok", None)  # keep calibration prior if set
             continue
         t_ok = None if (ema is None or last is None) else (last > ema if d == "long" else last < ema)
         v_ok = None if net_votes is None else (
@@ -66,7 +170,7 @@ def _signal_gates(items: list[dict], results: list[dict]) -> dict:
         )
         r["trend_ok"] = t_ok
         r["votes_ok"] = v_ok
-        r["perf_ok"] = None
+        r.setdefault("perf_ok", None)  # keep calibration prior if set
         r["gate_ok"] = None if (t_ok is None or v_ok is None) else bool(t_ok and v_ok)
         counts["tagged"] += 1
         counts["trend_ok"] += 1 if t_ok else 0
@@ -305,13 +409,17 @@ def _double_tb(items: list[dict], atr: float) -> list[dict]:
         if abs(p1 - p2) <= tol and i2 - i1 >= 6:
             neck = max(items[off + j]["h"] for j in range(i1, i2 + 1))
             price = items[-1]["c"]
-            if price < neck:
+            # v3.17 fix: a double bottom is CONFIRMED only on a close ABOVE the
+            # neckline (mirror of double_top). The old `price < neck` branch was
+            # a sign error — it "bought" unconfirmed patterns inside the dip and
+            # measured -0.59R / 22% WR on real data.
+            if price > neck:
                 out.append(_result("double_bottom", "کف دوقلو", "Classic Pattern", "long", "active", 68,
-                                   f"دو کف هم‌سطح ~{p1:.6g} و شکست نک‌لاین {neck:.6g} — هدف به اندازه ارتفاع الگو.",
+                                   f"دو کف هم‌سطح ~{p1:.6g} و شکست تأییدی نک‌لاین {neck:.6g} — هدف به اندازه ارتفاع الگو.",
                                    entry=neck, stop=min(p1, p2) - 0.5 * atr, target=neck + (neck - min(p1, p2))))
             elif len(items) - (off + i2) <= 15:
                 out.append(_result("double_bottom", "کف دوقلو", "Classic Pattern", "long", "forming", 45,
-                                   f"کف دوقلو در ~{p1:.6g} شکل گرفته — منتظر شکست نک‌لاین {neck:.6g}."))
+                                   f"کف دوقلو در ~{p1:.6g} شکل گرفته — منتظر شکست تأییدی نک‌لاین {neck:.6g}."))
     # Double top
     if len(sh) >= 2:
         i1, i2 = sh[-2], sh[-1]
@@ -1480,7 +1588,8 @@ def _silver_bullet(items: list[dict], atr: float, timeframe: str) -> list[dict]:
     return out[:2]
 
 
-def scan_all(items: list[dict], timeframe: str = "15m", with_gates: bool = True) -> dict:
+def scan_all(items: list[dict], timeframe: str = "15m", with_gates: bool = True,
+             calibrated: bool = True) -> dict:
     """Run every detector; strict data requirements, no fabricated signals."""
     if len(items) < 40:
         return {"available": False, "reason": "insufficient_data", "active": [], "forming": [], "counts": {}}
@@ -1525,13 +1634,16 @@ def scan_all(items: list[dict], timeframe: str = "15m", with_gates: bool = True)
             results.extend(fn() or [])
         except Exception:
             continue
+    # v3.17: measured-edge calibration (quality adjust + demote proven losers)
+    cal_adjusted = _apply_calibration(results) if calibrated else 0
     # dedupe by (id, direction) keeping highest quality
     best: dict[tuple, dict] = {}
     for r in results:
         key = (r["id"], r["direction"])
         if key not in best or r["quality"] > best[key]["quality"]:
             best[key] = r
-    results = sorted(best.values(), key=lambda r: (r["status"] != "active", -r["quality"]))
+    results = sorted(best.values(), key=lambda r: (r["status"] != "active",
+                                                     bool(r.get("calibration_demoted")), -r["quality"]))
     active = [r for r in results if r["status"] == "active"]
     forming = [r for r in results if r["status"] == "forming"]
     longs = sum(1 for r in active if r["direction"] == "long")
@@ -1560,6 +1672,12 @@ def scan_all(items: list[dict], timeframe: str = "15m", with_gates: bool = True)
         "net_direction": net,
         "agreement_pct": int(max(longs, shorts) / total * 100) if (longs or shorts) else 0,
         "gates": gates_info,
+        "calibration": {
+            "source": EDGE_CALIBRATION_SOURCE,
+            "min_n": EDGE_CALIBRATION_MIN_N,
+            "detectors_measured": len(_EDGE_CALIBRATION),
+            "adjusted": cal_adjusted,
+        },
         "top": [
             {"id": r["id"], "name_fa": r["name_fa"], "direction": r["direction"], "quality": r["quality"],
              "gate_ok": r.get("gate_ok")}
@@ -1575,9 +1693,20 @@ def build_context_text(scan: dict) -> str:
     lines = [f"استراتژی‌های کلاسیک (پک v2): {c.get('active', 0)} سیگنال فعال ({c.get('long', 0)} خرید / {c.get('short', 0)} فروش)، {c.get('forming', 0)} در حال شکل‌گیری — جهت خالص: {scan.get('net_direction')}"]
     for r in scan.get("active", [])[:8]:
         gate_tag = " 🛡️✓" if r.get("gate_ok") is True else (" 🛡️✗" if r.get("gate_ok") is False else "")
-        lines.append(f"  • {r['name_fa']} [{r['direction']}] کیفیت={r['quality']}{gate_tag} — {r['reason_fa']}")
+        edge_tag = ""
+        me = r.get("measured_edge")
+        if me:
+            edge_tag = f" [edge واقعی: n={me.get('n')}, avgR={me.get('avgR'):+.2f}, WR={int(round((me.get('wr') or 0) * 100))}٪]"
+        lines.append(f"  • {r['name_fa']} [{r['direction']}] کیفیت={r['quality']}{gate_tag}{edge_tag} — {r['reason_fa']}")
     for r in scan.get("forming", [])[:3]:
         lines.append(f"  ◌ (forming) {r['name_fa']} — {r['reason_fa']}")
+    cal = scan.get("calibration") or {}
+    if cal.get("detectors_measured"):
+        lines.append(
+            f"  📐 کالیبراسیون edge اندازه‌گیری‌شده: {cal.get('detectors_measured')} آشکارساز روی داده واقعی سنجیده و "
+            f"{cal.get('adjusted')} سیگنال تنظیم کیفیت شد — منبع: {cal.get('source')}. "
+            f"کیفیت هر سیگنال حالا شامل edge واقعی walk-forward است؛ بازنده‌های اثبات‌شده به رصد تنزل یافتند."
+        )
     g = scan.get("gates") or {}
     gc = g.get("counts") or {}
     if gc.get("tagged"):

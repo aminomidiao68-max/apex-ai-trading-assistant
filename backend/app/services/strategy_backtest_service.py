@@ -212,8 +212,14 @@ def run(
     exit_horizon: int | None = None,
     fee_pct: float = 0.0,
     gates: bool = True,
+    calibrated: bool = False,
 ) -> dict:
-    """Walk-forward replay of strategy_pack_v2 over ascending candles."""
+    """Walk-forward replay of strategy_pack_v2 over ascending candles.
+
+    calibrated=False (default) replays the RAW detector pack — this screen is
+    the audit tool that shows why the v3.17 edge-calibration demoted losers.
+    Live scans (scan_all default calibrated=True) apply the measured prior.
+    """
     from app.services import strategy_pack_v2
     if gates:
         from app.services import indicator_pack_v2
@@ -239,7 +245,8 @@ def run(
         start = max(0, i + 1 - WINDOW)
         window = items[start:i + 1]
         try:
-            scan = strategy_pack_v2.scan_all(window, timeframe, with_gates=gates)
+            scan = strategy_pack_v2.scan_all(window, timeframe, with_gates=gates,
+                                             calibrated=calibrated)
         except Exception:
             i += step
             continue

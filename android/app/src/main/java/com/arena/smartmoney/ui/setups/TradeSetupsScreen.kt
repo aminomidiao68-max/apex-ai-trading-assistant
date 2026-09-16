@@ -587,6 +587,11 @@ private fun TradeSetupCard(setup: TradeSetupDto, onOpenChart: () -> Unit) {
                                                     true -> " 🛡️ هم‌جهت"
                                                     false -> " ⚠ ناهم‌جهت"
                                                     null -> ""
+                                                } +
+                                                when (st.perfOk) {
+                                                    true -> " 📈edge+"
+                                                    false -> " 📉edge−"
+                                                    null -> ""
                                                 },
                                             color = if (st.direction == setup.direction) SetupGreen else SetupRed,
                                             fontSize = 11.sp

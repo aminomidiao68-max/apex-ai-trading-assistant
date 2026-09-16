@@ -1616,6 +1616,14 @@ private fun StrategyPackCard(s: StrategiesV2Dto) {
                                         fontSize = 8.sp, fontWeight = FontWeight.Black
                                     )
                                 }
+                                if (st.perfOk != null) {
+                                    Spacer(Modifier.height(3.dp))
+                                    Text(
+                                        if (st.perfOk == true) "📈 edge واقعی +" else "📉 edge واقعی −",
+                                        color = if (st.perfOk == true) Color(0xFF9BFFC8) else BearOB,
+                                        fontSize = 8.sp, fontWeight = FontWeight.Black
+                                    )
+                                }
                                 if (st.entry != null && st.stop != null && st.target != null) {
                                     Spacer(Modifier.height(3.dp))
                                     Text(
