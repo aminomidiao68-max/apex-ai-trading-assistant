@@ -279,8 +279,14 @@ def run(
     step: int = 3,
     exit_horizon: int | None = None,
     fee_pct: float = 0.0,
+    cost_gate: bool = True,
 ) -> dict:
-    """Walk-forward replay of the live detector over `items` (ascending)."""
+    """Walk-forward replay of the live detector over `items` (ascending).
+
+    cost_gate=True applies the v3.20 trade-cost/geometry gate (same rules as
+    the live strict engine) so only fee-survivable plans are replayed. The
+    gate evaluates at real taker cost even when fee_pct=0 (audit mode).
+    """
     n = len(items)
     if n < warmup + 20:
         return {
@@ -295,6 +301,7 @@ def run(
     trades: list[dict] = []
     not_triggered = 0
     detected = 0
+    cost_gated = 0
     i = warmup
     while i < n - 5:
         window_start = max(0, i + 1 - MAX_ANALYZE_WINDOW)
@@ -312,6 +319,19 @@ def run(
         )
         if eligible:
             detected += 1
+            if cost_gate:
+                from app.services import trade_cost_gate
+                lv = report.get("levels") or {}
+                cg = trade_cost_gate.evaluate(
+                    lv.get("entry"), lv.get("sl"), report.get("tp1"),
+                    str(report.get("direction") or ""),
+                    fee_pct=fee_pct if fee_pct > 0 else trade_cost_gate.DEFAULT_FEE_PCT,
+                    atr=report.get("atr"),
+                )
+                if cg["applicable"] and not cg["passed"]:
+                    cost_gated += 1
+                    i += step
+                    continue
             outcome = _simulate(items, i, report, exit_horizon, fee_pct)
             if outcome is None:
                 i += step
@@ -358,8 +378,15 @@ def run(
             "fill_rule": "conservative_sl_first_no_same_bar_tp",
             "analyze_window": MAX_ANALYZE_WINDOW,
             "htf_bias_replayed": True,
+            "cost_gate": {
+                "enabled": cost_gate,
+                "gate_fee_pct": fee_pct if fee_pct > 0 else 0.05,
+                "max_fee_r": 0.30, "min_risk_atr": 0.35, "min_net_rr": 1.5,
+                "source": "trade_cost_gate v3.20 — same rules as live strict engine",
+            },
         },
         "setups_detected": detected,
+        "setups_cost_gated": cost_gated,
         "setups_not_triggered": not_triggered,
         "all": _stats(trades),
         "prime_proxy": _stats(prime_trades),

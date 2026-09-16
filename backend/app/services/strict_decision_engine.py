@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.services.market_quality_engine import assess_data_quality, classify_market_regime
+from app.services.trade_cost_gate import evaluate as evaluate_trade_cost
 
 
 def _gate(name: str, passed: bool, actual: Any, required: str, hard: bool = True) -> dict:
@@ -80,6 +81,18 @@ def apply_strict_decision(
     negative_points = abs(sum(float(item.get("points") or 0) for item in negative_factors))
     conflict_limit = 10.0 if grade in ("A+", "A") else 7.0
 
+    # v3.20 trade-cost/geometry gate: a plan whose round-trip fee exceeds 0.30R
+    # or whose stop sits inside the ATR noise band is untradeable regardless of
+    # direction quality. Audit 2026-09-16 measured this geometry turning -1R
+    # stop-losses into -2..-5R post-fee losses on real OKX data.
+    cost = evaluate_trade_cost(
+        (report.get("levels") or {}).get("entry"),
+        (report.get("levels") or {}).get("sl"),
+        report.get("tp1") or (report.get("levels") or {}).get("tp"),
+        direction,
+        atr=report.get("atr"),
+    )
+
     gates = [
         _gate("data_quality", quality["score"] >= 78, quality["score"], ">=78"),
         _gate("data_integrity", quality["tradable"], quality["tradable"], "true"),
@@ -88,6 +101,12 @@ def apply_strict_decision(
         _gate("confluence", confluence >= 65, confluence, ">=65"),
         _gate("estimated_probability", probability >= 68, probability, ">=68"),
         _gate("risk_reward", rr >= 2.0, round(rr, 2), ">=2.0"),
+        _gate(
+            "trade_cost",
+            (not cost["applicable"]) or cost["passed"],
+            {"fee_r": cost["fee_r"], "risk_pct": cost["risk_pct"], "net_rr": cost["net_rr"]},
+            "fee<=0.30R, stop>=0.35×ATR, netRR>=1.5",
+        ),
         _gate("news_clear", not bool(report.get("news_blocked")), bool(report.get("news_blocked")), "false"),
         _gate(
             "htf_alignment",
@@ -205,6 +224,7 @@ def apply_strict_decision(
         "hard_gates_total": len([item for item in gates if item["hard"]]),
         "hard_gates_passed": len(passed_hard),
         "failed_gates": failed_names,
+        "trade_cost": cost,
         "gates": gates,
         "negative_evidence_points": round(negative_points, 1),
         "probability_is_calibrated": False,

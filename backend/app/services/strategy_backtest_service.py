@@ -213,14 +213,22 @@ def run(
     fee_pct: float = 0.0,
     gates: bool = True,
     calibrated: bool = False,
+    cost_gate: bool = True,
 ) -> dict:
     """Walk-forward replay of strategy_pack_v2 over ascending candles.
 
     calibrated=False (default) replays the RAW detector pack — this screen is
     the audit tool that shows why the v3.17 edge-calibration demoted losers.
     Live scans (scan_all default calibrated=True) apply the measured prior.
+
+    cost_gate=True (default) applies the v3.20 trade-cost/geometry gate — the
+    same deterministic filter the live strict engine enforces — so replayed
+    stats only contain plans that are actually tradable after fees. The gate
+    is always evaluated at real taker cost (>= 0.05%/side) even when the
+    simulation itself runs fee_pct=0 (audit mode).
     """
     from app.services import strategy_pack_v2
+    from app.services import trade_cost_gate
     if gates:
         from app.services import indicator_pack_v2
 
@@ -235,6 +243,7 @@ def run(
     signals_skipped_busy = 0
     signals_no_plan = 0
     signals_not_triggered = 0
+    signals_cost_gated = 0
     names: dict[str, str] = {}
     families: dict[str, str] = {}
     perf_count: dict[str, int] = {}   # closed trades per strategy so far (walk-forward)
@@ -279,6 +288,15 @@ def run(
             if not entry or not sl:
                 signals_no_plan += 1
                 continue
+            if cost_gate:
+                cg = trade_cost_gate.evaluate(
+                    entry, sl, target, direction,
+                    fee_pct=fee_pct if fee_pct > 0 else trade_cost_gate.DEFAULT_FEE_PCT,
+                    atr=trade_cost_gate.atr14(window),
+                )
+                if cg["applicable"] and not cg["passed"]:
+                    signals_cost_gated += 1
+                    continue
             outcome = _simulate_plan(items, i, direction, float(entry), float(sl),
                                      float(target) if target else None, exit_horizon, fee_pct)
             if outcome is None:
@@ -429,10 +447,17 @@ def run(
             "fill_rule": "conservative_sl_first_no_same_bar_tp",
             "books": "per_strategy_no_overlap",
             "gates_enabled": gates,
+            "cost_gate": {
+                "enabled": cost_gate,
+                "gate_fee_pct": fee_pct if fee_pct > 0 else 0.05,
+                "max_fee_r": 0.30, "min_risk_atr": 0.35, "min_net_rr": 1.5,
+                "source": "trade_cost_gate v3.20 — same rules as live strict engine",
+            },
         },
         "signals_detected": signals_detected,
         "signals_skipped_busy": signals_skipped_busy,
         "signals_no_plan": signals_no_plan,
+        "signals_cost_gated": signals_cost_gated,
         "signals_not_triggered": signals_not_triggered,
         "all": _stats(trades),
         "by_quality_bucket": by_bucket,
