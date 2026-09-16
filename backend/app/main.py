@@ -630,13 +630,20 @@ def _ai_payload_extra(model: str) -> dict:
     return {}
 
 
+_GPT_OSS_MIN_COMPLETION_TOKENS = 2500
+
+
 def _adapt_payload_for_model(payload: dict, model: str, is_groq: bool) -> dict:
     """Groq's gpt-oss endpoints reject any temperature other than the default
-    and require max_completion_tokens instead of max_tokens (HTTP 400 otherwise)."""
+    and require max_completion_tokens instead of max_tokens (HTTP 400 otherwise).
+    Their reasoning tokens also count against that budget, so a small limit
+    yields an empty answer — floor it and ask for the lowest reasoning effort."""
     if is_groq and "gpt-oss" in (model or "").lower():
         payload = {k: v for k, v in payload.items() if k != "temperature"}
-        if "max_tokens" in payload:
-            payload["max_completion_tokens"] = payload.pop("max_tokens")
+        budget = payload.pop("max_tokens", None)
+        if budget is not None:
+            payload["max_completion_tokens"] = max(int(budget), _GPT_OSS_MIN_COMPLETION_TOKENS)
+        payload["reasoning_effort"] = "low"
     return payload
 
 

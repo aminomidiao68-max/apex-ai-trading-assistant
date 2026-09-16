@@ -308,7 +308,9 @@ def test_groq_gpt_oss_payload_uses_completion_tokens_and_no_temperature():
     adapted = _adapt_payload_for_model(dict(base), "openai/gpt-oss-120b", is_groq=True)
     assert "temperature" not in adapted
     assert "max_tokens" not in adapted
-    assert adapted["max_completion_tokens"] == 1200
+    # reasoning tokens eat the completion budget → floor it, lowest effort
+    assert adapted["max_completion_tokens"] >= 2500
+    assert adapted["reasoning_effort"] == "low"
 
     # non-gpt-oss models and non-groq providers keep the original shape
     assert _adapt_payload_for_model(dict(base), "llama-3.1-8b-instant", is_groq=True) == base

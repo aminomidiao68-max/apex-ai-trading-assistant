@@ -189,9 +189,11 @@ class OpenAICompatibleProvider:
         base = self.base_url.lower()
         if "gpt-oss" in lowered and "groq" in base:
             # Groq's gpt-oss endpoints reject temperature != default(1) with a 400
-            # and require max_completion_tokens instead of max_tokens.
+            # and require max_completion_tokens instead of max_tokens. Reasoning
+            # tokens count against that budget, so 900 would return empty content.
             payload.pop("temperature", None)
-            payload["max_completion_tokens"] = payload.pop("max_tokens")
+            payload["max_completion_tokens"] = max(payload.pop("max_tokens"), 2500)
+            payload["reasoning_effort"] = "low"
         if ("qwen" in lowered or "gpt-oss" in lowered) and ("groq" in base or "cerebras" in base):
             payload["reasoning_format"] = "hidden"  # never leak chain-of-thought
         return payload
@@ -228,13 +230,20 @@ class OpenAICompatibleProvider:
                     last_exc = exc
                     continue
                 raise
-            self.last_model = model
             text = str(data["choices"][0]["message"]["content"] or "")
             text = _THINK_RE.sub("", text)
             m = _THINK_OPEN_RE.search(text)
             if m:
                 text = text[: m.start()]
-            return text.strip()
+            text = text.strip()
+            if not text:
+                # reasoning models burn their whole token budget on hidden
+                # thinking and return nothing — try the next candidate instead
+                # of handing an empty string to the JSON extractor.
+                last_exc = ValueError("empty_completion_after_reasoning")
+                continue
+            self.last_model = model
+            return text
         if last_exc:
             raise last_exc
         raise RuntimeError("no_model_candidates")

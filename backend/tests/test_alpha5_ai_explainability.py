@@ -453,7 +453,9 @@ def test_reasoning_models_never_leak_chain_of_thought():
     groq_oss = p._payload("openai/gpt-oss-120b")
     assert "temperature" not in groq_oss
     assert "max_tokens" not in groq_oss
-    assert groq_oss["max_completion_tokens"] == 900
+    # reasoning tokens count against the completion budget → floored, effort low
+    assert groq_oss["max_completion_tokens"] >= 2500
+    assert groq_oss["reasoning_effort"] == "low"
     # ...but other Groq models and non-Groq bases keep the strict payload
     assert p._payload("llama-3.1-8b-instant")["temperature"] == 0
     cerebras = _provider(base="https://api.cerebras.ai/v1", name="cerebras",
@@ -534,6 +536,54 @@ def test_unexpected_error_class_is_exposed_but_not_its_message(monkeypatch):
     status = service.status()
     assert status["providers"]["groq"]["last_failure"] == "error_valueerror"
     assert "sorry" not in json.dumps(status).lower()
+
+
+def test_empty_reasoning_completion_falls_to_next_candidate(monkeypatch):
+    """gpt-oss can burn its whole hidden-reasoning budget and return empty
+    content; generate() must try the next model instead of feeding '' to the
+    JSON extractor."""
+    import app.services.ai_explainability_service as svc
+
+    svc._MODELS_CACHE.clear()
+    calls: list[str] = []
+
+    class _Resp:
+        status_code = 200
+
+        def __init__(self, content: str) -> None:
+            self._content = content
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"choices": [{"message": {"content": self._content}}]}
+
+    class _Client:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get(self, url, headers=None):
+            raise httpx.ConnectError("models endpoint unreachable")
+
+        async def post(self, url, headers=None, json=None):
+            model = (json or {}).get("model")
+            calls.append(model)
+            empty = model == "openai/gpt-oss-120b"
+            return _Resp("" if empty else '{"action_label": "WATCH"}')
+
+    monkeypatch.setattr(svc.httpx, "AsyncClient", _Client)
+    p = _provider(model="openai/gpt-oss-120b")
+    text = asyncio.run(p.generate("EVIDENCE_PACKET_JSON:{}"))
+    assert text == '{"action_label": "WATCH"}'
+    assert calls[0] == "openai/gpt-oss-120b" and len(calls) >= 2
+    assert p.last_model == calls[1], "last_model must report who actually answered"
 
 
 def test_status_exposes_sanitized_base_url(monkeypatch):
