@@ -238,6 +238,7 @@ def run(
     calibrated: bool = False,
     cost_gate: bool = True,
     exit_model: str = "single",
+    sl_project: bool = False,
 ) -> dict:
     """Walk-forward replay of strategy_pack_v2 over ascending candles.
 
@@ -268,6 +269,7 @@ def run(
     signals_no_plan = 0
     signals_not_triggered = 0
     signals_cost_gated = 0
+    signals_sl_rescued = 0
     names: dict[str, str] = {}
     families: dict[str, str] = {}
     perf_count: dict[str, int] = {}   # closed trades per strategy so far (walk-forward)
@@ -312,15 +314,23 @@ def run(
             if not entry or not sl:
                 signals_no_plan += 1
                 continue
+            sl_was_projected = False
             if cost_gate:
-                cg = trade_cost_gate.evaluate(
-                    entry, sl, target, direction,
-                    fee_pct=fee_pct if fee_pct > 0 else trade_cost_gate.DEFAULT_FEE_PCT,
-                    atr=trade_cost_gate.atr14(window),
-                )
+                cg_fee = fee_pct if fee_pct > 0 else trade_cost_gate.DEFAULT_FEE_PCT
+                win_atr = trade_cost_gate.atr14(window)
+                cg = trade_cost_gate.evaluate(entry, sl, target, direction,
+                                              fee_pct=cg_fee, atr=win_atr)
                 if cg["applicable"] and not cg["passed"]:
-                    signals_cost_gated += 1
-                    continue
+                    pj = trade_cost_gate.project_plan(entry, sl, target, direction,
+                                                      fee_pct=cg_fee, atr=win_atr) if sl_project else None
+                    if pj and pj.get("viable"):
+                        # v3.22 rescue: tradable protective stop at the cost/noise floor
+                        sl = pj["sl"]
+                        sl_was_projected = True
+                        signals_sl_rescued += 1
+                    else:
+                        signals_cost_gated += 1
+                        continue
             outcome = _simulate_plan(items, i, direction, float(entry), float(sl),
                                      float(target) if target else None, exit_horizon, fee_pct,
                                      exit_model)
@@ -331,6 +341,7 @@ def run(
                 signals_not_triggered += 1
                 continue
             row = {k: v for k, v in outcome.items() if k != "triggered"}
+            row["sl_projected"] = sl_was_projected
             row["strategy_id"] = sid
             row["name_fa"] = names[sid]
             row["family"] = families[sid]
@@ -474,6 +485,7 @@ def run(
             "gates_enabled": gates,
             "cost_gate": {
                 "enabled": cost_gate,
+                "sl_project": sl_project,
                 "gate_fee_pct": fee_pct if fee_pct > 0 else 0.05,
                 "max_fee_r": 0.30, "min_risk_atr": 0.35, "min_net_rr": 1.5,
                 "source": "trade_cost_gate v3.20 — same rules as live strict engine",
@@ -486,8 +498,10 @@ def run(
         "signals_skipped_busy": signals_skipped_busy,
         "signals_no_plan": signals_no_plan,
         "signals_cost_gated": signals_cost_gated,
+        "signals_sl_rescued": signals_sl_rescued,
         "signals_not_triggered": signals_not_triggered,
         "all": _stats(trades),
+        "sl_projected": _stats([t for t in trades if t.get("sl_projected")]),
         "by_quality_bucket": by_bucket,
         "by_direction": by_direction,
         "gates": gate_section,

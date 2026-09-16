@@ -200,6 +200,7 @@ def _simulate(items: list[dict], i: int, report: dict, exit_horizon: int, fee_pc
             "bars_held": scaled["bars_held"],
             "r": scaled["r"],
             "legs": scaled["legs"],
+            "sl_projected": bool(report.get("sl_projected")),
             "prime": bool(report.get("omega_compliant")),
         }
         return base
@@ -258,6 +259,7 @@ def _simulate(items: list[dict], i: int, report: dict, exit_horizon: int, fee_pc
         "exit_reason": exit_reason,
         "bars_held": exit_index - entry_index,
         "r": round(r_multiple, 3),
+        "sl_projected": bool(report.get("sl_projected")),
         "prime": omega,  # live-confirmed gate (full Omega rule set)
     }
 
@@ -311,6 +313,7 @@ def run(
     fee_pct: float = 0.0,
     cost_gate: bool = True,
     exit_model: str = "single",
+    sl_project: bool = False,
 ) -> dict:
     """Walk-forward replay of the live detector over `items` (ascending).
 
@@ -333,6 +336,7 @@ def run(
     not_triggered = 0
     detected = 0
     cost_gated = 0
+    sl_rescued = 0
     i = warmup
     while i < n - 5:
         window_start = max(0, i + 1 - MAX_ANALYZE_WINDOW)
@@ -353,16 +357,31 @@ def run(
             if cost_gate:
                 from app.services import trade_cost_gate
                 lv = report.get("levels") or {}
+                cg_fee = fee_pct if fee_pct > 0 else trade_cost_gate.DEFAULT_FEE_PCT
                 cg = trade_cost_gate.evaluate(
                     lv.get("entry"), lv.get("sl"), report.get("tp1"),
                     str(report.get("direction") or ""),
-                    fee_pct=fee_pct if fee_pct > 0 else trade_cost_gate.DEFAULT_FEE_PCT,
+                    fee_pct=cg_fee,
                     atr=report.get("atr"),
                 )
                 if cg["applicable"] and not cg["passed"]:
-                    cost_gated += 1
-                    i += step
-                    continue
+                    pj = trade_cost_gate.project_plan(
+                        lv.get("entry"), lv.get("sl"), report.get("tp1"),
+                        str(report.get("direction") or ""),
+                        fee_pct=cg_fee, atr=report.get("atr"),
+                    ) if sl_project else None
+                    if pj and pj.get("viable"):
+                        # rescue: tradable protective stop at the cost/noise floor;
+                        # the structural SL stays on record as the invalidation reference
+                        report = {**report,
+                                  "levels": {**lv, "sl": pj["sl"]},
+                                  "sl_projected": True,
+                                  "sl_structural": lv.get("sl")}
+                        sl_rescued += 1
+                    else:
+                        cost_gated += 1
+                        i += step
+                        continue
             outcome = _simulate(items, i, report, exit_horizon, fee_pct, exit_model)
             if outcome is None:
                 i += step
@@ -412,6 +431,7 @@ def run(
             "exit_model": exit_model,
             "cost_gate": {
                 "enabled": cost_gate,
+                "sl_project": sl_project,
                 "gate_fee_pct": fee_pct if fee_pct > 0 else 0.05,
                 "max_fee_r": 0.30, "min_risk_atr": 0.35, "min_net_rr": 1.5,
                 "source": "trade_cost_gate v3.20 — same rules as live strict engine",
@@ -419,8 +439,10 @@ def run(
         },
         "setups_detected": detected,
         "setups_cost_gated": cost_gated,
+        "setups_sl_rescued": sl_rescued,
         "setups_not_triggered": not_triggered,
         "all": _stats(trades),
+        "sl_projected": _stats([t for t in trades if t.get("sl_projected")]),
         "prime_proxy": _stats(prime_trades),
         "by_setup_type": {name: _stats(rows) for name, rows in sorted(by_setup.items())},
         "trades": trades[-40:],

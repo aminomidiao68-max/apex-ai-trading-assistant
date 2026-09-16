@@ -4,6 +4,7 @@ from typing import Any
 
 from app.services.market_quality_engine import assess_data_quality, classify_market_regime
 from app.services.trade_cost_gate import evaluate as evaluate_trade_cost
+from app.services.trade_cost_gate import project_plan as project_trade_plan
 
 
 def _gate(name: str, passed: bool, actual: Any, required: str, hard: bool = True) -> dict:
@@ -92,6 +93,22 @@ def apply_strict_decision(
         direction,
         atr=report.get("atr"),
     )
+    cost_projection = None
+    if cost["applicable"] and not cost["passed"]:
+        # v3.22: compute what a rescue WOULD look like (protective stop widened
+        # to the cost/noise floor) — informational only. Measured on real OKX
+        # walk-forwards, projected-rescue trades added no expectancy (PRIME:
+        # 0/625 rescuable; pack: near-breakeven on 2 windows, negative on 2),
+        # so the hard gate still rejects on original geometry and the
+        # projection explains WHY the plan is untradable, in Persian.
+        cost_projection = project_trade_plan(
+            (report.get("levels") or {}).get("entry"),
+            (report.get("levels") or {}).get("sl"),
+            report.get("tp1") or (report.get("levels") or {}).get("tp"),
+            direction,
+            atr=report.get("atr"),
+        )
+        cost["projection"] = cost_projection
 
     gates = [
         _gate("data_quality", quality["score"] >= 78, quality["score"], ">=78"),
@@ -104,7 +121,11 @@ def apply_strict_decision(
         _gate(
             "trade_cost",
             (not cost["applicable"]) or cost["passed"],
-            {"fee_r": cost["fee_r"], "risk_pct": cost["risk_pct"], "net_rr": cost["net_rr"]},
+            {
+                "fee_r": cost["fee_r"], "risk_pct": cost["risk_pct"], "net_rr": cost["net_rr"],
+                "rescue_possible": bool(cost_projection and cost_projection.get("viable")),
+                "rescue_reason_fa": (cost_projection or {}).get("reasons_fa") or cost["reasons_fa"],
+            },
             "fee<=0.30R, stop>=0.35×ATR, netRR>=1.5",
         ),
         _gate("news_clear", not bool(report.get("news_blocked")), bool(report.get("news_blocked")), "false"),
