@@ -154,6 +154,7 @@ from app.services import strategy_pack_v2
 from app.services.news_engine import mock_news
 from app.services import advanced_indicators
 from app.services import ict_engine
+from app.services import rtm_engine
 from app.services import smt_engine
 from app.services import proximity_alert_service
 from app.services import prime_backtest_service
@@ -1303,6 +1304,20 @@ async def enrich_orderflow(
         report["strategies_v2"] = strategy_pack_v2.scan_all(items, timeframe or "15m")
     except Exception:
         report["strategies_v2"] = None
+    # v3.19: RTM (Quasimodo / FTR / flag-MPL / compression) + supply-demand zones
+    # + liquidity map with draw-on-liquidity. Deterministic, real candles only;
+    # advisory evidence for the AI layer and chart overlay — never a hard gate.
+    try:
+        rtm = rtm_engine.summarize(items, report)
+        report["rtm"] = rtm
+        overlay = dict(report.get("overlay") or {})
+        extra = rtm_engine.overlay_items(rtm)
+        overlay["lines"] = list(overlay.get("lines") or []) + extra["lines"]
+        overlay["zones"] = list(overlay.get("zones") or []) + extra["zones"]
+        overlay["labels"] = list(overlay.get("labels") or []) + extra["labels"]
+        report["overlay"] = overlay
+    except Exception:
+        report["rtm"] = None
     report["orderflow"] = merged
     return snapshot
 
@@ -3110,7 +3125,12 @@ def _prepare_chart_report(report: dict, items: list[dict], max_candles: int = 16
 
     overlay = dict(report.get("overlay") or {})
     overlay["labels"] = _rebase_items(overlay.get("labels"), offset, total)[-8:]
-    raw_by_kind: dict[str, list[dict]] = {"OB": [], "FVG": [], "iFVG": [], "BRK": []}
+    # RTM lines (QML/MPL/DOL) are index-based like labels — rebase and cap them
+    overlay["lines"] = _rebase_items(
+        [ln for ln in (overlay.get("lines") or []) if str(ln.get("kind", "")) in ("QML", "MPL", "DOL")],
+        offset, total,
+    )[-4:]
+    raw_by_kind: dict[str, list[dict]] = {"OB": [], "FVG": [], "iFVG": [], "BRK": [], "SD": []}
     for zone in overlay.get("zones") or []:
         kind = str(zone.get("kind", ""))
         if kind in raw_by_kind:
@@ -3149,11 +3169,13 @@ def _prepare_chart_report(report: dict, items: list[dict], max_candles: int = 16
     selected_breakers = sorted(
         rebased_by_kind["BRK"], key=importance, reverse=True
     )[:1]
+    # RTM supply/demand: at most one demand + one supply zone (strongest each)
+    selected_sd = strongest_per_side(rebased_by_kind["SD"])
 
-    # At most 2 OBs + 2 FVGs + 1 faint breaker, all with a finite extension
-    # ending on the first price revisit. This keeps only institutional zones.
+    # At most 2 OBs + 2 FVGs + 1 faint breaker + 2 RTM S/D zones, all with a
+    # finite extension ending on the first price revisit. Institutional only.
     overlay["zones"] = (
-        simple_killzones + selected_obs + selected_fvgs + selected_breakers
+        simple_killzones + selected_obs + selected_fvgs + selected_breakers + selected_sd
     )
     report["overlay"] = overlay
     return report

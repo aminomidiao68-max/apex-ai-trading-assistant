@@ -446,6 +446,100 @@ def build_evidence_request_from_report(
         )
         add(item, evidence)
 
+    # RTM / Supply-Demand / Liquidity-map evidence (deterministic, candle-based,
+    # produced by rtm_engine). Alignment is judged against the deterministic
+    # side — a conflicting RTM fact becomes honest NEGATIVE evidence.
+    rtm = dict(report.get("rtm") or {})
+    if rtm.get("available") and side in {"long", "short"}:
+        facts: list[tuple[str, str, dict, bool]] = []
+
+        for z in (rtm.get("qml") or [])[:2]:
+            if z.get("mitigated"):
+                continue
+            direction = "bearish" if z.get("kind") == "qml_bear" else "bullish"
+            facts.append((
+                f"QML_{direction.upper()}",
+                f"RTM Quasimodo level ({direction}) active at {z.get('price')}, unmitigated.",
+                {"price": z.get("price"), "distance_pct": z.get("distance_pct")},
+                (direction == "bullish") == (side == "long"),
+            ))
+        for z in (rtm.get("ftr") or [])[:1]:
+            if z.get("mitigated"):
+                continue
+            direction = "bullish" if z.get("kind") == "ftr_bull" else "bearish"
+            facts.append((
+                "FTR",
+                f"RTM Fail-To-Return zone ({direction}) active with strength {z.get('strength')} ATR.",
+                {"top": z.get("top"), "bottom": z.get("bottom"), "strength": z.get("strength")},
+                (direction == "bullish") == (side == "long"),
+            ))
+        for z in (rtm.get("flags") or [])[:1]:
+            if not z.get("sweep_reclaimed"):
+                continue
+            direction = "bullish" if z.get("kind") == "flag_bull" else "bearish"
+            facts.append((
+                "MPL",
+                f"RTM flag Maximum-Pain-Level was swept and reclaimed ({direction} continuation).",
+                {"mpl": z.get("mpl"), "pole_atr": z.get("pole_atr")},
+                (direction == "bullish") == (side == "long"),
+            ))
+        for z in (rtm.get("compression") or [])[:1]:
+            direction = str(z.get("direction") or "")
+            facts.append((
+                "CMP",
+                f"Compression is pressing toward {z.get('target')} — a {direction} liquidity raid is the RTM read.",
+                {"target": z.get("target"), "distance_pct": z.get("distance_pct")},
+                (direction == "bull") == (side == "long"),
+            ))
+        for z in (rtm.get("supply_demand") or [])[:2]:
+            if z.get("mitigated") or not z.get("fresh"):
+                continue
+            if abs(float(z.get("distance_pct") or 99.0)) > 3.0:
+                continue
+            zone_side = str(z.get("side") or "")
+            facts.append((
+                f"SD_{z.get('kind')}",
+                (
+                    f"Fresh {z.get('kind')} {'demand' if zone_side == 'bullish' else 'supply'} zone at "
+                    f"{z.get('price')} ({z.get('strength')} ATR departure, {z.get('distance_pct')}% from price)."
+                ),
+                {"top": z.get("top"), "bottom": z.get("bottom"), "strength": z.get("strength")},
+                (zone_side == "bullish") == (side == "long"),
+            ))
+        dol = dict((rtm.get("liquidity") or {}).get("dol") or {})
+        if dol.get("target") is not None:
+            facts.append((
+                "DOL",
+                (
+                    f"Draw-on-liquidity targets the {dol.get('side')}-side pool ({dol.get('kind')}) "
+                    f"at {dol.get('target')}, {dol.get('distance_pct')}% from price."
+                ),
+                {"kind": dol.get("kind"), "target": dol.get("target")},
+                (dol.get("side") == "buy") == (side == "long"),
+            ))
+
+        positives = negatives = 0
+        for tag, statement, value, aligned in facts:
+            if aligned and positives < 4:
+                positives += 1
+                polarity, target_list = "positive", evidence
+            elif not aligned and negatives < 4:
+                negatives += 1
+                polarity, target_list = "negative", negative
+            else:
+                continue
+            add(
+                AIEvidenceItem(
+                    evidence_id=f"RTM_{tag}",
+                    category="rtm",
+                    statement=statement,
+                    source="rtm_deterministic_engine",
+                    polarity=polarity,
+                    value=_safe_json(value),
+                ),
+                target_list,
+            )
+
     # Every explanation carries explicit negative evidence. If no measured
     # conflict exists, residual market uncertainty is still real evidence.
     if not negative:

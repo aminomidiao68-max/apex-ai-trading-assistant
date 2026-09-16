@@ -527,7 +527,7 @@ class AIEvidenceItem(BaseModel):
     evidence_id: str = Field(pattern=r"^[A-Z][A-Z0-9_:-]{1,63}$")
     category: Literal[
         "data_quality", "market_regime", "structure", "orderflow",
-        "risk", "news", "hard_gate", "invalidation", "other"
+        "risk", "news", "hard_gate", "invalidation", "rtm", "other"
     ] = "other"
     statement: str = Field(min_length=3, max_length=500)
     source: str = Field(min_length=2, max_length=100)
