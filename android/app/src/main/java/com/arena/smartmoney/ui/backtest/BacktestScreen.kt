@@ -216,6 +216,21 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
                                     )
                                 }
                             }
+                            if (res.gates != null && res.gates.subsets.isNotEmpty()) {
+                                Text(
+                                    t("Measured Gates (walk-forward safe)", "گیت‌های اندازه‌گیری‌شده (بدون look-ahead)"),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                listOf("trend+votes", "combo", "votes", "trend", "perf").forEach { key ->
+                                    res.gates.subsets[key]?.let { g ->
+                                        MetricLine(
+                                            key,
+                                            "${g.trades} • WR=${g.winRatePct ?: "—"}٪ • avgR=${g.avgR ?: "—"} • PF=${g.profitFactor ?: "—"}"
+                                        )
+                                    }
+                                }
+                            }
                             Text(res.verdictFa, color = Color(0xFFB08CFF))
                             Text(res.disclaimerFa, color = Color(0xFF9AA7BD), style = MaterialTheme.typography.bodySmall)
                         }

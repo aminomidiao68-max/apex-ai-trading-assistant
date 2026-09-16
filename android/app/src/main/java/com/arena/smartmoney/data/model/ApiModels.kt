@@ -1662,6 +1662,14 @@ data class StrategyBacktestRowDto(
     @SerializedName("profit_factor") val profitFactor: Double? = null
 )
 
+data class StrategyGatesDto(
+    @SerializedName("rules_fa") val rulesFa: Map<String, String> = emptyMap(),
+    @SerializedName("vote_threshold") val voteThreshold: Int = 0,
+    @SerializedName("perf_min_trades") val perfMinTrades: Int = 0,
+    @SerializedName("claim_min_trades") val claimMinTrades: Int = 0,
+    val subsets: Map<String, PrimeBacktestStatsDto> = emptyMap()
+)
+
 data class StrategyBacktestResponseDto(
     val ok: Boolean = false,
     val detail: String? = null,
@@ -1675,6 +1683,7 @@ data class StrategyBacktestResponseDto(
     @SerializedName("by_quality_bucket") val byQualityBucket: Map<String, PrimeBacktestStatsDto> = emptyMap(),
     @SerializedName("by_direction") val byDirection: Map<String, PrimeBacktestStatsDto> = emptyMap(),
     @SerializedName("by_strategy") val byStrategy: Map<String, StrategyBacktestRowDto> = emptyMap(),
+    val gates: StrategyGatesDto? = null,
     @SerializedName("verdict_fa") val verdictFa: String = "",
     @SerializedName("disclaimer_fa") val disclaimerFa: String = "",
     val cached: Boolean = false

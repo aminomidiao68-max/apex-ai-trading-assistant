@@ -16,6 +16,14 @@ Plan conventions (documented, never hidden):
 Books are per-strategy: while strategy X has an open trade, new X signals are
 ignored; other strategies are simulated independently. Quality-bucket stats
 answer the calibration question: does quality>=65 actually beat quality<55?
+
+v3.14: every simulated trade is also tagged with three walk-forward-safe gate
+flags computed ONLY from data available at the signal bar (no look-ahead):
+  * gate_trend : close vs EMA50 agrees with the trade direction,
+  * gate_votes : indicator_pack_v2 net vote (|net|>=15) agrees with direction,
+  * gate_perf  : the strategy's own closed trades so far (>=3, total R > 0).
+The response reports stats for each gate subset and the full combination, so
+the claim "gating improves results" is measured, never assumed.
 """
 from __future__ import annotations
 
@@ -165,6 +173,36 @@ def _stats(trades: list[dict]) -> dict:
     }
 
 
+def _ema(values: list[float], span: int) -> float | None:
+    """Deterministic EMA (SMA-seeded) — last value only."""
+    if len(values) < span:
+        return None
+    alpha = 2.0 / (span + 1)
+    ema = sum(values[:span]) / span
+    for v in values[span:]:
+        ema = alpha * v + (1 - alpha) * ema
+    return ema
+
+
+GATE_RULES_FA = {
+    "trend": "هم‌جهتی با EMA50: لانگ فقط اگر close>EMA50، شورت فقط اگر close<EMA50 (در لحظه سیگنال)",
+    "votes": "رأی پک ۲۲ اندیکاتور: خالص ≥۱۵+ برای لانگ، ≤۱۵− برای شورت (همان پنجره لحظه سیگنال)",
+    "perf": "عملکرد گذشته خودِ استراتژی در همین بازپخش: دست‌کم ۳ معامله بسته‌شده با مجموع R مثبت",
+    "combo": "هر سه گیت با هم (trend + votes + perf)",
+}
+GATE_VOTE_THRESHOLD = 15
+GATE_PERF_MIN_TRADES = 3
+GATE_SUBSETS = (
+    ("trend", ("gate_trend",)),
+    ("votes", ("gate_votes",)),
+    ("perf", ("gate_perf",)),
+    ("trend+votes", ("gate_trend", "gate_votes")),
+    ("combo", ("gate_trend", "gate_votes", "gate_perf")),
+)
+GATE_CLAIM_MIN_TRADES = 30      # below this, no edge is claimed
+GATE_CLAIM_MIN_DELTA_R = 0.15   # minimum avgR improvement to call it better
+
+
 def run(
     items: list[dict],
     symbol: str = "",
@@ -173,9 +211,12 @@ def run(
     min_quality: int = MIN_QUALITY_DEFAULT,
     exit_horizon: int | None = None,
     fee_pct: float = 0.0,
+    gates: bool = True,
 ) -> dict:
     """Walk-forward replay of strategy_pack_v2 over ascending candles."""
     from app.services import strategy_pack_v2
+    if gates:
+        from app.services import indicator_pack_v2
 
     n = len(items)
     if n < WARMUP + 20:
@@ -190,6 +231,8 @@ def run(
     signals_not_triggered = 0
     names: dict[str, str] = {}
     families: dict[str, str] = {}
+    perf_count: dict[str, int] = {}   # closed trades per strategy so far (walk-forward)
+    perf_total: dict[str, float] = {}
 
     i = WARMUP
     while i < n - 5:
@@ -200,6 +243,18 @@ def run(
         except Exception:
             i += step
             continue
+        # gate context for this step — computed once, only from bars <= i
+        net_votes: int | None = None
+        ema50: float | None = None
+        close_i: float | None = None
+        if gates:
+            closes = [float(b["c"]) for b in window]
+            close_i = closes[-1] if closes else None
+            ema50 = _ema(closes, 50)
+            try:
+                net_votes = int(indicator_pack_v2.summarize(indicator_pack_v2.compute_all(window)).get("net") or 0)
+            except Exception:
+                net_votes = None
         for sig in scan.get("active") or []:
             direction = str(sig.get("direction"))
             if direction not in ("long", "short"):
@@ -233,7 +288,23 @@ def run(
             row["name_fa"] = names[sid]
             row["family"] = families[sid]
             row["quality"] = quality
+            if gates:
+                row["gate_trend"] = bool(
+                    ema50 is not None and close_i is not None and
+                    (close_i > ema50 if direction == "long" else close_i < ema50)
+                )
+                row["gate_votes"] = bool(
+                    net_votes is not None and
+                    (net_votes >= GATE_VOTE_THRESHOLD if direction == "long"
+                     else net_votes <= -GATE_VOTE_THRESHOLD)
+                )
+                row["gate_perf"] = bool(
+                    perf_count.get(sid, 0) >= GATE_PERF_MIN_TRADES and
+                    perf_total.get(sid, 0.0) > 0
+                )
             trades.append(row)
+            perf_count[sid] = perf_count.get(sid, 0) + 1
+            perf_total[sid] = perf_total.get(sid, 0.0) + float(row["r"])
             exit_t = outcome.get("exit_time")
             busy_until = i + step
             if exit_t is not None:
@@ -253,6 +324,20 @@ def run(
         "long": _stats([t for t in trades if t["direction"] == "long"]),
         "short": _stats([t for t in trades if t["direction"] == "short"]),
     }
+    gate_section: dict[str, Any] = {}
+    gate_subsets: dict[str, list[dict]] = {}
+    if gates:
+        gate_subsets = {
+            gname: [t for t in trades if all(t.get(k) for k in keys)]
+            for gname, keys in GATE_SUBSETS
+        }
+        gate_section = {
+            "rules_fa": GATE_RULES_FA,
+            "vote_threshold": GATE_VOTE_THRESHOLD,
+            "perf_min_trades": GATE_PERF_MIN_TRADES,
+            "claim_min_trades": GATE_CLAIM_MIN_TRADES,
+            "subsets": {gname: _stats(rows) for gname, rows in gate_subsets.items()},
+        }
 
     # honest, data-driven calibration verdict (no edge claimed under N=10)
     verdict_parts: list[str] = []
@@ -276,6 +361,33 @@ def run(
             verdict_parts.append("→ تفاوت معناداری بین سبدهای کیفی دیده نشد.")
     else:
         verdict_parts.append(f"نمونه کافی برای سنجش کالیبراسیون کیفیت نیست (≥۶۵: {len(hi_trades)}، <۶۵: {len(lo_trades)} معامله؛ حداقل ۱۰+۱۰ لازم است).")
+    if gates and trades:
+        all_r = sum(t["r"] for t in trades) / len(trades)
+        best_gate: str | None = None
+        best_gate_r = 0.0
+        best_gate_n = 0
+        for gname, rows in gate_subsets.items():
+            if len(rows) >= GATE_CLAIM_MIN_TRADES:
+                sub_r = sum(t["r"] for t in rows) / len(rows)
+                if best_gate is None or sub_r > best_gate_r:
+                    best_gate, best_gate_r, best_gate_n = gname, sub_r, len(rows)
+        if best_gate is None:
+            verdict_parts.append(
+                f"گیت‌ها: هیچ زیرمجموعه‌ای به نمونه ≥{GATE_CLAIM_MIN_TRADES} معامله نرسید — قضاوت درباره گیت ممکن نیست."
+            )
+        elif best_gate_r > all_r + GATE_CLAIM_MIN_DELTA_R:
+            verdict_parts.append(
+                f"بهترین گیت اندازه‌گیری‌شده «{best_gate}»: {best_gate_n} معامله با avgR={best_gate_r:+.2f} "
+                f"(WR={sum(1 for t in gate_subsets[best_gate] if t['r'] > 0) / best_gate_n * 100:.0f}٪) "
+                f"در برابر بدون گیت {len(trades)} معامله با avgR={all_r:+.2f} "
+                f"→ روی این بازه گیت‌کردن بهبود واقعی داد (تضمین آینده نیست)."
+            )
+        else:
+            verdict_parts.append(
+                f"گیت‌ها: بهترین زیرمجموعه «{best_gate}» با avgR={best_gate_r:+.2f} در برابر بدون گیت "
+                f"avgR={all_r:+.2f} → روی این بازه بهبود معناداری از گیت‌کردن دیده نشد."
+            )
+
     ranked = sorted(
         ((sid, _stats(rows)) for sid, rows in by_strategy.items() if len(rows) >= 10),
         key=lambda kv: -(kv[1]["avg_r"] or 0),
@@ -307,6 +419,7 @@ def run(
             "fee_pct": fee_pct, "no_target_rule": "tp_2r",
             "fill_rule": "conservative_sl_first_no_same_bar_tp",
             "books": "per_strategy_no_overlap",
+            "gates_enabled": gates,
         },
         "signals_detected": signals_detected,
         "signals_skipped_busy": signals_skipped_busy,
@@ -315,6 +428,7 @@ def run(
         "all": _stats(trades),
         "by_quality_bucket": by_bucket,
         "by_direction": by_direction,
+        "gates": gate_section,
         "by_strategy": {
             sid: {"name_fa": names.get(sid, sid), "family": families.get(sid, ""), **_stats(rows)}
             for sid, rows in sorted(by_strategy.items())

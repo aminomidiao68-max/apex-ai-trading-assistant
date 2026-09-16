@@ -363,6 +363,21 @@ def test_strategy_backtest_mechanics():
     # determinism
     res2 = sbs.run(items, symbol="TEST", timeframe="15m", min_quality=0)
     assert res["all"] == res2["all"] and res["trades"] == res2["trades"]
+    assert res["gates"] == res2["gates"]
+    # gate section structure + walk-forward-safe boolean flags on every trade
+    subsets = res["gates"]["subsets"]
+    assert set(subsets) == {"trend", "votes", "perf", "trend+votes", "combo"}
+    for t in res["trades"]:
+        assert isinstance(t.get("gate_trend"), bool)
+        assert isinstance(t.get("gate_votes"), bool)
+        assert isinstance(t.get("gate_perf"), bool)
+    # combo subset ⊆ trend subset ⊆ all
+    assert subsets["combo"]["trades"] <= subsets["trend+votes"]["trades"] <= subsets["trend"]["trades"] <= allst["trades"]
+    assert res["gates"]["rules_fa"]["combo"]
+    # gates disabled → empty section, still ok
+    res_ng = sbs.run(items, symbol="TEST", timeframe="15m", min_quality=0, gates=False)
+    assert res_ng["ok"] is True and res_ng["gates"] == {}
+    assert res_ng["all"] == allst  # gating is tagging-only, never changes fills
     # insufficient data guard
     small = sbs.run(items[:100], symbol="TEST")
     assert small["ok"] is False and small["detail"] == "insufficient_candles"

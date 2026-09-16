@@ -14,7 +14,7 @@ services:
       - key: APP_ENV
         value: staging
       - key: APP_VERSION
-        value: 3.13.0-pro-alpha58
+        value: 3.14.0-pro-alpha59
       - key: DATABASE_URL
         fromDatabase:
           name: apex-ai-chaos-staging-postgres
