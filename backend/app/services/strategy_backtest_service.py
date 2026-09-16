@@ -54,7 +54,7 @@ DISCLAIMER_FA = (
 
 def _simulate_plan(items: list[dict], i: int, direction: str, entry: float,
                    sl: float, target: float | None, exit_horizon: int,
-                   fee_pct: float) -> dict | None:
+                   fee_pct: float, exit_model: str = "single") -> dict | None:
     """Conservative bar-by-bar fill. Mirrors prime_backtest_service._simulate."""
     risk = abs(entry - sl)
     if risk <= 0:
@@ -84,6 +84,29 @@ def _simulate_plan(items: list[dict], i: int, direction: str, entry: float,
             break
     if entry_index is None:
         return {"triggered": False}
+
+    if exit_model == "scale_1r_be":
+        from app.services.scale_exit import simulate_scale
+        scaled = simulate_scale(items, entry_index, direction, entry, sl, target,
+                                max(1, i + exit_horizon - entry_index), fee_pct)
+        if scaled is None:
+            return None
+        return {
+            "triggered": True,
+            "index": i,
+            "time": items[i].get("t"),
+            "direction": direction,
+            "entry": entry,
+            "sl": sl,
+            "tp": target,
+            "entry_time": items[entry_index].get("t"),
+            "exit_time": items[scaled["exit_index"]].get("t"),
+            "exit_price": scaled["exit_price"],
+            "exit_reason": scaled["exit_reason"],
+            "bars_held": scaled["bars_held"],
+            "r": scaled["r"],
+            "legs": scaled["legs"],
+        }
 
     exit_price = None
     exit_reason = "timeout"
@@ -214,6 +237,7 @@ def run(
     gates: bool = True,
     calibrated: bool = False,
     cost_gate: bool = True,
+    exit_model: str = "single",
 ) -> dict:
     """Walk-forward replay of strategy_pack_v2 over ascending candles.
 
@@ -298,7 +322,8 @@ def run(
                     signals_cost_gated += 1
                     continue
             outcome = _simulate_plan(items, i, direction, float(entry), float(sl),
-                                     float(target) if target else None, exit_horizon, fee_pct)
+                                     float(target) if target else None, exit_horizon, fee_pct,
+                                     exit_model)
             if outcome is None:
                 signals_no_plan += 1
                 continue
@@ -453,6 +478,9 @@ def run(
                 "max_fee_r": 0.30, "min_risk_atr": 0.35, "min_net_rr": 1.5,
                 "source": "trade_cost_gate v3.20 — same rules as live strict engine",
             },
+            "exit_model": exit_model,
+            "exit_model_rule": ("scale_1r_be = save 50% at +1R then breakeven stop; "
+                                "single = full size to target/SL"),
         },
         "signals_detected": signals_detected,
         "signals_skipped_busy": signals_skipped_busy,

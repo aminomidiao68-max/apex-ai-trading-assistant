@@ -225,6 +225,15 @@ def apply_strict_decision(
         "hard_gates_passed": len(passed_hard),
         "failed_gates": failed_names,
         "trade_cost": cost,
+        "exit_management": {
+            "model": "scale_50pct_at_1r_then_breakeven",
+            "instruction_fa": (
+                "مدیریت خروج توصیه‌شده (v3.21، همان مدل بک‌تست): ۵۰٪ حجم در +1R سیو شود و "
+                "استاپ باقی‌مانده به نقطه ورود (ریسک‌فری) منتقل شود؛ باقی تا هدف اصلی. "
+                "این مدیریت، معاملاتِ +1R-بازگشتی را از ضرر کامل به برد کوچک تبدیل می‌کند."
+            ),
+            "backtest_default": True,
+        },
         "gates": gates,
         "negative_evidence_points": round(negative_points, 1),
         "probability_is_calibrated": False,

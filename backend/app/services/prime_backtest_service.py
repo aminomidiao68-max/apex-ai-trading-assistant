@@ -141,7 +141,8 @@ def _htf_bias(window: list[dict], timeframe: str, analyze) -> str | None:
         return None
 
 
-def _simulate(items: list[dict], i: int, report: dict, exit_horizon: int, fee_pct: float) -> dict | None:
+def _simulate(items: list[dict], i: int, report: dict, exit_horizon: int, fee_pct: float,
+              exit_model: str = "single") -> dict | None:
     """Simulate one setup occurrence detected at bar i. Returns a trade row or None."""
     levels = report.get("levels") or {}
     try:
@@ -173,6 +174,35 @@ def _simulate(items: list[dict], i: int, report: dict, exit_horizon: int, fee_pc
             break
     if entry_index is None:
         return {"triggered": False, "index": i}
+
+    if exit_model == "scale_1r_be":
+        from app.services.scale_exit import simulate_scale
+        scaled = simulate_scale(items, entry_index, direction, entry, sl, tp,
+                                max(1, i + exit_horizon - entry_index), fee_pct)
+        if scaled is None:
+            return None
+        base = {
+            "triggered": True,
+            "index": i,
+            "time": items[i].get("t"),
+            "direction": direction,
+            "setup_type": str(report.get("setup_type") or "-"),
+            "grade": str(report.get("grade") or "-"),
+            "confluence": int(report.get("confluence") or 0),
+            "omega_compliant": bool(report.get("omega_compliant")),
+            "entry": entry,
+            "sl": sl,
+            "tp1": tp,
+            "entry_time": items[entry_index].get("t"),
+            "exit_time": items[scaled["exit_index"]].get("t"),
+            "exit_price": scaled["exit_price"],
+            "exit_reason": scaled["exit_reason"],
+            "bars_held": scaled["bars_held"],
+            "r": scaled["r"],
+            "legs": scaled["legs"],
+            "prime": bool(report.get("omega_compliant")),
+        }
+        return base
 
     exit_price = None
     exit_reason = "timeout"
@@ -280,6 +310,7 @@ def run(
     exit_horizon: int | None = None,
     fee_pct: float = 0.0,
     cost_gate: bool = True,
+    exit_model: str = "single",
 ) -> dict:
     """Walk-forward replay of the live detector over `items` (ascending).
 
@@ -332,7 +363,7 @@ def run(
                     cost_gated += 1
                     i += step
                     continue
-            outcome = _simulate(items, i, report, exit_horizon, fee_pct)
+            outcome = _simulate(items, i, report, exit_horizon, fee_pct, exit_model)
             if outcome is None:
                 i += step
                 continue
@@ -378,6 +409,7 @@ def run(
             "fill_rule": "conservative_sl_first_no_same_bar_tp",
             "analyze_window": MAX_ANALYZE_WINDOW,
             "htf_bias_replayed": True,
+            "exit_model": exit_model,
             "cost_gate": {
                 "enabled": cost_gate,
                 "gate_fee_pct": fee_pct if fee_pct > 0 else 0.05,
