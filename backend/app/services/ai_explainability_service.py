@@ -187,6 +187,11 @@ class OpenAICompatibleProvider:
         }
         lowered = model.lower()
         base = self.base_url.lower()
+        if "gpt-oss" in lowered and "groq" in base:
+            # Groq's gpt-oss endpoints reject temperature != default(1) with a 400
+            # and require max_completion_tokens instead of max_tokens.
+            payload.pop("temperature", None)
+            payload["max_completion_tokens"] = payload.pop("max_tokens")
         if ("qwen" in lowered or "gpt-oss" in lowered) and ("groq" in base or "cerebras" in base):
             payload["reasoning_format"] = "hidden"  # never leak chain-of-thought
         return payload
@@ -698,8 +703,10 @@ class AIExplainabilityService:
                 self._record_failure(name, f"network_{type(exc).__name__.lower()}"[:40])
                 issues_seen.append("provider_unavailable")
                 continue
-            except Exception:
-                self._record_failure(name, "error")
+            except Exception as exc:
+                # unexpected failure (bad JSON from the model, parse errors ...):
+                # expose the exception CLASS only — never its message.
+                self._record_failure(name, f"error_{type(exc).__name__.lower()}"[:40])
                 issues_seen.append("provider_unavailable")
                 continue
 

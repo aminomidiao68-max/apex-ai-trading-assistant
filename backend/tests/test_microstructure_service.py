@@ -301,6 +301,20 @@ def test_ai_payload_extra_hides_reasoning_only_for_reasoning_models():
     assert _ai_payload_extra("meta-llama/llama-4-scout-17b-16e-instruct") == {}
 
 
+def test_groq_gpt_oss_payload_uses_completion_tokens_and_no_temperature():
+    from app.main import _adapt_payload_for_model
+
+    base = {"model": "openai/gpt-oss-120b", "temperature": 0.7, "max_tokens": 1200}
+    adapted = _adapt_payload_for_model(dict(base), "openai/gpt-oss-120b", is_groq=True)
+    assert "temperature" not in adapted
+    assert "max_tokens" not in adapted
+    assert adapted["max_completion_tokens"] == 1200
+
+    # non-gpt-oss models and non-groq providers keep the original shape
+    assert _adapt_payload_for_model(dict(base), "llama-3.1-8b-instant", is_groq=True) == base
+    assert _adapt_payload_for_model(dict(base), "openai/gpt-oss-120b", is_groq=False) == base
+
+
 # ------------------------------------------- self-adaptive Groq model selection
 def test_model_options_groq_prefers_live_models(monkeypatch):
     import asyncio

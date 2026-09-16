@@ -630,6 +630,16 @@ def _ai_payload_extra(model: str) -> dict:
     return {}
 
 
+def _adapt_payload_for_model(payload: dict, model: str, is_groq: bool) -> dict:
+    """Groq's gpt-oss endpoints reject any temperature other than the default
+    and require max_completion_tokens instead of max_tokens (HTTP 400 otherwise)."""
+    if is_groq and "gpt-oss" in (model or "").lower():
+        payload = {k: v for k, v in payload.items() if k != "temperature"}
+        if "max_tokens" in payload:
+            payload["max_completion_tokens"] = payload.pop("max_tokens")
+    return payload
+
+
 # Groq rotates/deprecates models frequently; pick from the LIVE model list
 # instead of hardcoding IDs so deprecations never break the service.
 _GROQ_VISION_PREFERENCE = ("qwen3.8", "qwen3.6", "vision", "scout", "maverick")
@@ -2091,7 +2101,10 @@ async def analyze_chart_vision(
         token_budgets = [2048] if not cand["is_groq"] else [900, 600]
         for model in model_options:
             for budget in token_budgets:
-                payload = {**base_payload, "model": model, "max_tokens": budget, **_ai_payload_extra(model)}
+                payload = _adapt_payload_for_model(
+                    {**base_payload, "model": model, "max_tokens": budget, **_ai_payload_extra(model)},
+                    model, cand["is_groq"],
+                )
                 try:
                     url = f"{cand['base_url']}/chat/completions"
                     logger.info(f"Trying vision analysis with {cand['provider']} ({model}, max_tokens={budget})")
@@ -2283,7 +2296,10 @@ async def execute_ai_chat_assistant(
         token_budgets = [1600] if not cand["is_groq"] else [1200, 700]
         for model in model_options:
             for budget in token_budgets:
-                payload = {**base_payload, "model": model, "max_tokens": budget, **_ai_payload_extra(model)}
+                payload = _adapt_payload_for_model(
+                    {**base_payload, "model": model, "max_tokens": budget, **_ai_payload_extra(model)},
+                    model, cand["is_groq"],
+                )
                 try:
                     url = f"{cand['base_url']}/chat/completions"
                     logger.info(f"Trying AI chat with {cand['provider']} ({model}, max_tokens={budget})")
@@ -2513,16 +2529,19 @@ async def deep_institutional_analysis(
         token_budgets = [1600] if not cand["is_groq"] else [1200, 700]
         for model in model_options:
             for budget in token_budgets:
-                payload = {
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": deep_system_prompt},
-                        {"role": "user", "content": user_block},
-                    ],
-                    "temperature": 0.5,
-                    "max_tokens": budget,
-                    **_ai_payload_extra(model),
-                }
+                payload = _adapt_payload_for_model(
+                    {
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": deep_system_prompt},
+                            {"role": "user", "content": user_block},
+                        ],
+                        "temperature": 0.5,
+                        "max_tokens": budget,
+                        **_ai_payload_extra(model),
+                    },
+                    model, cand["is_groq"],
+                )
                 try:
                     url = f"{cand['base_url']}/chat/completions"
                     logger.info(f"Deep analysis with {cand['provider']} ({model}, max_tokens={budget})")

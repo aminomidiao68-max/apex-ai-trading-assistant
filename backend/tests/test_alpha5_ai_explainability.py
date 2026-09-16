@@ -449,6 +449,17 @@ def test_reasoning_models_never_leak_chain_of_thought():
     assert p._payload("openai/gpt-oss-120b").get("reasoning_format") == "hidden"
     assert p._payload("qwen/qwen3.6-27b").get("reasoning_format") == "hidden"
     assert "reasoning_format" not in p._payload("llama-3.1-8b-instant")
+    # Groq's gpt-oss rejects temperature != default and 'max_tokens' (400)
+    groq_oss = p._payload("openai/gpt-oss-120b")
+    assert "temperature" not in groq_oss
+    assert "max_tokens" not in groq_oss
+    assert groq_oss["max_completion_tokens"] == 900
+    # ...but other Groq models and non-Groq bases keep the strict payload
+    assert p._payload("llama-3.1-8b-instant")["temperature"] == 0
+    cerebras = _provider(base="https://api.cerebras.ai/v1", name="cerebras",
+                         model="gpt-oss-120b")
+    cerebras._last_prompt = "x"
+    assert cerebras._payload("gpt-oss-120b")["temperature"] == 0
     openai_p = _provider(base="https://api.openai.com/v1", name="openai_compatible",
                          model="gpt-4.1-mini")
     openai_p._last_prompt = "x"
@@ -508,6 +519,21 @@ def test_transport_error_detail_is_the_exception_class_only(monkeypatch):
     assert status["providers"]["groq"]["last_failure"] == "network_connecterror"
     blob = json.dumps(status).lower()
     assert "sk-secret" not in blob and "dns failed" not in blob
+
+
+def test_unexpected_error_class_is_exposed_but_not_its_message(monkeypatch):
+    """Non-transport failures (e.g. model output that is not JSON) classify as
+    error_<class> so groq-vs-cerebras debugging works without leaking text."""
+    _enable_external(monkeypatch)
+    from app.services.ai_explainability_service import AIExplainabilityService
+
+    junk = _FakeProvider("I cannot answer with JSON, sorry!")
+    junk.name = "groq"
+    service = AIExplainabilityService(providers={"groq": junk})
+    asyncio.run(service.explain(_request(provider="auto")))
+    status = service.status()
+    assert status["providers"]["groq"]["last_failure"] == "error_valueerror"
+    assert "sorry" not in json.dumps(status).lower()
 
 
 def test_status_exposes_sanitized_base_url(monkeypatch):
