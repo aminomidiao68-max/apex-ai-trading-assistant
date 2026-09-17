@@ -529,6 +529,11 @@ def run(
         "sl_projected": _stats([t for t in trades if t.get("sl_projected")]),
         "by_session": {name: _stats([t for t in trades if t.get("session") == name])
                        for name in ("asia", "london", "new_york", "late_utc")},
+        "session_rules_fa": (
+            "باکت‌های قطعی UTC: asia 00-07، london 07-12، new_york 12-17، late_utc 17-24. "
+            "این فقط اندازه‌گیری است، نه فیلتر: هیچ گیت سشنی اعمال نمی‌شود چون قاعده "
+            "پیش‌ثبت‌شده (برتری london+new_york در ≥۳ پنجره از ۴) در داده واقعی رد شد."
+        ),
         "by_quality_bucket": by_bucket,
         "by_direction": by_direction,
         "gates": gate_section,
