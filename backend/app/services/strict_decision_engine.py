@@ -6,6 +6,7 @@ from typing import Any
 from app.services.precision_window import (
     DEFAULT_BAND,
     VOLATILITY_BANDS,
+    atr_value,
     confirmation_close_ok,
     efficiency_ratio,
     in_killzone,
@@ -107,12 +108,16 @@ def apply_strict_decision(
     footprint_detail = {"is_real": footprint_is_real, "delta": round(_delta, 4),
                         "large_trade_imbalance": round(_lti, 4), "expected": flow_expected}
 
+    positive_factors = [
+        item for item in (report.get("confluence_factors") or [])
+        if float(item.get("points") or 0) > 0
+    ]
     negative_factors = [
         item for item in (report.get("confluence_factors") or [])
         if float(item.get("points") or 0) < 0
     ]
     negative_points = abs(sum(float(item.get("points") or 0) for item in negative_factors))
-    conflict_limit = 2.0 if grade == "A+" else 1.5  # v3.25 (was 5.0/3.0)
+    conflict_limit = 0.0  # v3.26 ZERO-ERROR: ANY negative evidence vetoes
 
     # v3.20 trade-cost/geometry gate: a plan whose round-trip fee exceeds 0.30R
     # or whose stop sits inside the ATR noise band is untradeable regardless of
@@ -146,15 +151,23 @@ def apply_strict_decision(
     _er = efficiency_ratio(candles)
     _vol_ok, _vol_atr = in_volatility_band(candles, market)
     _now = now_utc or datetime.now(timezone.utc)
+    _atr = float(report.get("atr") or 0.0) or atr_value(candles)
+    _entry = (report.get("levels") or {}).get("entry")
+    _tp1 = report.get("tp1") or (report.get("levels") or {}).get("tp")
+    if direction in ("long", "short") and _entry is not None and _tp1 is not None and _atr > 0:
+        _reach = abs(float(_tp1) - float(_entry)) <= 3.0 * _atr
+        _reach_actual = round(abs(float(_tp1) - float(_entry)) / _atr, 2)
+    else:
+        _reach, _reach_actual = True, "n/a"
 
     gates = [
-        _gate("data_quality", quality["score"] >= 90, quality["score"], ">=90"),
+        _gate("data_quality", quality["score"] >= 92, quality["score"], ">=92"),
         _gate("data_integrity", quality["tradable"], quality["tradable"], "true"),
         _gate("direction", direction in ("long", "short"), direction, "long|short"),
         _gate("grade", grade == "A+", grade, "A+ only (v3.25)"),
-        _gate("confluence", confluence >= 82, confluence, ">=82"),
-        _gate("estimated_probability", probability >= 85, probability, ">=85"),
-        _gate("risk_reward", rr >= 3.0, round(rr, 2), ">=3.0"),
+        _gate("confluence", confluence >= 85, confluence, ">=85"),
+        _gate("estimated_probability", probability >= 88, probability, ">=88"),
+        _gate("risk_reward", rr >= 3.5, round(rr, 2), ">=3.5"),
         _gate(
             "trade_cost",
             (not cost["applicable"]) or cost["passed"],
@@ -251,15 +264,27 @@ def apply_strict_decision(
         ),
         _gate(
             "trend_efficiency",
-            _er >= 0.25,
+            _er >= 0.30,
             round(_er, 3),
-            ">=0.25 Kaufman ER(100)",
+            ">=0.30 Kaufman ER(100) (v3.26)",
         ),
         _gate(
             "volatility_band",
             _vol_ok,
             round(_vol_atr, 5),
             f"ATR% within {VOLATILITY_BANDS.get(str(market).lower(), DEFAULT_BAND)}",
+        ),
+        _gate(
+            "evidence_diversity",
+            len(positive_factors) >= 4,
+            len(positive_factors),
+            ">=4 independent positive evidence factors (v3.26)",
+        ),
+        _gate(
+            "target_reachability",
+            _reach,
+            _reach_actual,
+            "tp1 within 3.0x ATR (v3.26)",
         ),
     ]
     failed_hard = [item for item in gates if item["hard"] and not item["passed"]]
@@ -278,7 +303,7 @@ def apply_strict_decision(
         status = "reject"
 
     if status == "actionable":
-        strong = grade == "A+" and confluence >= 85 and probability >= 85 and rr >= 3.0
+        strong = grade == "A+" and confluence >= 88 and probability >= 88 and rr >= 3.5
         if direction == "long":
             action_label = "STRONG_LONG" if strong else "LONG"
         else:

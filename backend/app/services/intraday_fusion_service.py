@@ -27,7 +27,7 @@ class IntradayFusionService:
     """Causal precision-first fusion. It can only downgrade frame decisions."""
 
     def fuse(self, symbol: str, market: str, frames: list[dict], quota=None,
-             now_utc: datetime | None = None) -> dict:
+             now_utc: datetime | None = None, loss_guard=None) -> dict:
         by_tf = {str(item.get("timeframe")): item.get("report") or {} for item in frames}
         available = sorted(tf for tf in _REQUIRED if tf in by_tf)
         context = [by_tf.get("1h", {}), by_tf.get("4h", {})]
@@ -62,6 +62,11 @@ class IntradayFusionService:
                 crypto_flow_ok = crypto_flow_ok and is_real and aligned
             flow_evidence.append({"timeframe": tf, "is_real": is_real, "pressure": pressure, "aligned": aligned})
         context_regimes = [str((item.get("market_regime") or {}).get("name") or "unknown") for item in context]
+        trigger_regimes = [
+            str((by_tf.get(tf, {}).get("market_regime") or {}).get("name") or "unknown")
+            for tf in ("5m", "15m")
+        ]
+        trigger_regime_ok = all(name in {"trending", "balanced"} for name in trigger_regimes)
         regime_ok = all(name == "trending" for name in context_regimes)  # v3.25: trending-only context
         invalidations = [item.get("invalidation") or (item.get("levels") or {}).get("sl") for item in actionable_triggers]
         invalidation_ok = bool(actionable_triggers) and all(value is not None for value in invalidations)
@@ -77,6 +82,13 @@ class IntradayFusionService:
             _gate("session_killzone", in_killzone(now_utc), (now_utc or datetime.now()).strftime("%H:%M UTC"), "London AM / London-NY overlap UTC"),
             _gate("trigger_unanimity", bool(actionable_triggers) and all(side == consensus_side for side in trigger_sides), trigger_sides, "5m and 15m both match consensus"),
             _gate("weekly_quota", (quota is None) or quota.remaining(now_utc) > 0, None if quota is None else quota.remaining(now_utc), "<2 fused signals this ISO week"),
+            _gate("trigger_regime", trigger_regime_ok, trigger_regimes, "5m/15m trending|balanced (v3.26)"),
+            _gate(
+                "symbol_loss_cooldown",
+                (loss_guard is None) or not loss_guard.symbol_in_loss_cooldown(symbol, now_utc),
+                symbol.upper(),
+                "no resolved LOSS on this symbol in last 30 days (current engine)",
+            ),
             _gate("crypto_real_flow", crypto_flow_ok, flow_evidence, "real aligned flow for actionable crypto triggers"),
             _gate("explicit_invalidation", invalidation_ok, invalidations, "every actionable trigger has invalidation"),
         ]

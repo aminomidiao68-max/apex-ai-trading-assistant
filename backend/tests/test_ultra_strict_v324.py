@@ -16,19 +16,19 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 def test_omega_thresholds_tightened():
     from app.services import smc_engine
 
-    assert smc_engine.OMEGA_MIN_RR == 3.0
-    assert smc_engine.OMEGA_MIN_CONF == 82
-    assert smc_engine.OMEGA_MIN_PROB == 85
+    assert smc_engine.OMEGA_MIN_RR == 3.5
+    assert smc_engine.OMEGA_MIN_CONF == 85
+    assert smc_engine.OMEGA_MIN_PROB == 88
     assert smc_engine.OMEGA_MAX_DAILY_TRADES == 1
     assert smc_engine.OMEGA_MAX_WEEKLY_TRADES == 2
     f = smc_engine._omega_compliant
-    assert f(82, 85, 3.0, True, True, True)[0] is True
-    assert f(81, 85, 3.0, True, True, True)[0] is False   # conf floor
-    assert f(82, 84, 3.0, True, True, True)[0] is False   # prob floor
-    assert f(82, 85, 2.9, True, True, True)[0] is False   # rr floor
-    assert f(82, 85, 3.0, False, True, True)[0] is False  # mtf
-    assert f(82, 85, 3.0, True, False, True)[0] is False  # killzone
-    assert f(82, 85, 3.0, True, True, False)[0] is False  # volume
+    assert f(85, 88, 3.5, True, True, True)[0] is True
+    assert f(84, 88, 3.5, True, True, True)[0] is False   # conf floor
+    assert f(85, 87, 3.5, True, True, True)[0] is False   # prob floor
+    assert f(85, 88, 3.4, True, True, True)[0] is False   # rr floor
+    assert f(85, 88, 3.5, False, True, True)[0] is False  # mtf
+    assert f(85, 88, 3.5, True, False, True)[0] is False  # killzone
+    assert f(85, 88, 3.5, True, True, False)[0] is False  # volume
 
 
 # ------------------------------------------------------------- strict engine
@@ -77,22 +77,22 @@ def test_grade_b_no_longer_actionable():
     assert "grade" in dec["decision"]["failed_gates"]
 
 
-def test_probability_floor_is_85():
-    dec = _strict(_report(probability=84))
+def test_probability_floor_is_88():
+    dec = _strict(_report(probability=87))
     g = _gates(dec)["estimated_probability"]
-    assert not g["passed"] and g["required"] == ">=85"
+    assert not g["passed"] and g["required"] == ">=88"
 
 
-def test_rr_floor_is_300():
-    dec = _strict(_report(rr=2.9))
+def test_rr_floor_is_350():
+    dec = _strict(_report(rr=3.4))
     g = _gates(dec)["risk_reward"]
-    assert not g["passed"] and g["required"] == ">=3.0"
+    assert not g["passed"] and g["required"] == ">=3.5"
 
 
-def test_confluence_floor_is_82():
-    dec = _strict(_report(confluence=81))
+def test_confluence_floor_is_85():
+    dec = _strict(_report(confluence=84))
     g = _gates(dec)["confluence"]
-    assert not g["passed"] and g["required"] == ">=82"
+    assert not g["passed"] and g["required"] == ">=85"
 
 
 def test_mtf_alignment_hard_gate():
@@ -153,14 +153,18 @@ def test_calendar_block_windows_and_medium():
     from app.news_engine_v2 import evaluate_calendar_block
 
     now = datetime(2026, 9, 17, 12, 0, tzinfo=timezone.utc)
-    # 31 minutes before high impact → outside the 30-min pre window
+    # v3.26: 31 min before high impact is INSIDE the 90-min pre window
     b1, _ = evaluate_calendar_block(
         [{"event": "CPI", "impact": "high", "time": "2026-09-17 12:31:00"}], now)
-    assert not b1["blocked"]
-    # medium nearby → caution, not blocked
+    assert b1["blocked"]
+    # 91 min before high impact → outside
+    b3, _ = evaluate_calendar_block(
+        [{"event": "CPI", "impact": "high", "time": "2026-09-17 13:31:00"}], now)
+    assert not b3["blocked"]
+    # v3.26: medium nearby BLOCKS as well
     b2, m2 = evaluate_calendar_block(
         [{"event": "PMI", "impact": "medium", "time": "2026-09-17 12:05:00"}], now)
-    assert not b2["blocked"] and m2
+    assert b2["blocked"] and m2
 
 
 def test_calendar_parses_epoch_and_iso_and_fails_closed_count():

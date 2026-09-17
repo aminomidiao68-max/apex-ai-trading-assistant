@@ -641,17 +641,19 @@ def test_market_quality_and_strict_decision_gates():
 
     from datetime import datetime as _dt, timezone as _tz
     now_utc = _dt(2026, 9, 16, 13, 0, tzinfo=_tz.utc)  # v3.25: deterministic killzone time
-    last = candles[-1]  # v3.25: make the final closed candle decisive for a long
-    last["o"] = last["c"] - 0.6
-    last["l"] = min(last["l"], last["o"] - 0.1)
-    last["h"] = max(last["h"], last["c"] + 0.1)
+    last = candles[-1]  # v3.26: decisive AND engulfing final closed candle
+    prev = candles[-2]
+    prev["h"] = prev["c"] + 0.02
+    last["o"] = last["c"] - 0.9
+    last["l"] = last["o"] - 0.1
+    last["h"] = last["c"] + 0.05
 
     report = {
         "direction": "long",
         "grade": "A+",
         "confluence": 88,
-        "probability": 88,  # v3.25 WEEKLY-GRADE floor is 85
-        "rr": 3.2,
+        "probability": 88,  # v3.26 ZERO-ERROR floor is 88
+        "rr": 3.6,
         "mtf_aligned": True,  # v3.24 hard MTF gate
         "htf_bias": "bullish",
         "setup_type": "پولبک BOS به ناحیه OTE",
@@ -662,7 +664,9 @@ def test_market_quality_and_strict_decision_gates():
         "overlay": {"lines": [{"kind": "entry", "price": 100.0}]},
         "confluence_factors": [
             {"name": "HTF alignment", "points": 12},
-            {"name": "minor conflict", "points": -2},
+            {"name": "BOS structure", "points": 10},
+            {"name": "OTE entry", "points": 8},
+            {"name": "liquidity sweep", "points": 9},
         ],
         "orderflow": {},
         "ai": {},

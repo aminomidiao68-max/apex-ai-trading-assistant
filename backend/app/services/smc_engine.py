@@ -1862,9 +1862,9 @@ def _divergence(cs, indicator_vals, window=20):
 #   * Require ≥ 50 confluence for actionable signals
 #   * After 3 consecutive losses: recommend half-size
 # ====================================================================
-OMEGA_MIN_RR = 3.0   # v3.25 WEEKLY-GRADE: gross RR floor (was 2.5)
-OMEGA_MIN_CONF = 82  # v3.25 WEEKLY-GRADE: institutional confluence floor (was 75)
-OMEGA_MIN_PROB = 85  # v3.25 WEEKLY-GRADE: model probability floor (was 80)
+OMEGA_MIN_RR = 3.5   # v3.26 ZERO-ERROR: gross RR floor (was 3.0)
+OMEGA_MIN_CONF = 85  # v3.26 ZERO-ERROR: institutional confluence floor (was 82)
+OMEGA_MIN_PROB = 88  # v3.26 ZERO-ERROR: model probability floor (was 85)
 OMEGA_MAX_DAILY_TRADES = 1  # v3.25 WEEKLY-GRADE: one setup per day, max (was 3)
 OMEGA_MAX_WEEKLY_TRADES = 2  # v3.25 WEEKLY-GRADE: fused weekly cap (governor-enforced)
 

@@ -362,6 +362,26 @@ class SignalShadowService:
             resolved_at=resolved_at,
         )
 
+    def symbol_in_loss_cooldown(self, symbol: str, now=None, days: int = 30) -> bool:
+        """v3.26 ZERO-ERROR self-learning veto.
+
+        If this symbol produced a resolved LOSS under the CURRENT engine in the
+        last `days` days, no new fused signal is allowed on it. The forward test
+        therefore teaches the gate stack from its own real outcomes.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        now = now or datetime.now(timezone.utc)
+        cutoff = (now - timedelta(days=days)).isoformat()
+        with self.database.connection() as conn:
+            row = conn.execute(
+                "SELECT 1 AS x FROM signal_shadow_observations "
+                "WHERE symbol=? AND outcome_status='LOSS' AND engine_version=? "
+                "AND captured_at >= ? LIMIT 1",
+                (str(symbol).upper(), str(settings.engine_version), cutoff),
+            ).fetchone()
+        return row is not None
+
     def panel(self, user_id: int, minimum_required_resolved: int = 30) -> SignalShadowPanelResponse:
         with self.database.connection() as conn:
             rows = conn.execute(

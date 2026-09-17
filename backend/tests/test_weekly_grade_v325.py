@@ -16,13 +16,13 @@ def _candles(n=120, mode="trend"):
     for i in range(n):
         o = price
         if mode == "trend":
-            c = price + (0.3 if i % 3 else -0.15)
+            c = price + (0.4 if i % 3 else -0.2)
         elif mode == "chop":
-            c = price + (0.3 if i % 2 else -0.3)
+            c = price + (0.4 if i % 2 else -0.4)
         else:  # dead
             c = price + (0.001 if i % 2 else -0.001)
-        h = max(o, c) + (0.25 if mode != "dead" else 0.002)
-        l = min(o, c) - (0.25 if mode != "dead" else 0.002)
+        h = max(o, c) + (0.15 if mode != "dead" else 0.002)
+        l = min(o, c) - (0.15 if mode != "dead" else 0.002)
         out.append({"t": float(i * 900), "o": o, "h": h, "l": l, "c": c, "v": 1200.0 + i})
         price = c
     return out
@@ -39,11 +39,15 @@ def _doji_tail(candles):
 def _report(**over):
     base = {
         "direction": "long", "grade": "A+", "confluence": 88, "probability": 88,
-        "rr": 3.4, "mtf_aligned": True, "htf_bias": "bullish",
+        "rr": 3.6, "mtf_aligned": True, "htf_bias": "bullish",
         "setup_type": "پولبک BOS به ناحیه OTE", "events": [],
         "news_blocked": False, "invalidation": 98.0,
         "plan_lines": [{"kind": "entry", "price": 100.0}],
-        "confluence_factors": [], "orderflow": {},
+        "confluence_factors": [
+            {"name": "HTF alignment", "points": 12}, {"name": "BOS structure", "points": 10},
+            {"name": "OTE entry", "points": 8}, {"name": "liquidity sweep", "points": 9},
+        ],
+        "orderflow": {},
     }
     base.update(over)
     return base
@@ -83,11 +87,14 @@ def _fusion_frames(**over):
 
 
 # ------------------------------------------------------------------ windows
-def test_killzone_windows_are_london_and_overlap_only():
-    assert in_killzone(datetime(2026, 9, 16, 8, 30, tzinfo=timezone.utc))
+def test_killzone_is_london_ny_overlap_only():
+    assert in_killzone(datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc))
     assert in_killzone(datetime(2026, 9, 16, 14, 0, tzinfo=timezone.utc))
+    assert in_killzone(datetime(2026, 9, 16, 16, 59, tzinfo=timezone.utc))
+    assert not in_killzone(datetime(2026, 9, 16, 8, 30, tzinfo=timezone.utc))  # v3.26: London AM retired
     assert not in_killzone(datetime(2026, 9, 16, 3, 0, tzinfo=timezone.utc))
     assert not in_killzone(datetime(2026, 9, 16, 11, 0, tzinfo=timezone.utc))
+    assert not in_killzone(datetime(2026, 9, 16, 17, 0, tzinfo=timezone.utc))
     assert not in_killzone(datetime(2026, 9, 16, 21, 0, tzinfo=timezone.utc))
     assert week_key(NOW).startswith("2026-W")
 
@@ -215,5 +222,5 @@ def test_fusion_trigger_unanimity_required():
 def test_full_stack_baseline_is_actionable_in_killzone():
     dec = _strict(_report())
     assert dec["decision"]["status"] == "actionable", dec["decision"]["failed_gates"]
-    assert dec["decision"]["hard_gates_total"] >= 21  # 17 in v3.24 + 4 new window gates
-    assert len(dec["decision"]["gates"]) >= 26
+    assert dec["decision"]["hard_gates_total"] >= 23  # v3.26: +evidence_diversity +target_reachability
+    assert len(dec["decision"]["gates"]) >= 28

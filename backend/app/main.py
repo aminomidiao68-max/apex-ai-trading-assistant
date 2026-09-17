@@ -1782,7 +1782,8 @@ async def get_intraday_fusion(
             orderflow_snapshot=flow,
         )
         reports.append({"timeframe": tf, "report": report})
-    result = intraday_fusion_service.fuse(symbol, market_eff, reports, quota=weekly_signal_quota)
+    result = intraday_fusion_service.fuse(symbol, market_eff, reports, quota=weekly_signal_quota,
+                                                  loss_guard=signal_shadow_service)
     result["frame_source"] = "server_generated_completed_candles"
     result["completed_candle_enforced"] = True
     result["user_scoped_ai_used"] = False

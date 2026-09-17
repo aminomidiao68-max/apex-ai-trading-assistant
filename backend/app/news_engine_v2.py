@@ -43,10 +43,10 @@ def _parse_event_time(raw) -> datetime | None:
 def evaluate_calendar_block(cal, now_utc: datetime | None = None) -> tuple[dict, bool]:
     """v3.24: real Finnhub-calendar evaluation (was: always blocked=False).
 
-    High-impact events block trading from 30 min before to 15 min after the
-    release; medium-impact events do not block but flag caution. Deterministic,
-    fail-closed on parse errors (unparsable high-impact rows are skipped but
-    counted in warnings).
+    v3.26 ZERO-ERROR blackout: high-impact events block from 90 min before to
+    45 min after the release; medium-impact events now ALSO block, from 45 min
+    before to 15 min after. Deterministic, fail-closed on parse errors
+    (unparsable high-impact rows are skipped but counted in warnings).
     """
     now_utc = now_utc or datetime.now(timezone.utc)
     if now_utc.tzinfo is None:
@@ -67,9 +67,9 @@ def evaluate_calendar_block(cal, now_utc: datetime | None = None) -> tuple[dict,
                 unparsed += 1
             continue
         if impact == "high":
-            pre, post = timedelta(minutes=30), timedelta(minutes=15)
+            pre, post = timedelta(minutes=90), timedelta(minutes=45)
         elif impact == "medium":
-            pre, post = timedelta(minutes=15), timedelta(minutes=10)
+            pre, post = timedelta(minutes=45), timedelta(minutes=15)
         else:
             continue
         if dt - pre <= now_utc <= dt + post:
@@ -79,13 +79,18 @@ def evaluate_calendar_block(cal, now_utc: datetime | None = None) -> tuple[dict,
                 blocked = True
                 until = int((dt + post).timestamp())
                 block_until = max(block_until, until)
-                reasons.append(f"رویداد پراثر {country} «{title}» داخل پنجره خبری (۳۰- قبل تا ۱۵+ دقیقه)")
+                reasons.append(f"رویداد پراثر {country} «{title}» داخل پنجره خبری (۹۰- قبل تا ۴۵+ دقیقه)")
                 active.append({"event": title, "country": country, "impact": impact,
                                "time": ev.get("time"), "block_until": until})
             else:
+                # v3.26 ZERO-ERROR: medium-impact events block as well
+                blocked = True
                 medium_near = True
+                until = int((dt + post).timestamp())
+                block_until = max(block_until, until)
+                reasons.append(f"رویداد متوسط {country} «{title}» داخل پنجره خبری (۴۵- قبل تا ۱۵+ دقیقه)")
                 active.append({"event": title, "country": country, "impact": impact,
-                               "time": ev.get("time")})
+                               "time": ev.get("time"), "block_until": until})
     if unparsed:
         reasons.append(f"{unparsed} رویداد پراثر با زمان نامفهوم — احتیاط: fail-closed")
     return ({"blocked": blocked, "reasons": reasons, "block_until": block_until,
