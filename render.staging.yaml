@@ -7,14 +7,14 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers
     healthCheckPath: /ready
-    autoDeploy: false
+    autoDeploy: true
     envVars:
       - key: APP_NAME
         value: Apex AI Trading API Chaos Staging
       - key: APP_ENV
         value: staging
-      - key: APP_VERSION
-        value: 3.19.0-pro-alpha65
+      # APP_VERSION intentionally NOT pinned: backend/app/config.py carries the
+      # authoritative default so /health always reports the real deployed code.
       - key: DATABASE_URL
         fromDatabase:
           name: apex-ai-chaos-staging-postgres

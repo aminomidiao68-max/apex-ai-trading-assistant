@@ -86,7 +86,7 @@ def test_shadow_capture_never_routes_and_panel_is_insufficient(tmp_path):
     after = service.panel(1, minimum_required_resolved=30)
     assert after.pending_outcomes == 0 and after.resolved_outcomes == 1
     assert service.panel(2).total_observations == 0
-    assert db.schema_version() == LATEST_SCHEMA_VERSION == 21
+    assert db.schema_version() == LATEST_SCHEMA_VERSION == 22
 
 
 def test_shadow_diagnostics_verify_evidence_and_report_stale_blockers(tmp_path):
@@ -552,3 +552,36 @@ def test_invalid_candidate_geometry_is_rejected(tmp_path):
     payload["levels"] = {"entry": 100, "sl": 101, "tp": 102}
     with pytest.raises(SignalShadowError, match="candidate_resolution_geometry_invalid"):
         service.capture(1, payload)
+
+
+def test_engine_version_cohort_isolates_current_engine(tmp_path):
+    """v3.24+: old-engine observations must never mix into current-engine stats."""
+    from app.config import settings
+
+    db = DatabaseManager(db_path=str(tmp_path / "cohort.db"))
+    service = SignalShadowService(db)
+
+    legacy = service.capture(1, _candidate())
+    # forge a legacy-engine observation (as if captured by the old staging build)
+    with db.connection() as conn:
+        conn.execute(
+            "UPDATE signal_shadow_observations SET engine_version=? WHERE observation_id=?",
+            ("3.7.0-signal-alpha50", legacy.observation_id),
+        )
+        conn.commit()
+    fresh = service.capture(1, _candidate())
+
+    with db.connection() as conn:
+        row = conn.execute(
+            "SELECT engine_version FROM signal_shadow_observations WHERE observation_id=?",
+            (fresh.observation_id,),
+        ).fetchone()
+    assert row["engine_version"] == str(settings.app_version)
+
+    panel = service.panel(1, minimum_required_resolved=30)
+    assert panel.total_observations == 2                # all-time view unchanged
+    assert panel.observations_current_engine == 1       # cohort isolated
+    assert panel.candidates_current_engine == 1
+    assert panel.current_engine_version == str(settings.app_version)
+    assert panel.research_ready_current_engine is False  # nowhere near 30 resolved
+    assert panel.precision_claimed is False

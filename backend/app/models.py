@@ -1973,6 +1973,16 @@ class SignalShadowPanelResponse(BaseModel):
     precision_claimed: bool = False
     actionable_for_live: bool = False
     live_execution_enabled: bool = False
+    # v3.24 engine-version cohort: the all-time counters above mix observations
+    # from every engine version ever deployed. These fields isolate the CURRENT
+    # engine, which is the only cohort that says anything about what the system
+    # does today. Honest reading: judge the engine by its own cohort.
+    current_engine_version: str | None = None
+    observations_current_engine: int = 0
+    candidates_current_engine: int = 0
+    resolved_current_engine: int = 0
+    activated_resolved_current_engine: int = 0
+    research_ready_current_engine: bool = False
 
 
 class SignalShadowDiagnosticsResponse(BaseModel):

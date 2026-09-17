@@ -16,7 +16,7 @@ from app.config import settings
 logger = logging.getLogger("apex.database")
 
 
-LATEST_SCHEMA_VERSION = 21
+LATEST_SCHEMA_VERSION = 22
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -429,6 +429,16 @@ class DatabaseManager:
                     ON CONFLICT(version) DO NOTHING
                     """,
                     (21, "signal_shadow_one_shot_holdout_consumption", datetime.now(timezone.utc).isoformat()),
+                )
+            if 22 not in applied:
+                self._apply_schema_v22(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (22, "signal_shadow_engine_version_cohort", datetime.now(timezone.utc).isoformat()),
                 )
             conn.commit()
 
@@ -1315,6 +1325,20 @@ class DatabaseManager:
                 "holdout_result_json TEXT",
                 "consumption_request_sha256 TEXT",
             ],
+        )
+
+    def _apply_schema_v22(self, conn: ConnectionAdapter) -> None:
+        # v3.24+: stamp the engine version on every shadow observation so older
+        # cohorts (e.g. the 3.7.x staging era) never mix with forward-test
+        # statistics gathered by the current ultra-strict engine.
+        self._ensure_columns(
+            conn,
+            "signal_shadow_observations",
+            ["engine_version TEXT"],
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shadow_user_engine "
+            "ON signal_shadow_observations(user_id, engine_version, outcome_status)"
         )
 
     def _ensure_columns(

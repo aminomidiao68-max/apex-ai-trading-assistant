@@ -170,8 +170,9 @@ class SignalShadowService:
                     observation_id,user_id,symbol,market,fusion_status,side,evidence_sha256,
                     evidence_json,outcome_status,realized_rr,captured_at,resolved_at,
                     resolution_timeframe,entry_price,stop_price,target_price,max_resolution_bars,activated,
-                    bars_observed,resolution_reason,resolution_close_price,resolution_policy
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    bars_observed,resolution_reason,resolution_close_price,resolution_policy,
+                    engine_version
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     observation_id,
                     user_id,
@@ -195,6 +196,7 @@ class SignalShadowService:
                     None,
                     None,
                     _RESOLUTION_POLICY,
+                    str(settings.app_version),
                 ),
             )
             conn.commit()
@@ -363,10 +365,12 @@ class SignalShadowService:
     def panel(self, user_id: int, minimum_required_resolved: int = 30) -> SignalShadowPanelResponse:
         with self.database.connection() as conn:
             rows = conn.execute(
-                "SELECT fusion_status,outcome_status,activated "
+                "SELECT fusion_status,outcome_status,activated,engine_version "
                 "FROM signal_shadow_observations WHERE user_id=?",
                 (user_id,),
             ).fetchall()
+        current_version = str(settings.app_version)
+        cur_rows = [row for row in rows if str(row["engine_version"] or "") == current_version]
         statuses = [str(row["fusion_status"]) for row in rows]
         pending = sum(1 for row in rows if row["outcome_status"] == "PENDING")
         resolved = sum(1 for row in rows if row["outcome_status"] in _TERMINAL_OUTCOMES)
@@ -378,6 +382,17 @@ class SignalShadowService:
         research_ready = (
             resolved >= minimum_required_resolved
             and activated_resolved >= minimum_required_resolved
+        )
+        cur_statuses = [str(row["fusion_status"]) for row in cur_rows]
+        cur_resolved = sum(1 for row in cur_rows if row["outcome_status"] in _TERMINAL_OUTCOMES)
+        cur_activated = sum(
+            1
+            for row in cur_rows
+            if row["outcome_status"] in _ACTIVATED_TERMINAL_OUTCOMES and bool(row["activated"])
+        )
+        cur_research_ready = (
+            cur_resolved >= minimum_required_resolved
+            and cur_activated >= minimum_required_resolved
         )
         return SignalShadowPanelResponse(
             total_observations=len(rows),
@@ -395,6 +410,12 @@ class SignalShadowService:
             precision_claimed=False,
             actionable_for_live=False,
             live_execution_enabled=settings.enable_live_execution,
+            current_engine_version=current_version,
+            observations_current_engine=len(cur_rows),
+            candidates_current_engine=cur_statuses.count("ACTIONABLE_CANDIDATE"),
+            resolved_current_engine=cur_resolved,
+            activated_resolved_current_engine=cur_activated,
+            research_ready_current_engine=cur_research_ready,
         )
 
     @staticmethod
