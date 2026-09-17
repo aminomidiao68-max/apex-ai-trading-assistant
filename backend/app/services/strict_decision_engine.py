@@ -1,6 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
+
+from app.services.precision_window import (
+    DEFAULT_BAND,
+    VOLATILITY_BANDS,
+    confirmation_close_ok,
+    efficiency_ratio,
+    in_killzone,
+    in_volatility_band,
+)
 
 from app.services.market_quality_engine import assess_data_quality, classify_market_regime
 from app.services.trade_cost_gate import evaluate as evaluate_trade_cost
@@ -25,6 +35,7 @@ def apply_strict_decision(
     orderflow_source: str = "ohlcv_proxy",
     orderflow_confidence: float = 0.45,
     orderflow_snapshot: dict | None = None,
+    now_utc: datetime | None = None,
 ) -> dict:
     """Apply capital-preservation gates without inventing confidence.
 
@@ -48,7 +59,7 @@ def apply_strict_decision(
     )
     expected_htf = "bullish" if direction == "long" else "bearish" if direction == "short" else None
     htf_aligned = expected_htf is not None and htf_bias == expected_htf
-    htf_exception = reversal_setup and has_choch and confluence >= 80
+    htf_exception = False  # v3.25 WEEKLY-GRADE: reversal exception RETIRED
     high_timeframe = timeframe in ("4h", "1d")
 
     flow = orderflow_snapshot or report.get("orderflow") or {}
@@ -71,9 +82,9 @@ def apply_strict_decision(
     funding_crowded = False
     if funding_rate is not None and flow_expected:
         funding_value = float(funding_rate)
-        funding_crowded = (flow_expected == "buy" and funding_value > 0.0010) or (
-            flow_expected == "sell" and funding_value < -0.0010
-        )
+        funding_crowded = (flow_expected == "buy" and funding_value > 0.0005) or (
+            flow_expected == "sell" and funding_value < -0.0005
+        )  # v3.25 (was 0.0010)
 
     # v3.24: deterministic footprint/micro confirmation when REAL micro data exists
     micro = flow.get("micro") or report.get("microstructure") or {}
@@ -90,9 +101,9 @@ def apply_strict_decision(
     footprint_ok = True
     if footprint_is_real and direction in ("long", "short"):
         if direction == "long":
-            footprint_ok = _delta > -0.15 and _lti > -0.30
+            footprint_ok = _delta > 0.0 and _lti > -0.10   # v3.25: AFFIRMATIVE delta
         else:
-            footprint_ok = _delta < 0.15 and _lti < 0.30
+            footprint_ok = _delta < 0.0 and _lti < 0.10
     footprint_detail = {"is_real": footprint_is_real, "delta": round(_delta, 4),
                         "large_trade_imbalance": round(_lti, 4), "expected": flow_expected}
 
@@ -101,7 +112,7 @@ def apply_strict_decision(
         if float(item.get("points") or 0) < 0
     ]
     negative_points = abs(sum(float(item.get("points") or 0) for item in negative_factors))
-    conflict_limit = 5.0 if grade == "A+" else 3.0
+    conflict_limit = 2.0 if grade == "A+" else 1.5  # v3.25 (was 5.0/3.0)
 
     # v3.20 trade-cost/geometry gate: a plan whose round-trip fee exceeds 0.30R
     # or whose stop sits inside the ATR noise band is untradeable regardless of
@@ -131,14 +142,19 @@ def apply_strict_decision(
         )
         cost["projection"] = cost_projection
 
+    _conf_close = confirmation_close_ok(candles, direction)
+    _er = efficiency_ratio(candles)
+    _vol_ok, _vol_atr = in_volatility_band(candles, market)
+    _now = now_utc or datetime.now(timezone.utc)
+
     gates = [
-        _gate("data_quality", quality["score"] >= 85, quality["score"], ">=85"),
+        _gate("data_quality", quality["score"] >= 90, quality["score"], ">=90"),
         _gate("data_integrity", quality["tradable"], quality["tradable"], "true"),
         _gate("direction", direction in ("long", "short"), direction, "long|short"),
-        _gate("grade", grade in ("A+", "A"), grade, "A+|A"),
-        _gate("confluence", confluence >= 75, confluence, ">=75"),
-        _gate("estimated_probability", probability >= 80, probability, ">=80"),
-        _gate("risk_reward", rr >= 2.5, round(rr, 2), ">=2.5"),
+        _gate("grade", grade == "A+", grade, "A+ only (v3.25)"),
+        _gate("confluence", confluence >= 82, confluence, ">=82"),
+        _gate("estimated_probability", probability >= 85, probability, ">=85"),
+        _gate("risk_reward", rr >= 3.0, round(rr, 2), ">=3.0"),
         _gate(
             "trade_cost",
             (not cost["applicable"]) or cost["passed"],
@@ -155,11 +171,11 @@ def apply_strict_decision(
         _gate("news_clear", not bool(report.get("news_blocked")), bool(report.get("news_blocked")), "false"),
         _gate(
             "htf_alignment",
-            high_timeframe or htf_aligned or htf_exception,
-            {"htf": htf_bias, "aligned": htf_aligned, "reversal_exception": htf_exception},
-            "aligned or confirmed reversal",
+            high_timeframe or htf_aligned,
+            {"htf": htf_bias, "aligned": htf_aligned, "reversal_exception": False},
+            "aligned (exception retired in v3.25)",
         ),
-        _gate("market_not_choppy", regime["name"] != "choppy" or confluence >= 85, regime["name"], "not choppy"),
+        _gate("market_not_choppy", regime["name"] in ("trending", "balanced", "compressed"), regime["name"], "trending|balanced|compressed (v3.25)"),
         _gate("conflict_budget", negative_points <= conflict_limit, round(negative_points, 1), f"<={conflict_limit}"),
         _gate("trade_plan", bool(report.get("plan_lines")), len(report.get("plan_lines") or []), ">0"),
         _gate(
@@ -176,16 +192,16 @@ def apply_strict_decision(
         ),
         _gate(
             "orderflow_alignment",
-            not orderflow_is_real or flow_aligned,
+            not orderflow_is_real or flow_pressure == flow_expected,
             {"pressure": flow_pressure, "expected": flow_expected},
-            "aligned or neutral",
+            "exact pressure match (neutral retired in v3.25)",
             hard=orderflow_is_real,
         ),
         _gate(
             "execution_spread",
-            not orderflow_is_real or (spread_bps is not None and float(spread_bps) <= 5.0),
+            not orderflow_is_real or (spread_bps is not None and float(spread_bps) <= 3.0),
             spread_bps,
-            "<=5 bps",
+            "<=3 bps (v3.25)",
             hard=orderflow_is_real,
         ),
         _gate(
@@ -199,27 +215,51 @@ def apply_strict_decision(
             "funding_crowding",
             not funding_crowded,
             funding_rate,
-            "not crowded (|funding|<=0.0010 against side)",
+            "not crowded (|funding|<=0.0005 against side)",
         ),
         _gate(
             "orderflow_evidence",
-            orderflow_confidence >= (0.50 if requires_real_flow else 0.35),
+            orderflow_confidence >= (0.60 if requires_real_flow else 0.40),
             {"source": orderflow_source, "confidence": round(orderflow_confidence, 2)},
-            ">=0.50 real-flow / >=0.35 proxy",
+            ">=0.60 real-flow / >=0.40 proxy (v3.25)",
             hard=requires_real_flow,
         ),
         _gate(
             "mtf_alignment",
-            bool(report.get("mtf_aligned")) or htf_exception,
-            {"mtf_aligned": report.get("mtf_aligned"), "htf_exception": htf_exception},
-            "MTF aligned (or reversal+CHoCH exception with conf>=80)",
+            bool(report.get("mtf_aligned")),
+            {"mtf_aligned": report.get("mtf_aligned"), "htf_exception": False},
+            "MTF aligned (exception retired in v3.25)",
         ),
         _gate(
             "footprint_confirmation",
             footprint_ok,
             footprint_detail,
-            "delta/large-flow not strongly opposing",
+            "delta/large-flow AFFIRMATIVE in trade direction",
             hard=footprint_is_real,
+        ),
+        _gate(
+            "session_killzone",
+            in_killzone(_now),
+            _now.strftime("%H:%M UTC %a"),
+            "London AM 07-10 or London/NY overlap 12-16 UTC",
+        ),
+        _gate(
+            "confirmation_close",
+            _conf_close[0],
+            _conf_close[1],
+            "last closed candle decisive in trade direction",
+        ),
+        _gate(
+            "trend_efficiency",
+            _er >= 0.25,
+            round(_er, 3),
+            ">=0.25 Kaufman ER(100)",
+        ),
+        _gate(
+            "volatility_band",
+            _vol_ok,
+            round(_vol_atr, 5),
+            f"ATR% within {VOLATILITY_BANDS.get(str(market).lower(), DEFAULT_BAND)}",
         ),
     ]
     failed_hard = [item for item in gates if item["hard"] and not item["passed"]]
@@ -238,7 +278,7 @@ def apply_strict_decision(
         status = "reject"
 
     if status == "actionable":
-        strong = grade in ("A+", "A") and confluence >= 80 and probability >= 80 and rr >= 2.5
+        strong = grade == "A+" and confluence >= 85 and probability >= 85 and rr >= 3.0
         if direction == "long":
             action_label = "STRONG_LONG" if strong else "LONG"
         else:

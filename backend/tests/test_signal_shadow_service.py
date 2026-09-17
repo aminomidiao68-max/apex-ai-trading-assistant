@@ -86,7 +86,7 @@ def test_shadow_capture_never_routes_and_panel_is_insufficient(tmp_path):
     after = service.panel(1, minimum_required_resolved=30)
     assert after.pending_outcomes == 0 and after.resolved_outcomes == 1
     assert service.panel(2).total_observations == 0
-    assert db.schema_version() == LATEST_SCHEMA_VERSION == 23
+    assert db.schema_version() == LATEST_SCHEMA_VERSION == 24
 
 
 def test_shadow_diagnostics_verify_evidence_and_report_stale_blockers(tmp_path):

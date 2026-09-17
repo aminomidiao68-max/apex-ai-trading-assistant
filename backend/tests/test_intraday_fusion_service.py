@@ -1,4 +1,8 @@
+from datetime import datetime, timezone
+
 from app.services.intraday_fusion_service import IntradayFusionService
+
+NOW_UTC = datetime(2026, 9, 16, 13, 0, tzinfo=timezone.utc)  # Wed, in killzone
 
 
 def frame(tf, side, status, real=True, pressure=None, quality=90, regime="trending"):
@@ -35,7 +39,7 @@ def test_precision_fusion_requires_all_causal_gates():
         frame("1h", "long", "actionable"),
         frame("4h", "long", "actionable"),
     ]
-    result = service.fuse("BTCUSDT", "crypto", frames)
+    result = service.fuse("BTCUSDT", "crypto", frames, now_utc=NOW_UTC)
     assert result["status"] == "ACTIONABLE_CANDIDATE"
     assert result["action_label"] == "LONG"
     assert result["side"] == "long"
@@ -55,7 +59,7 @@ def test_context_or_trigger_conflict_forces_no_trade_or_watch():
         frame("1h", "long", "actionable"),
         frame("4h", "short", "actionable"),
     ]
-    result = service.fuse("BTCUSDT", "crypto", conflict)
+    result = service.fuse("BTCUSDT", "crypto", conflict, now_utc=NOW_UTC)
     assert result["status"] == "NO_TRADE"
     assert result["action_label"] == "NO_TRADE"
     assert "context_consensus" in result["failed_gates"]
@@ -71,7 +75,7 @@ def test_stale_frame_blocks_candidate_without_relaxing_other_gates():
         frame("4h", "long", "actionable"),
     ]
     frames[0]["report"]["frame_freshness"] = {"fresh": False, "age_seconds": 3600}
-    result = service.fuse("BTCUSDT", "crypto", frames)
+    result = service.fuse("BTCUSDT", "crypto", frames, now_utc=NOW_UTC)
     assert result["status"] != "ACTIONABLE_CANDIDATE"
     assert "frame_freshness" in result["failed_gates"]
     assert result["levels"] is None
@@ -85,9 +89,9 @@ def test_crypto_requires_real_flow_but_forex_proxy_is_honest():
         frame("1h", "long", "actionable", real=False),
         frame("4h", "long", "actionable", real=False),
     ]
-    crypto = service.fuse("BTCUSDT", "crypto", frames)
+    crypto = service.fuse("BTCUSDT", "crypto", frames, now_utc=NOW_UTC)
     assert crypto["status"] == "WATCH"
     assert "crypto_real_flow" in crypto["failed_gates"]
-    forex = service.fuse("XAUUSD", "forex", frames)
+    forex = service.fuse("XAUUSD", "forex", frames, now_utc=NOW_UTC)
     assert forex["status"] == "ACTIONABLE_CANDIDATE"
     assert all(item["is_real"] is False for item in forex["orderflow_evidence"])

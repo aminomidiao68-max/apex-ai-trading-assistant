@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
+
+from app.services.precision_window import in_killzone
 
 _REQUIRED = ("5m", "15m", "1h", "4h")
 
@@ -23,7 +26,8 @@ def _gate(name: str, passed: bool, actual: Any, required: str) -> dict:
 class IntradayFusionService:
     """Causal precision-first fusion. It can only downgrade frame decisions."""
 
-    def fuse(self, symbol: str, market: str, frames: list[dict]) -> dict:
+    def fuse(self, symbol: str, market: str, frames: list[dict], quota=None,
+             now_utc: datetime | None = None) -> dict:
         by_tf = {str(item.get("timeframe")): item.get("report") or {} for item in frames}
         available = sorted(tf for tf in _REQUIRED if tf in by_tf)
         context = [by_tf.get("1h", {}), by_tf.get("4h", {})]
@@ -58,7 +62,7 @@ class IntradayFusionService:
                 crypto_flow_ok = crypto_flow_ok and is_real and aligned
             flow_evidence.append({"timeframe": tf, "is_real": is_real, "pressure": pressure, "aligned": aligned})
         context_regimes = [str((item.get("market_regime") or {}).get("name") or "unknown") for item in context]
-        regime_ok = all(name not in {"choppy", "volatile", "insufficient_data"} for name in context_regimes)
+        regime_ok = all(name == "trending" for name in context_regimes)  # v3.25: trending-only context
         invalidations = [item.get("invalidation") or (item.get("levels") or {}).get("sl") for item in actionable_triggers]
         invalidation_ok = bool(actionable_triggers) and all(value is not None for value in invalidations)
         gates = [
@@ -67,16 +71,27 @@ class IntradayFusionService:
             _gate("trigger_actionable", bool(actionable_triggers), actionable_sides, ">=1 strict actionable trigger"),
             _gate("trigger_matches_context", bool(actionable_sides) and all(side == consensus_side for side in actionable_sides), actionable_sides, consensus_side),
             _gate("no_opposing_trigger", not opposing_trigger, trigger_sides, "no opposing 5m/15m evidence"),
-            _gate("frame_data_quality", all(qualities[tf] >= 78 for tf in _REQUIRED), qualities, ">=78 each frame"),
+            _gate("frame_data_quality", all(qualities[tf] >= 85 for tf in _REQUIRED), qualities, ">=85 each frame (v3.25)"),
             _gate("frame_freshness", freshness_ok, freshness, "latest completed bar within 2.5x timeframe"),
-            _gate("context_regime", regime_ok, context_regimes, "not choppy/volatile/insufficient"),
+            _gate("context_regime", regime_ok, context_regimes, "trending on 1h and 4h (v3.25)"),
+            _gate("session_killzone", in_killzone(now_utc), (now_utc or datetime.now()).strftime("%H:%M UTC"), "London AM / London-NY overlap UTC"),
+            _gate("trigger_unanimity", bool(actionable_triggers) and all(side == consensus_side for side in trigger_sides), trigger_sides, "5m and 15m both match consensus"),
+            _gate("weekly_quota", (quota is None) or quota.remaining(now_utc) > 0, None if quota is None else quota.remaining(now_utc), "<2 fused signals this ISO week"),
             _gate("crypto_real_flow", crypto_flow_ok, flow_evidence, "real aligned flow for actionable crypto triggers"),
             _gate("explicit_invalidation", invalidation_ok, invalidations, "every actionable trigger has invalidation"),
         ]
         failed = [item["name"] for item in gates if not item["passed"]]
+        quota_info = None
         if not failed:
             status = "ACTIONABLE_CANDIDATE"
             action = "LONG" if consensus_side == "long" else "SHORT"
+            if quota is not None:
+                consumed_ok, quota_info = quota.try_consume(symbol, now_utc)
+                if not consumed_ok:
+                    status = "WATCH"
+                    action = "WATCH"
+                    gates.append(_gate("weekly_quota_consumed", False, quota_info, "weekly scarcity governor (v3.25)"))
+                    failed.append("weekly_quota_consumed")
         elif consensus_side in {"long", "short"} and not opposing_trigger and len(available) >= 3:
             status = "WATCH"
             action = "WATCH"
@@ -114,6 +129,8 @@ class IntradayFusionService:
             "policy": "precision_first_intraday_v1",
             "status": status,
             "action_label": action,
+            "weekly_quota": quota_info if quota_info is not None else (
+                None if quota is None else {"remaining": quota.remaining(now_utc)}),
             "side": consensus_side if status == "ACTIONABLE_CANDIDATE" else "flat",
             "failed_gates": failed,
             "gates": gates,

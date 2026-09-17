@@ -16,7 +16,7 @@ from app.config import settings
 logger = logging.getLogger("apex.database")
 
 
-LATEST_SCHEMA_VERSION = 23
+LATEST_SCHEMA_VERSION = 24
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -450,6 +450,16 @@ class DatabaseManager:
                     """,
                     (23, "signal_shadow_engine_version_provenance_fix", datetime.now(timezone.utc).isoformat()),
                 )
+            if 24 not in applied:
+                self._apply_schema_v24(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (24, "weekly_signal_quota_governor", datetime.now(timezone.utc).isoformat()),
+                )
             conn.commit()
 
     def _apply_schema_v23(self, conn: ConnectionAdapter) -> None:
@@ -463,6 +473,24 @@ class DatabaseManager:
             SET engine_version = '3.24.0-pro-alpha71'
             WHERE engine_version = '3.7.0-signal-alpha50'
             """
+        )
+
+    def _apply_schema_v24(self, conn: ConnectionAdapter) -> None:
+        # v3.25 weekly scarcity governor: hard cap of fused actionable signals
+        # per ISO week per deployment (one row per symbol per week).
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS weekly_signal_quota (
+                id {self._id_column()},
+                week_key TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                consumed_at TEXT NOT NULL,
+                UNIQUE(week_key, symbol)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_weekly_quota_week ON weekly_signal_quota(week_key)"
         )
 
     def _id_column(self) -> str:

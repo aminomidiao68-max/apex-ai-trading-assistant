@@ -639,12 +639,19 @@ def test_market_quality_and_strict_decision_gates():
         "trending", "balanced", "volatile", "compressed", "choppy"
     }
 
+    from datetime import datetime as _dt, timezone as _tz
+    now_utc = _dt(2026, 9, 16, 13, 0, tzinfo=_tz.utc)  # v3.25: deterministic killzone time
+    last = candles[-1]  # v3.25: make the final closed candle decisive for a long
+    last["o"] = last["c"] - 0.6
+    last["l"] = min(last["l"], last["o"] - 0.1)
+    last["h"] = max(last["h"], last["c"] + 0.1)
+
     report = {
         "direction": "long",
-        "grade": "A",
-        "confluence": 82,
-        "probability": 85,  # v3.24 ultra-strict floor is 80
-        "rr": 2.5,
+        "grade": "A+",
+        "confluence": 88,
+        "probability": 88,  # v3.25 WEEKLY-GRADE floor is 85
+        "rr": 3.2,
         "mtf_aligned": True,  # v3.24 hard MTF gate
         "htf_bias": "bullish",
         "setup_type": "پولبک BOS به ناحیه OTE",
@@ -678,8 +685,9 @@ def test_market_quality_and_strict_decision_gates():
         orderflow_source="okx_swap_public",
         orderflow_confidence=0.92,
         orderflow_snapshot=real_flow,
+        now_utc=now_utc,
     )
-    assert strict["decision"]["status"] == "actionable"
+    assert strict["decision"]["status"] == "actionable", strict["decision"]["failed_gates"]
     assert strict["omega_compliant"] is True
     assert strict["action_label"] == "STRONG_LONG"
     assert strict["decision"]["probability_is_calibrated"] is False
@@ -704,6 +712,7 @@ def test_market_quality_and_strict_decision_gates():
         orderflow_source="okx_swap_public",
         orderflow_confidence=0.92,
         orderflow_snapshot=real_flow,
+        now_utc=now_utc,
     )
     assert downgraded["decision"]["status"] == "watch"
     assert downgraded["omega_compliant"] is False

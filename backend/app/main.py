@@ -191,6 +191,7 @@ from app.services.session_engine import evaluate_session
 from app.services.setup_state_engine import SetupStateEngine
 from app.services.signal_engine import SignalEngine
 from app.services.signal_shadow_service import SignalShadowError, SignalShadowService
+from app.services.signal_quota_service import WeeklySignalQuota
 from app.services.strict_decision_engine import apply_strict_decision
 from app.services.storage_service import StorageService
 from app.services.stored_research_service import StoredResearchError, StoredResearchService
@@ -314,6 +315,7 @@ orderflow_service = OrderFlowService(ttl_seconds=20)
 microstructure_service = MicrostructureService(ttl_seconds=45)
 intraday_fusion_service = IntradayFusionService()
 signal_shadow_service = SignalShadowService(storage.database)
+weekly_signal_quota = WeeklySignalQuota(storage.database)
 setup_state_engine = SetupStateEngine()
 
 
@@ -1780,7 +1782,7 @@ async def get_intraday_fusion(
             orderflow_snapshot=flow,
         )
         reports.append({"timeframe": tf, "report": report})
-    result = intraday_fusion_service.fuse(symbol, market_eff, reports)
+    result = intraday_fusion_service.fuse(symbol, market_eff, reports, quota=weekly_signal_quota)
     result["frame_source"] = "server_generated_completed_candles"
     result["completed_candle_enforced"] = True
     result["user_scoped_ai_used"] = False

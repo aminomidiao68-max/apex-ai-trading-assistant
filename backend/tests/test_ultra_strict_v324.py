@@ -16,18 +16,19 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 def test_omega_thresholds_tightened():
     from app.services import smc_engine
 
-    assert smc_engine.OMEGA_MIN_RR == 2.5
-    assert smc_engine.OMEGA_MIN_CONF == 75
-    assert smc_engine.OMEGA_MIN_PROB == 80
-    assert smc_engine.OMEGA_MAX_DAILY_TRADES == 3
+    assert smc_engine.OMEGA_MIN_RR == 3.0
+    assert smc_engine.OMEGA_MIN_CONF == 82
+    assert smc_engine.OMEGA_MIN_PROB == 85
+    assert smc_engine.OMEGA_MAX_DAILY_TRADES == 1
+    assert smc_engine.OMEGA_MAX_WEEKLY_TRADES == 2
     f = smc_engine._omega_compliant
-    assert f(75, 80, 2.5, True, True, True)[0] is True
-    assert f(74, 80, 2.5, True, True, True)[0] is False   # conf floor
-    assert f(75, 79, 2.5, True, True, True)[0] is False   # prob floor
-    assert f(75, 80, 2.4, True, True, True)[0] is False   # rr floor
-    assert f(75, 80, 2.5, False, True, True)[0] is False  # mtf
-    assert f(75, 80, 2.5, True, False, True)[0] is False  # killzone
-    assert f(75, 80, 2.5, True, True, False)[0] is False  # volume
+    assert f(82, 85, 3.0, True, True, True)[0] is True
+    assert f(81, 85, 3.0, True, True, True)[0] is False   # conf floor
+    assert f(82, 84, 3.0, True, True, True)[0] is False   # prob floor
+    assert f(82, 85, 2.9, True, True, True)[0] is False   # rr floor
+    assert f(82, 85, 3.0, False, True, True)[0] is False  # mtf
+    assert f(82, 85, 3.0, True, False, True)[0] is False  # killzone
+    assert f(82, 85, 3.0, True, True, False)[0] is False  # volume
 
 
 # ------------------------------------------------------------- strict engine
@@ -57,10 +58,14 @@ def _report(**over):
     return base
 
 
+NOW_UTC = __import__("datetime").datetime(2026, 9, 16, 13, 0,
+                                          tzinfo=__import__("datetime").timezone.utc)  # Wed, in killzone
+
+
 def _strict(report, candles=None, flow=None, timeframe="4h"):
     from app.services.strict_decision_engine import apply_strict_decision
     return apply_strict_decision(report, candles or _candles(), "crypto", timeframe,
-                                 orderflow_snapshot=flow)
+                                 orderflow_snapshot=flow, now_utc=NOW_UTC)
 
 
 def _gates(dec):
@@ -72,20 +77,22 @@ def test_grade_b_no_longer_actionable():
     assert "grade" in dec["decision"]["failed_gates"]
 
 
-def test_probability_floor_is_80():
-    dec = _strict(_report(probability=79))
+def test_probability_floor_is_85():
+    dec = _strict(_report(probability=84))
     g = _gates(dec)["estimated_probability"]
-    assert not g["passed"] and g["required"] == ">=80"
+    assert not g["passed"] and g["required"] == ">=85"
 
 
-def test_rr_floor_is_250():
-    dec = _strict(_report(rr=2.4))
-    assert not _gates(dec)["risk_reward"]["passed"]
+def test_rr_floor_is_300():
+    dec = _strict(_report(rr=2.9))
+    g = _gates(dec)["risk_reward"]
+    assert not g["passed"] and g["required"] == ">=3.0"
 
 
-def test_confluence_floor_is_75():
-    dec = _strict(_report(confluence=74))
-    assert not _gates(dec)["confluence"]["passed"]
+def test_confluence_floor_is_82():
+    dec = _strict(_report(confluence=81))
+    g = _gates(dec)["confluence"]
+    assert not g["passed"] and g["required"] == ">=82"
 
 
 def test_mtf_alignment_hard_gate():
