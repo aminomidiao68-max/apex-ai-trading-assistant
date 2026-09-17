@@ -1479,7 +1479,7 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
         "omega_rule":{
             "min_rr":OMEGA_MIN_RR,"min_conf":OMEGA_MIN_CONF,"min_prob":OMEGA_MIN_PROB,
             "max_risk_pct":1.0,"max_daily_trades":OMEGA_MAX_DAILY_TRADES,
-            "description":"قانون ۱۰۰ اُمگا: حداکثر ۱% ریسک در هر ترید، حداقل RR 1:2، ۱۰۰ ترید برای قضاوت، بدون مارتینگل."
+            "description":"قانون ۱۰۰ اُمگا (فوق‌سخت‌گیر v3.24): حداکثر ۱% ریسک، حداقل RR 1:2.5، کانفلونس ≥۷۵، احتمال ≥۸۰، حداکثر ۳ ترید روزانه، ۱۰۰ ترید برای قضاوت، بدون مارتینگل. ندانستن = معامله نکردن."
         },
         "trend_strength":trend_str,"vwap":vwap,"watching":watching,
         "levels":{"entry":entry,"sl":sl,"tp":tp2},"tp1":tp1,"tp2":tp2,"tp3":tp3,"invalidation":inv,
@@ -1862,10 +1862,10 @@ def _divergence(cs, indicator_vals, window=20):
 #   * Require ≥ 50 confluence for actionable signals
 #   * After 3 consecutive losses: recommend half-size
 # ====================================================================
-OMEGA_MIN_RR = 2.0
-OMEGA_MIN_CONF = 65  # Ultra-Strict: Require high institutional confluence
-OMEGA_MIN_PROB = 75  # Ultra-Strict: Require high success probability
-OMEGA_MAX_DAILY_TRADES = 6
+OMEGA_MIN_RR = 2.5   # v3.24 ULTRA-STRICT: gross RR floor (was 2.0) — fee margin
+OMEGA_MIN_CONF = 75  # v3.24 ULTRA-STRICT: institutional confluence floor (was 65)
+OMEGA_MIN_PROB = 80  # v3.24 ULTRA-STRICT: model probability floor (was 75)
+OMEGA_MAX_DAILY_TRADES = 3  # v3.24: fewer, better (was 6)
 
 def _omega_compliant(conf, prob, rr, mtf_aligned=True, session_killzone=True, volume_ok=True):
     """Return (actionable, reasons_list) per Omega-100 Ultra-Strict rule."""

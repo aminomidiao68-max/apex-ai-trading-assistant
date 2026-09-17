@@ -643,8 +643,9 @@ def test_market_quality_and_strict_decision_gates():
         "direction": "long",
         "grade": "A",
         "confluence": 82,
-        "probability": 79,
+        "probability": 85,  # v3.24 ultra-strict floor is 80
         "rr": 2.5,
+        "mtf_aligned": True,  # v3.24 hard MTF gate
         "htf_bias": "bullish",
         "setup_type": "پولبک BOS به ناحیه OTE",
         "events": [{"kind": "BOS", "dir": "bullish"}],

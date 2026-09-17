@@ -48,7 +48,7 @@ def apply_strict_decision(
     )
     expected_htf = "bullish" if direction == "long" else "bearish" if direction == "short" else None
     htf_aligned = expected_htf is not None and htf_bias == expected_htf
-    htf_exception = reversal_setup and has_choch and confluence >= 75
+    htf_exception = reversal_setup and has_choch and confluence >= 80
     high_timeframe = timeframe in ("4h", "1d")
 
     flow = orderflow_snapshot or report.get("orderflow") or {}
@@ -65,22 +65,43 @@ def apply_strict_decision(
     depth_conflict = False
     if depth_imbalance is not None and flow_expected:
         depth_value = float(depth_imbalance)
-        depth_conflict = (flow_expected == "buy" and depth_value < -0.18) or (
-            flow_expected == "sell" and depth_value > 0.18
+        depth_conflict = (flow_expected == "buy" and depth_value < -0.12) or (
+            flow_expected == "sell" and depth_value > 0.12
         )
     funding_crowded = False
     if funding_rate is not None and flow_expected:
         funding_value = float(funding_rate)
-        funding_crowded = (flow_expected == "buy" and funding_value > 0.0015) or (
-            flow_expected == "sell" and funding_value < -0.0015
+        funding_crowded = (flow_expected == "buy" and funding_value > 0.0010) or (
+            flow_expected == "sell" and funding_value < -0.0010
         )
+
+    # v3.24: deterministic footprint/micro confirmation when REAL micro data exists
+    micro = flow.get("micro") or report.get("microstructure") or {}
+    footprint_is_real = bool(micro.get("is_real")) or bool((micro.get("order_flow") or {}).get("is_real"))
+    try:
+        _delta = float(micro.get("delta") if micro.get("delta") is not None
+                       else (micro.get("order_flow") or {}).get("delta") or 0.0)
+    except (TypeError, ValueError):
+        _delta = 0.0
+    try:
+        _lti = float(micro.get("large_trade_imbalance") or 0.0)
+    except (TypeError, ValueError):
+        _lti = 0.0
+    footprint_ok = True
+    if footprint_is_real and direction in ("long", "short"):
+        if direction == "long":
+            footprint_ok = _delta > -0.15 and _lti > -0.30
+        else:
+            footprint_ok = _delta < 0.15 and _lti < 0.30
+    footprint_detail = {"is_real": footprint_is_real, "delta": round(_delta, 4),
+                        "large_trade_imbalance": round(_lti, 4), "expected": flow_expected}
 
     negative_factors = [
         item for item in (report.get("confluence_factors") or [])
         if float(item.get("points") or 0) < 0
     ]
     negative_points = abs(sum(float(item.get("points") or 0) for item in negative_factors))
-    conflict_limit = 10.0 if grade in ("A+", "A") else 7.0
+    conflict_limit = 5.0 if grade == "A+" else 3.0
 
     # v3.20 trade-cost/geometry gate: a plan whose round-trip fee exceeds 0.30R
     # or whose stop sits inside the ATR noise band is untradeable regardless of
@@ -111,13 +132,13 @@ def apply_strict_decision(
         cost["projection"] = cost_projection
 
     gates = [
-        _gate("data_quality", quality["score"] >= 78, quality["score"], ">=78"),
+        _gate("data_quality", quality["score"] >= 85, quality["score"], ">=85"),
         _gate("data_integrity", quality["tradable"], quality["tradable"], "true"),
         _gate("direction", direction in ("long", "short"), direction, "long|short"),
-        _gate("grade", grade in ("A+", "A", "B"), grade, "A+|A|B"),
-        _gate("confluence", confluence >= 65, confluence, ">=65"),
-        _gate("estimated_probability", probability >= 68, probability, ">=68"),
-        _gate("risk_reward", rr >= 2.0, round(rr, 2), ">=2.0"),
+        _gate("grade", grade in ("A+", "A"), grade, "A+|A"),
+        _gate("confluence", confluence >= 75, confluence, ">=75"),
+        _gate("estimated_probability", probability >= 80, probability, ">=80"),
+        _gate("risk_reward", rr >= 2.5, round(rr, 2), ">=2.5"),
         _gate(
             "trade_cost",
             (not cost["applicable"]) or cost["passed"],
@@ -138,7 +159,7 @@ def apply_strict_decision(
             {"htf": htf_bias, "aligned": htf_aligned, "reversal_exception": htf_exception},
             "aligned or confirmed reversal",
         ),
-        _gate("market_not_choppy", regime["name"] != "choppy" or confluence >= 78, regime["name"], "not choppy"),
+        _gate("market_not_choppy", regime["name"] != "choppy" or confluence >= 85, regime["name"], "not choppy"),
         _gate("conflict_budget", negative_points <= conflict_limit, round(negative_points, 1), f"<={conflict_limit}"),
         _gate("trade_plan", bool(report.get("plan_lines")), len(report.get("plan_lines") or []), ">0"),
         _gate(
@@ -162,9 +183,9 @@ def apply_strict_decision(
         ),
         _gate(
             "execution_spread",
-            not orderflow_is_real or (spread_bps is not None and float(spread_bps) <= 8.0),
+            not orderflow_is_real or (spread_bps is not None and float(spread_bps) <= 5.0),
             spread_bps,
-            "<=8 bps",
+            "<=5 bps",
             hard=orderflow_is_real,
         ),
         _gate(
@@ -178,15 +199,27 @@ def apply_strict_decision(
             "funding_crowding",
             not funding_crowded,
             funding_rate,
-            "not extremely crowded",
-            hard=False,
+            "not crowded (|funding|<=0.0010 against side)",
         ),
         _gate(
             "orderflow_evidence",
-            orderflow_confidence >= 0.35,
+            orderflow_confidence >= (0.50 if requires_real_flow else 0.35),
             {"source": orderflow_source, "confidence": round(orderflow_confidence, 2)},
-            ">=0.35",
-            hard=False,
+            ">=0.50 real-flow / >=0.35 proxy",
+            hard=requires_real_flow,
+        ),
+        _gate(
+            "mtf_alignment",
+            bool(report.get("mtf_aligned")) or htf_exception,
+            {"mtf_aligned": report.get("mtf_aligned"), "htf_exception": htf_exception},
+            "MTF aligned (or reversal+CHoCH exception with conf>=80)",
+        ),
+        _gate(
+            "footprint_confirmation",
+            footprint_ok,
+            footprint_detail,
+            "delta/large-flow not strongly opposing",
+            hard=footprint_is_real,
         ),
     ]
     failed_hard = [item for item in gates if item["hard"] and not item["passed"]]
@@ -205,7 +238,7 @@ def apply_strict_decision(
         status = "reject"
 
     if status == "actionable":
-        strong = grade in ("A+", "A") and confluence >= 75 and probability >= 75 and rr >= 2.2
+        strong = grade in ("A+", "A") and confluence >= 80 and probability >= 80 and rr >= 2.5
         if direction == "long":
             action_label = "STRONG_LONG" if strong else "LONG"
         else:
