@@ -134,3 +134,84 @@ def test_strict_engine_publishes_exit_management_advice():
 
     src = inspect.getsource(sde.apply_strict_decision)
     assert '"exit_management"' in src and "scale_50pct_at_1r_then_breakeven" in src
+
+
+# ------------------------------------------------- v3.23: scale_05r_be model
+def items_long5(*tail):
+    return [bar(0, 100, 101, 99.5, 100), bar(60, 100.2, 100.6, 99.8, 100.2), *tail]
+
+
+def sim05(tail, **kw):
+    defaults = dict(entry_index=1, direction="long", entry=100.0, sl=95.0,
+                    target=110.0, exit_horizon=10, fee_pct=0.0, leg1_at=0.5)
+    defaults.update(kw)
+    return simulate_scale(items_long5(*tail), **defaults)
+
+
+def test_leg1_at_half_r_then_target():
+    out = sim05([bar(120, 100.2, 102.6, 100.1, 102.5),   # +0.5R touched (102.5)
+                 bar(180, 102.5, 110.2, 102.0, 110.0)])  # target
+    assert out["exit_reason"] == "scale_target"
+    assert abs(out["r"] - (0.5 * 0.5 + 0.5 * 2.0)) < 1e-9
+    assert out["legs"][0]["price"] == 102.5 and out["legs"][0]["r"] == 0.5
+
+
+def test_leg1_at_half_r_then_breakeven_small_win():
+    out = sim05([bar(120, 100.2, 102.6, 100.1, 102.5),
+                 bar(180, 102.0, 102.4, 99.8, 100.0)])
+    assert out["exit_reason"] == "scale_be"
+    assert abs(out["r"] - 0.25) < 1e-9  # half of +0.5R banked
+
+
+def test_leg1_at_half_r_sl_still_wins_ambiguous_bar():
+    out = sim05([bar(120, 100.0, 102.6, 94.0, 102.0)])  # SL and +0.5R same bar
+    assert out["exit_reason"] == "sl" and out["r"] == -1.0
+
+
+def test_leg1_capped_at_target_when_target_below_leg1():
+    # target +0.3R < leg1_at 0.5R → first leg IS the target
+    out = sim05([bar(120, 100.2, 101.6, 100.1, 101.5),
+                 bar(180, 101.5, 101.7, 101.2, 101.5)], target=101.5)
+    assert out["legs"][0]["r"] == 0.3
+    assert out["exit_reason"] in ("scale_target", "scale_timeout")
+
+
+def test_simulate_plan_dispatches_scale_05r_be():
+    items = items_long5(bar(120, 100.2, 102.6, 100.1, 102.5),
+                        bar(180, 102.5, 110.2, 102.0, 110.0))
+    row = sbs._simulate_plan(items, 0, "long", 100.0, 95.0, 110.0,
+                             exit_horizon=10, fee_pct=0.0, exit_model="scale_05r_be")
+    assert row and row["exit_reason"] == "scale_target"
+    assert abs(row["r"] - 1.25) < 1e-9
+
+
+def test_session_bucket_utc_hours():
+    import datetime as dt
+    from app.services.strategy_backtest_service import _session_bucket
+
+    def ms(h):
+        return dt.datetime(2026, 1, 5, h, 0, tzinfo=dt.timezone.utc).timestamp() * 1000.0
+
+    def sec(h):
+        return dt.datetime(2026, 1, 5, h, 0, tzinfo=dt.timezone.utc).timestamp()
+
+    assert _session_bucket(ms(3)) == "asia"
+    assert _session_bucket(ms(8)) == "london"
+    assert _session_bucket(ms(13)) == "new_york"
+    assert _session_bucket(ms(20)) == "late_utc"
+    # OKX deep-history candles carry epoch SECONDS (audit found the ms-only
+    # version bucketing everything into a 1970 hour) — both units must work
+    assert _session_bucket(sec(3)) == "asia"
+    assert _session_bucket(sec(8)) == "london"
+    assert _session_bucket(sec(13)) == "new_york"
+    assert _session_bucket(sec(20)) == "late_utc"
+    assert _session_bucket(None) == "unknown"
+
+
+def test_endpoint_pattern_accepts_scale_05r_be():
+    from app import main as app_main
+
+    for fn_name in ("backtest_prime_setups", "backtest_classic_strategies"):
+        fn = getattr(app_main, fn_name)
+        src = inspect.getsource(fn)
+        assert "scale_05r_be" in src  # pattern includes the v3.23 model

@@ -52,6 +52,29 @@ DISCLAIMER_FA = (
 )
 
 
+def _session_bucket(ts) -> str:
+    """Deterministic UTC session bucket of a signal bar (v3.23 measurement).
+
+    Accepts epoch seconds (OKX deep-history candles) or milliseconds (live
+    cache path) — unit detected by magnitude.
+    """
+    try:
+        import datetime as _dt
+        ts = float(ts)
+        if ts > 1e12:  # milliseconds
+            ts /= 1000.0
+        h = _dt.datetime.fromtimestamp(ts, _dt.timezone.utc).hour
+    except Exception:
+        return "unknown"
+    if 0 <= h < 7:
+        return "asia"
+    if 7 <= h < 12:
+        return "london"
+    if 12 <= h < 17:
+        return "new_york"
+    return "late_utc"
+
+
 def _simulate_plan(items: list[dict], i: int, direction: str, entry: float,
                    sl: float, target: float | None, exit_horizon: int,
                    fee_pct: float, exit_model: str = "single") -> dict | None:
@@ -85,10 +108,11 @@ def _simulate_plan(items: list[dict], i: int, direction: str, entry: float,
     if entry_index is None:
         return {"triggered": False}
 
-    if exit_model == "scale_1r_be":
+    if exit_model in ("scale_1r_be", "scale_05r_be"):
         from app.services.scale_exit import simulate_scale
+        leg1_at = 1.0 if exit_model == "scale_1r_be" else 0.5
         scaled = simulate_scale(items, entry_index, direction, entry, sl, target,
-                                max(1, i + exit_horizon - entry_index), fee_pct)
+                                max(1, i + exit_horizon - entry_index), fee_pct, leg1_at)
         if scaled is None:
             return None
         return {
@@ -342,6 +366,7 @@ def run(
                 continue
             row = {k: v for k, v in outcome.items() if k != "triggered"}
             row["sl_projected"] = sl_was_projected
+            row["session"] = _session_bucket(row.get("time"))
             row["strategy_id"] = sid
             row["name_fa"] = names[sid]
             row["family"] = families[sid]
@@ -502,6 +527,8 @@ def run(
         "signals_not_triggered": signals_not_triggered,
         "all": _stats(trades),
         "sl_projected": _stats([t for t in trades if t.get("sl_projected")]),
+        "by_session": {name: _stats([t for t in trades if t.get("session") == name])
+                       for name in ("asia", "london", "new_york", "late_utc")},
         "by_quality_bucket": by_bucket,
         "by_direction": by_direction,
         "gates": gate_section,

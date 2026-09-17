@@ -175,10 +175,11 @@ def _simulate(items: list[dict], i: int, report: dict, exit_horizon: int, fee_pc
     if entry_index is None:
         return {"triggered": False, "index": i}
 
-    if exit_model == "scale_1r_be":
+    if exit_model in ("scale_1r_be", "scale_05r_be"):
         from app.services.scale_exit import simulate_scale
+        leg1_at = 1.0 if exit_model == "scale_1r_be" else 0.5
         scaled = simulate_scale(items, entry_index, direction, entry, sl, tp,
-                                max(1, i + exit_horizon - entry_index), fee_pct)
+                                max(1, i + exit_horizon - entry_index), fee_pct, leg1_at)
         if scaled is None:
             return None
         base = {

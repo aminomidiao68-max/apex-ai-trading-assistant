@@ -38,8 +38,13 @@ def simulate_scale(
     target: float,
     exit_horizon: int,
     fee_pct: float,
+    leg1_at: float = 1.0,
 ) -> dict | None:
     """Simulate one scaled trade already triggered at `entry_index`.
+
+    ``leg1_at`` = R-multiple of the first take-profit (1.0 for scale_1r_be,
+    0.5 for scale_05r_be — v3.23). Lower leg1 converts more trades into small
+    wins (higher win rate, smaller average win). Same conservative fills.
 
     Returns a trade row compatible with the existing books:
     r = net R after fees (win when r > 0), plus `legs` detail.
@@ -51,7 +56,7 @@ def simulate_scale(
     target_r = (target - entry) * sign / risk
     if target_r <= 0:
         return None
-    leg1_r = min(1.0, target_r)                 # first take-profit at +1R (or the target when < 1R)
+    leg1_r = min(float(leg1_at), target_r)      # first take-profit at +leg1_at R (or the target when closer)
     p1 = entry + sign * leg1_r * risk
     last_j = min(entry_index + exit_horizon, len(items) - 1)
 

@@ -3807,7 +3807,7 @@ async def backtest_prime_setups(
     candles: int = Query(default=1000, ge=200, le=2000),
     fee: float = Query(default=0.0, ge=0.0, le=0.25),
     cost_gate: bool = Query(default=True),
-    exit_model: str = Query(default="scale_1r_be", pattern="^(single|scale_1r_be)$"),
+    exit_model: str = Query(default="scale_1r_be", pattern="^(single|scale_1r_be|scale_05r_be)$"),
     sl_project: bool = Query(default=False),
     force: bool = Query(default=False),
 ):
@@ -3878,7 +3878,7 @@ async def backtest_classic_strategies(
     min_quality: int = Query(default=55, ge=0, le=100),
     fee: float = Query(default=0.0, ge=0.0, le=0.25),
     cost_gate: bool = Query(default=True),
-    exit_model: str = Query(default="scale_1r_be", pattern="^(single|scale_1r_be)$"),
+    exit_model: str = Query(default="scale_1r_be", pattern="^(single|scale_1r_be|scale_05r_be)$"),
     sl_project: bool = Query(default=False),
     force: bool = Query(default=False),
 ):
