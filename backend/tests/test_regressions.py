@@ -923,7 +923,7 @@ def test_rc_health_readiness_metrics_and_request_id_contract(monkeypatch):
     assert health.headers["x-frame-options"] == "DENY"
     assert health.headers["content-security-policy"].startswith("default-src 'none'")
     assert int(health.headers["x-response-time-ms"]) >= 0
-    assert health.json()["version"] == main.settings.app_version
+    assert health.json()["version"] == main.settings.engine_version
 
     invalid = client.get("/health", headers={"X-Request-ID": "bad id"})
     assert invalid.headers["x-request-id"] != "bad id"

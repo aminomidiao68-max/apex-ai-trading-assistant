@@ -16,7 +16,7 @@ from app.config import settings
 logger = logging.getLogger("apex.database")
 
 
-LATEST_SCHEMA_VERSION = 22
+LATEST_SCHEMA_VERSION = 23
 _INSERT_ID_TABLES = {"users", "signals", "trades"}
 _INSERT_TABLE_RE = re.compile(r"^\s*INSERT\s+INTO\s+(?:[A-Za-z_][\w]*\.)?([A-Za-z_][\w]*)", re.I)
 
@@ -440,7 +440,30 @@ class DatabaseManager:
                     """,
                     (22, "signal_shadow_engine_version_cohort", datetime.now(timezone.utc).isoformat()),
                 )
+            if 23 not in applied:
+                self._apply_schema_v23(conn)
+                conn.execute(
+                    """
+                    INSERT INTO schema_migrations (version, name, applied_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(version) DO NOTHING
+                    """,
+                    (23, "signal_shadow_engine_version_provenance_fix", datetime.now(timezone.utc).isoformat()),
+                )
             conn.commit()
+
+    def _apply_schema_v23(self, conn: ConnectionAdapter) -> None:
+        # Provenance fix: engine_version only exists since v22, so ANY non-NULL
+        # value was written by >= v3.24.1 code. Rows stamped '3.7.0-signal-alpha50'
+        # were mis-stamped through a stale 3.7-era APP_VERSION env var on the
+        # staging dashboard while the real engine already was v3.24.
+        conn.execute(
+            """
+            UPDATE signal_shadow_observations
+            SET engine_version = '3.24.0-pro-alpha71'
+            WHERE engine_version = '3.7.0-signal-alpha50'
+            """
+        )
 
     def _id_column(self) -> str:
         return "BIGSERIAL PRIMARY KEY" if self.backend == "postgresql" else "INTEGER PRIMARY KEY AUTOINCREMENT"

@@ -1328,6 +1328,7 @@ def health() -> dict:
         "status": "ok",
         "app": settings.app_name,
         "version": settings.app_version,
+        "engine": settings.engine_version,
         "env": settings.app_env,
     }
 

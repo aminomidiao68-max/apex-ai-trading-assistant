@@ -196,7 +196,7 @@ class SignalShadowService:
                     None,
                     None,
                     _RESOLUTION_POLICY,
-                    str(settings.app_version),
+                    str(settings.engine_version),
                 ),
             )
             conn.commit()
@@ -369,7 +369,7 @@ class SignalShadowService:
                 "FROM signal_shadow_observations WHERE user_id=?",
                 (user_id,),
             ).fetchall()
-        current_version = str(settings.app_version)
+        current_version = str(settings.engine_version)
         cur_rows = [row for row in rows if str(row["engine_version"] or "") == current_version]
         statuses = [str(row["fusion_status"]) for row in rows]
         pending = sum(1 for row in rows if row["outcome_status"] == "PENDING")

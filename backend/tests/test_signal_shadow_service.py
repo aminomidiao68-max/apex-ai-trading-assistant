@@ -86,7 +86,7 @@ def test_shadow_capture_never_routes_and_panel_is_insufficient(tmp_path):
     after = service.panel(1, minimum_required_resolved=30)
     assert after.pending_outcomes == 0 and after.resolved_outcomes == 1
     assert service.panel(2).total_observations == 0
-    assert db.schema_version() == LATEST_SCHEMA_VERSION == 22
+    assert db.schema_version() == LATEST_SCHEMA_VERSION == 23
 
 
 def test_shadow_diagnostics_verify_evidence_and_report_stale_blockers(tmp_path):
@@ -576,12 +576,12 @@ def test_engine_version_cohort_isolates_current_engine(tmp_path):
             "SELECT engine_version FROM signal_shadow_observations WHERE observation_id=?",
             (fresh.observation_id,),
         ).fetchone()
-    assert row["engine_version"] == str(settings.app_version)
+    assert row["engine_version"] == str(settings.engine_version)
 
     panel = service.panel(1, minimum_required_resolved=30)
     assert panel.total_observations == 2                # all-time view unchanged
     assert panel.observations_current_engine == 1       # cohort isolated
     assert panel.candidates_current_engine == 1
-    assert panel.current_engine_version == str(settings.app_version)
+    assert panel.current_engine_version == str(settings.engine_version)
     assert panel.research_ready_current_engine is False  # nowhere near 30 resolved
     assert panel.precision_claimed is False
