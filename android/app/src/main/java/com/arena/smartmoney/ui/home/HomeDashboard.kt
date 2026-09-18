@@ -173,7 +173,7 @@ fun HomeDashboard(
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                HomeModule.values().chunked(2).forEach { rowItems ->
+                for (rowItems in HomeModule.values().chunked(2)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         ModuleCard(
                             module = rowItems[0],
@@ -300,7 +300,7 @@ private fun ModuleDialog(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, top = 10.dp),
+                        .padding(PaddingValues(start = 10.dp, end = 10.dp, top = 10.dp)),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
