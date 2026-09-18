@@ -92,7 +92,7 @@ def test_rr_floor_is_350():
 def test_confluence_floor_is_85():
     dec = _strict(_report(confluence=84))
     g = _gates(dec)["confluence"]
-    assert not g["passed"] and g["required"] == ">=85"
+    assert not g["passed"] and g["required"].startswith(">=85")
 
 
 def test_mtf_alignment_hard_gate():

@@ -176,7 +176,8 @@ def test_fusion_blocks_symbol_in_loss_cooldown(tmp_path):
             "decision": {"side": "long", "status": status,
                          "orderflow": {"is_real": True, "pressure": "buy"}}}}
     frames = [frame("5m", "actionable"), frame("15m", "watch"),
-              frame("1h", "actionable"), frame("4h", "actionable")]
+              frame("1h", "actionable"), frame("4h", "actionable"),
+              frame("1d", "actionable")]
     result = IntradayFusionService().fuse("BTCUSDT", "crypto", frames,
                                           now_utc=NOW, loss_guard=svc)
     assert result["status"] != "ACTIONABLE_CANDIDATE"

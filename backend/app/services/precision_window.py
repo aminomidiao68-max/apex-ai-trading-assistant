@@ -37,6 +37,13 @@ def in_killzone(now_utc: datetime | None = None) -> bool:
     return any(start <= now.hour <= end for start, end in KILLZONE_UTC_WINDOWS)
 
 
+def is_liquidity_weekday(now_utc: datetime | None = None) -> bool:
+    """v3.28: Mon-Fri only. Weekend crypto liquidity is thin retail flow with
+    widened spreads and absent institutional participation; forex is closed."""
+    now = now_utc or datetime.now(timezone.utc)
+    return now.weekday() <= 4
+
+
 def week_key(now_utc: datetime | None = None) -> str:
     now = now_utc or datetime.now(timezone.utc)
     year, week, _ = now.isocalendar()

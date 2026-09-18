@@ -11,7 +11,42 @@ from app.services.precision_window import (
     efficiency_ratio,
     in_killzone,
     in_volatility_band,
+    is_liquidity_weekday,
 )
+
+# v3.28 evidence anti-inflation: positive points from the SAME evidence family
+# are capped so one event counted under three names cannot inflate confluence.
+_FAMILY_KEYS = (
+    ("structure", ("bos", "choch", "structure", "break")),
+    ("liquidity", ("liquidity", "sweep", "fvg", "gap")),
+    ("zone", ("ote", "zone", "demand", "supply", "s&d", "pullback")),
+    ("volume", ("volume", "vp", "profile")),
+    ("flow", ("orderflow", "delta", "footprint", "flow")),
+    ("htf", ("htf", "mtf", "bias")),
+    ("time", ("session", "killzone", "news")),
+)
+FAMILY_POSITIVE_CAP = 14.0
+
+
+def _evidence_family(name: str) -> str:
+    low = str(name).lower()
+    for family, keys in _FAMILY_KEYS:
+        if any(key in low for key in keys):
+            return family
+    return "other"
+
+
+def evidence_inflation_points(factors: list[dict]) -> float:
+    sums: dict[str, float] = {}
+    for item in factors:
+        points = float(item.get("points") or 0)
+        if points > 0:
+            sums[_evidence_family(item.get("name"))] = (
+                sums.get(_evidence_family(item.get("name")), 0.0) + points
+            )
+    raw = sum(sums.values())
+    capped = sum(min(value, FAMILY_POSITIVE_CAP) for value in sums.values())
+    return max(0.0, raw - capped)
 
 from app.services.market_quality_engine import assess_data_quality, classify_market_regime
 from app.services.trade_cost_gate import evaluate as evaluate_trade_cost
@@ -147,6 +182,8 @@ def apply_strict_decision(
         )
         cost["projection"] = cost_projection
 
+    _inflation = evidence_inflation_points(report.get("confluence_factors") or [])
+    confluence_eff = confluence - _inflation
     _conf_close = confirmation_close_ok(candles, direction)
     _er = efficiency_ratio(candles)
     _vol_ok, _vol_atr = in_volatility_band(candles, market)
@@ -187,7 +224,7 @@ def apply_strict_decision(
         _gate("data_integrity", quality["tradable"], quality["tradable"], "true"),
         _gate("direction", direction in ("long", "short"), direction, "long|short"),
         _gate("grade", grade == "A+", grade, "A+ only (v3.25)"),
-        _gate("confluence", confluence >= 85, confluence, ">=85"),
+        _gate("confluence", confluence_eff >= 85, round(confluence_eff, 1), ">=85 after family-cap (v3.28)"),
         _gate("estimated_probability", probability >= 88, probability, ">=88"),
         _gate("risk_reward", rr >= 3.5, round(rr, 2), ">=3.5"),
         _gate(
@@ -271,6 +308,12 @@ def apply_strict_decision(
             footprint_detail,
             "delta/large-flow AFFIRMATIVE in trade direction",
             hard=footprint_is_real,
+        ),
+        _gate(
+            "weekday_liquidity",
+            is_liquidity_weekday(_now),
+            _now.strftime("%a"),
+            "Mon-Fri only (v3.28)",
         ),
         _gate(
             "session_killzone",
@@ -392,6 +435,8 @@ def apply_strict_decision(
         },
         "gates": gates,
         "negative_evidence_points": round(negative_points, 1),
+        "confluence_effective": round(confluence_eff, 1),
+        "evidence_inflation_points": round(_inflation, 1),
         "probability_is_calibrated": False,
         "probability_label": "model_estimate_not_calibrated",
         "no_trade_reason": failed_names[0] if failed_names else None,

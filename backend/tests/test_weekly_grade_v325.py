@@ -79,7 +79,8 @@ def _frame(tf, side, status, quality=92, regime="trending"):
 
 def _fusion_frames(**over):
     frames = [_frame("5m", "long", "actionable"), _frame("15m", "long", "watch"),
-              _frame("1h", "long", "actionable"), _frame("4h", "long", "actionable")]
+              _frame("1h", "long", "actionable"), _frame("4h", "long", "actionable"),
+              _frame("1d", "long", "actionable")]
     for tf, patch in over.items():
         item = next(f for f in frames if f["timeframe"] == tf)
         item["report"].update(patch)

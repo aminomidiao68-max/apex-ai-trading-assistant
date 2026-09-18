@@ -1749,7 +1749,7 @@ async def get_intraday_fusion(
 
     symbol = symbol.upper()
     market_eff = _auto_market(symbol, market or None)
-    timeframes = ("5m", "15m", "1h", "4h")
+    timeframes = ("5m", "15m", "1h", "4h", "1d")  # v3.28: daily bias context
     try:
         raw_frames = await asyncio.gather(
             *(fetch_live_candles(symbol=symbol, market=market_eff, timeframe=tf) for tf in timeframes)
@@ -1763,7 +1763,7 @@ async def get_intraday_fusion(
     if any(len(items_by_tf[tf]) < 50 for tf in timeframes):
         raise HTTPException(status_code=422, detail={"code": "fusion_insufficient_frame_data"})
     initial = {tf: analyze(items_by_tf[tf], symbol=symbol, timeframe=tf) for tf in timeframes}
-    higher = {"5m": "15m", "15m": "1h", "1h": "4h", "4h": None}
+    higher = {"5m": "15m", "15m": "1h", "1h": "4h", "4h": "1d", "1d": None}
     reports = []
     for tf in timeframes:
         htf = higher[tf]

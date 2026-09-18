@@ -38,6 +38,7 @@ def test_precision_fusion_requires_all_causal_gates():
         frame("15m", "long", "watch"),
         frame("1h", "long", "actionable"),
         frame("4h", "long", "actionable"),
+        frame("1d", "long", "actionable"),
     ]
     result = service.fuse("BTCUSDT", "crypto", frames, now_utc=NOW_UTC)
     assert result["status"] == "ACTIONABLE_CANDIDATE"
@@ -58,6 +59,7 @@ def test_context_or_trigger_conflict_forces_no_trade_or_watch():
         frame("15m", "long", "watch"),
         frame("1h", "long", "actionable"),
         frame("4h", "short", "actionable"),
+        frame("1d", "long", "actionable"),
     ]
     result = service.fuse("BTCUSDT", "crypto", conflict, now_utc=NOW_UTC)
     assert result["status"] == "NO_TRADE"
@@ -73,6 +75,7 @@ def test_stale_frame_blocks_candidate_without_relaxing_other_gates():
         frame("15m", "long", "watch"),
         frame("1h", "long", "actionable"),
         frame("4h", "long", "actionable"),
+        frame("1d", "long", "actionable"),
     ]
     frames[0]["report"]["frame_freshness"] = {"fresh": False, "age_seconds": 3600}
     result = service.fuse("BTCUSDT", "crypto", frames, now_utc=NOW_UTC)
@@ -88,6 +91,7 @@ def test_crypto_requires_real_flow_but_forex_proxy_is_honest():
         frame("15m", "long", "watch", real=False),
         frame("1h", "long", "actionable", real=False),
         frame("4h", "long", "actionable", real=False),
+        frame("1d", "long", "actionable", real=False),
     ]
     crypto = service.fuse("BTCUSDT", "crypto", frames, now_utc=NOW_UTC)
     assert crypto["status"] == "WATCH"

@@ -5,7 +5,7 @@ from typing import Any
 
 from app.services.precision_window import in_killzone
 
-_REQUIRED = ("5m", "15m", "1h", "4h")
+_REQUIRED = ("5m", "15m", "1h", "4h", "1d")  # v3.28: daily bias is context
 
 
 def _side(report: dict) -> str:
@@ -61,6 +61,7 @@ class IntradayFusionService:
             if market == "crypto" and ((by_tf.get(tf, {}).get("decision") or {}).get("status") == "actionable"):
                 crypto_flow_ok = crypto_flow_ok and is_real and aligned
             flow_evidence.append({"timeframe": tf, "is_real": is_real, "pressure": pressure, "aligned": aligned})
+        daily_side = _side(by_tf.get("1d", {}))
         context_regimes = [str((item.get("market_regime") or {}).get("name") or "unknown") for item in context]
         trigger_regimes = [
             str((by_tf.get(tf, {}).get("market_regime") or {}).get("name") or "unknown")
@@ -71,8 +72,10 @@ class IntradayFusionService:
         invalidations = [item.get("invalidation") or (item.get("levels") or {}).get("sl") for item in actionable_triggers]
         invalidation_ok = bool(actionable_triggers) and all(value is not None for value in invalidations)
         gates = [
-            _gate("all_frames_available", len(available) == 4, available, list(_REQUIRED)),
+            _gate("all_frames_available", len(available) == len(_REQUIRED), available, list(_REQUIRED)),
             _gate("context_consensus", consensus_side in {"long", "short"}, context_sides, "1h and 4h aligned"),
+            _gate("daily_bias_aligned", daily_side == consensus_side and consensus_side in {"long", "short"},
+                  {"1d": daily_side, "consensus": consensus_side}, "1d bias matches consensus (v3.28)"),
             _gate("trigger_actionable", bool(actionable_triggers), actionable_sides, ">=1 strict actionable trigger"),
             _gate("trigger_matches_context", bool(actionable_sides) and all(side == consensus_side for side in actionable_sides), actionable_sides, consensus_side),
             _gate("no_opposing_trigger", not opposing_trigger, trigger_sides, "no opposing 5m/15m evidence"),
