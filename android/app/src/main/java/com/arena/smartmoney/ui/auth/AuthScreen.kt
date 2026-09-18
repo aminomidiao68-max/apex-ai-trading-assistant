@@ -126,12 +126,12 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
         ) {
             Image(
                 painter = painterResource(id = R.drawable.ic_apex_ai_logo),
-                contentDescription = "APEX AI Logo",
+                contentDescription = "APEX MARKET AI Logo",
                 modifier = Modifier.fillMaxWidth(0.38f)
             )
             Spacer(Modifier.height(14.dp))
             PremiumSectionHeader(
-                title = "APEX AI PREMIUM",
+                title = "APEX MARKET AI",
                 subtitle = t("Neon AI trading access portal", "درگاه ورود نئونی هوش مصنوعی معاملات")
             )
             Spacer(Modifier.height(18.dp))

@@ -53,7 +53,7 @@ private fun SplashContent(onFinish: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize()) {
         Image(
             painter = painterResource(id = R.drawable.splash_user_apex_ai),
-            contentDescription = "APEX AI Splash",
+            contentDescription = "APEX MARKET AI Splash",
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
@@ -85,7 +85,7 @@ private fun SplashContent(onFinish: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "APEX AI PREMIUM",
+                    text = "APEX MARKET AI",
                     style = MaterialTheme.typography.headlineMedium,
                     color = Color.White,
                     fontWeight = FontWeight.ExtraBold

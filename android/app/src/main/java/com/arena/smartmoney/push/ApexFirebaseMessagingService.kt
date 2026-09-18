@@ -13,7 +13,7 @@ class ApexFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         super.onMessageReceived(message)
-        val title = message.notification?.title ?: message.data["title"] ?: "APEX AI"
+        val title = message.notification?.title ?: message.data["title"] ?: "APEX MARKET AI"
         val body = message.notification?.body ?: message.data["body"] ?: "New trading notification"
         NotificationHelper.showSignalNotification(
             context = applicationContext,
