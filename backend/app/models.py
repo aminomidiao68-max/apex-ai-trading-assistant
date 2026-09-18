@@ -1983,6 +1983,12 @@ class SignalShadowPanelResponse(BaseModel):
     resolved_current_engine: int = 0
     activated_resolved_current_engine: int = 0
     research_ready_current_engine: bool = False
+    # v3.29: cohort maturity + honest uncertainty bands
+    cohort_span_days_current_engine: float | None = None
+    cohort_wins_current_engine: int = 0
+    cohort_losses_current_engine: int = 0
+    win_rate_ci_low: float | None = None
+    win_rate_ci_high: float | None = None
 
 
 class SignalShadowDiagnosticsResponse(BaseModel):

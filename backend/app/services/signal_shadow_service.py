@@ -382,6 +382,114 @@ class SignalShadowService:
             ).fetchone()
         return row is not None
 
+    # ------------------------------------------------------------ v3.29
+    def cohort_stats(self, now=None) -> dict:
+        """Current-engine cohort: activated WIN/LOSS counts, capture span and
+        5-point probability buckets. EXPIRED outcomes never count as WIN/LOSS.
+        """
+        from datetime import datetime, timezone
+
+        with self.database.connection() as conn:
+            rows = conn.execute(
+                "SELECT outcome_status, activated, captured_at, evidence_json "
+                "FROM signal_shadow_observations WHERE engine_version=?",
+                (str(settings.engine_version),),
+            ).fetchall()
+        wins = losses = activated_resolved = 0
+        buckets: dict[int, list] = {}
+        stamps: list[str] = []
+        for row in rows:
+            status = str(row["outcome_status"])
+            if status not in _TERMINAL_OUTCOMES:
+                continue
+            stamps.append(str(row["captured_at"]))
+            if bool(row["activated"]):
+                activated_resolved += 1
+            if status in ("WIN", "LOSS") and bool(row["activated"]):
+                if status == "WIN":
+                    wins += 1
+                else:
+                    losses += 1
+                prob = 0
+                try:
+                    evidence = json.loads(row["evidence_json"] or "{}")
+                    for frame in evidence.get("frames") or []:
+                        report = frame.get("report") or {}
+                        if (report.get("decision") or {}).get("status") == "actionable":
+                            prob = int(report.get("probability") or 0)
+                            break
+                except (ValueError, TypeError):
+                    prob = 0
+                bucket = int(round(prob / 5.0) * 5)
+                slot = buckets.setdefault(bucket, [0, 0])
+                slot[0] += 1
+                slot[1] += 1 if status == "WIN" else 0
+        span_days = 0.0
+        if len(stamps) >= 2:
+            try:
+                lo = datetime.fromisoformat(min(stamps))
+                hi = datetime.fromisoformat(max(stamps))
+                span_days = (hi - lo).total_seconds() / 86400.0
+            except ValueError:
+                span_days = 0.0
+        return {
+            "win_loss_n": wins + losses,
+            "wins": wins,
+            "losses": losses,
+            "activated_resolved": activated_resolved,
+            "span_days": round(span_days, 2),
+            "buckets": buckets,
+        }
+
+    def empirical_edge_report(self, probability: float, rr: float,
+                              minimum_win_loss: int = 30) -> dict:
+        """v3.29 honest calibration veto.
+
+        Inactive while the current-engine cohort has <30 activated WIN/LOSS:
+        the gate then passes WITHOUT claiming anything. Once active, the
+        empirical win rate of the candidate's probability bucket (>=10 samples,
+        else the global cohort WR) must beat 1.2x the RR breakeven rate.
+        """
+        stats = self.cohort_stats()
+        info = {
+            "active": stats["win_loss_n"] >= minimum_win_loss,
+            "win_loss_n": stats["win_loss_n"],
+            "probability": probability,
+            "rr": rr,
+        }
+        if not info["active"]:
+            info["ok"] = True
+            info["reason"] = "cohort_too_small_honest_passthrough"
+            return info
+        breakeven = 1.0 / (1.0 + rr) if rr > 0 else 1.0
+        required = breakeven * 1.2
+        bucket = int(round(probability / 5.0) * 5)
+        slot = stats["buckets"].get(bucket)
+        if slot and slot[0] >= 10:
+            wr = slot[1] / slot[0]
+            n = slot[0]
+            source = f"bucket_{bucket}"
+        else:
+            wr = stats["wins"] / stats["win_loss_n"]
+            n = stats["win_loss_n"]
+            source = "global_cohort"
+        info.update({"win_rate": round(wr, 4), "n": n, "source": source,
+                     "required_win_rate": round(required, 4)})
+        info["ok"] = wr >= required
+        info["reason"] = "empirical_edge_ok" if info["ok"] else "empirical_edge_unproven"
+        return info
+
+    @staticmethod
+    def wilson_ci(wins: int, n: int, z: float = 1.96):
+        if n <= 0:
+            return None, None
+        import math
+        p = wins / n
+        denom = 1 + z * z / n
+        center = (p + z * z / (2 * n)) / denom
+        half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+        return round(max(0.0, center - half), 4), round(min(1.0, center + half), 4)
+
     def panel(self, user_id: int, minimum_required_resolved: int = 30) -> SignalShadowPanelResponse:
         with self.database.connection() as conn:
             rows = conn.execute(
@@ -410,10 +518,15 @@ class SignalShadowService:
             for row in cur_rows
             if row["outcome_status"] in _ACTIVATED_TERMINAL_OUTCOMES and bool(row["activated"])
         )
+        cohort = self.cohort_stats()
+        # v3.29: 30 resolved crammed into one anomalous day proves nothing —
+        # the cohort must also span >= 7 days of real market conditions.
         cur_research_ready = (
             cur_resolved >= minimum_required_resolved
             and cur_activated >= minimum_required_resolved
+            and cohort["span_days"] >= 7.0
         )
+        ci_low, ci_high = self.wilson_ci(cohort["wins"], cohort["win_loss_n"])
         return SignalShadowPanelResponse(
             total_observations=len(rows),
             no_trade_count=statuses.count("NO_TRADE"),
@@ -436,6 +549,11 @@ class SignalShadowService:
             resolved_current_engine=cur_resolved,
             activated_resolved_current_engine=cur_activated,
             research_ready_current_engine=cur_research_ready,
+            cohort_span_days_current_engine=cohort["span_days"],
+            cohort_wins_current_engine=cohort["wins"],
+            cohort_losses_current_engine=cohort["losses"],
+            win_rate_ci_low=ci_low,
+            win_rate_ci_high=ci_high,
         )
 
     @staticmethod

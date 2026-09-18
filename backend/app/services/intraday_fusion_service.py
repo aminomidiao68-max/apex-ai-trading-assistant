@@ -27,11 +27,24 @@ class IntradayFusionService:
     """Causal precision-first fusion. It can only downgrade frame decisions."""
 
     def fuse(self, symbol: str, market: str, frames: list[dict], quota=None,
-             now_utc: datetime | None = None, loss_guard=None) -> dict:
+             now_utc: datetime | None = None, loss_guard=None,
+             calibrator=None) -> dict:
         by_tf = {str(item.get("timeframe")): item.get("report") or {} for item in frames}
         available = sorted(tf for tf in _REQUIRED if tf in by_tf)
         context = [by_tf.get("1h", {}), by_tf.get("4h", {})]
         triggers = [by_tf.get("5m", {}), by_tf.get("15m", {})]
+        cal_probe = max(
+            (item for item in triggers
+             if (item.get("decision") or {}).get("status") == "actionable"),
+            key=lambda item: float(item.get("confluence") or 0),
+            default=None,
+        )
+        cal_info = None
+        if calibrator is not None and cal_probe is not None:
+            cal_info = calibrator.empirical_edge_report(
+                float(cal_probe.get("probability") or 0),
+                float(cal_probe.get("rr") or 0),
+            )
         context_sides = [_side(item) for item in context]
         trigger_sides = [_side(item) for item in triggers]
         actionable_triggers = [
@@ -86,6 +99,12 @@ class IntradayFusionService:
             _gate("trigger_unanimity", bool(actionable_triggers) and all(side == consensus_side for side in trigger_sides), trigger_sides, "5m and 15m both match consensus"),
             _gate("weekly_quota", (quota is None) or quota.remaining(now_utc) > 0, None if quota is None else quota.remaining(now_utc), "<2 fused signals this ISO week"),
             _gate("trigger_regime", trigger_regime_ok, trigger_regimes, "5m/15m trending|balanced (v3.26)"),
+            _gate(
+                "calibrated_expectancy",
+                cal_info is None or bool(cal_info.get("ok")),
+                cal_info,
+                "empirical bucket WR >= 1.2x breakeven once cohort >=30 (v3.29)",
+            ),
             _gate(
                 "symbol_loss_cooldown",
                 (loss_guard is None) or not loss_guard.symbol_in_loss_cooldown(symbol, now_utc),
