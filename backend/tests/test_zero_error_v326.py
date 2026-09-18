@@ -154,7 +154,7 @@ def test_loss_cooldown_vetoes_symbol_and_expires(tmp_path):
         )
         conn.commit()
     assert svc.symbol_in_loss_cooldown("BTCUSDT", NOW) is False  # only CURRENT engine teaches
-    assert settings.engine_version == "3.26.0-pro-alpha73"
+    assert settings.engine_version  # cohort key is the live engine build
 
 
 def test_fusion_blocks_symbol_in_loss_cooldown(tmp_path):

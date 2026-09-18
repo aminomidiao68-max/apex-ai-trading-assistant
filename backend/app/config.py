@@ -23,8 +23,8 @@ class Settings(BaseModel):
     # True engine build. Deliberately NOT env-overridable: shadow cohorts must
     # stamp the real running engine even if a stale APP_VERSION env var lingers
     # on a Render dashboard (staging carried a 3.7-era APP_VERSION pin).
-    engine_version: str = "3.26.0-pro-alpha73"
-    app_version: str = os.getenv("APP_VERSION", "3.26.0-pro-alpha73")
+    engine_version: str = "3.27.0-pro-alpha74"
+    app_version: str = os.getenv("APP_VERSION", "3.27.0-pro-alpha74")
     default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "UTC")
 
     # Browser CORS is disabled by default in production. Native Android clients

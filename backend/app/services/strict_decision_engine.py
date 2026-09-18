@@ -154,6 +154,28 @@ def apply_strict_decision(
     _atr = float(report.get("atr") or 0.0) or atr_value(candles)
     _entry = (report.get("levels") or {}).get("entry")
     _tp1 = report.get("tp1") or (report.get("levels") or {}).get("tp")
+    _sl = (report.get("levels") or {}).get("sl")
+
+    # v3.27 trade-craft gates: stop placement & entry proximity. Measured failure
+    # mode of -1R trades is a stop parked INSIDE the swing/noise (wicked out
+    # before the move) or an entry chased >1 ATR away from the last close.
+    _swing_low = min(float(x["l"]) for x in candles[-20:]) if len(candles) >= 20 else None
+    _swing_high = max(float(x["h"]) for x in candles[-20:]) if len(candles) >= 20 else None
+    _last_close = float(candles[-1]["c"]) if candles else None
+    if direction in ("long", "short") and _sl is not None and _entry is not None and _atr > 0:
+        _sl = float(_sl); _entry = float(_entry)
+        _risk = abs(_entry - _sl)
+        if direction == "long":
+            _stop_ok = _sl <= (_swing_low or _sl) and _risk <= 4.0 * _atr
+        else:
+            _stop_ok = _sl >= (_swing_high or _sl) and _risk <= 4.0 * _atr
+        _stop_actual = {"sl": _sl, "swing_low": _swing_low, "swing_high": _swing_high,
+                        "risk_atr": round(_risk / _atr, 2)}
+        _chase_ok = abs(_entry - _last_close) <= 1.0 * _atr
+        _chase_actual = round(abs(_entry - _last_close) / _atr, 2)
+    else:
+        _stop_ok, _stop_actual = True, "n/a"
+        _chase_ok, _chase_actual = True, "n/a"
     if direction in ("long", "short") and _entry is not None and _tp1 is not None and _atr > 0:
         _reach = abs(float(_tp1) - float(_entry)) <= 3.0 * _atr
         _reach_actual = round(abs(float(_tp1) - float(_entry)) / _atr, 2)
@@ -273,6 +295,18 @@ def apply_strict_decision(
             _vol_ok,
             round(_vol_atr, 5),
             f"ATR% within {VOLATILITY_BANDS.get(str(market).lower(), DEFAULT_BAND)}",
+        ),
+        _gate(
+            "stop_placement",
+            _stop_ok,
+            _stop_actual,
+            "stop beyond 20-bar swing, risk <= 4x ATR (v3.27)",
+        ),
+        _gate(
+            "entry_proximity",
+            _chase_ok,
+            _chase_actual,
+            "entry within 1.0x ATR of last close (no chasing, v3.27)",
         ),
         _gate(
             "evidence_diversity",
