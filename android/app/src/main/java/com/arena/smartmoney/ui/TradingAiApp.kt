@@ -50,6 +50,8 @@ import com.arena.smartmoney.ui.broker.BrokerScreen
 import com.arena.smartmoney.ui.chart.ChartScreen
 import com.arena.smartmoney.ui.analyze.AnalyzeScreen
 import com.arena.smartmoney.ui.aichat.AIChatScreen
+import com.arena.smartmoney.ui.about.AboutScreen
+import com.arena.smartmoney.ui.home.HomeDashboard
 import com.arena.smartmoney.ui.more.MoreScreen
 import com.arena.smartmoney.ui.dashboard.DashboardScreen
 import com.arena.smartmoney.ui.news.NewsScreen
@@ -153,74 +155,25 @@ private fun TradingMainScaffold(onLogout: () -> Unit) {
         AppRoute.Profile
     )
 
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentDestination = navBackStackEntry?.destination
-
-                items.forEach { route ->
-                    val icon = when (route) {
-                        AppRoute.Dashboard -> Icons.Default.Analytics
-                        AppRoute.Signals -> Icons.Default.Person
-                        AppRoute.Chart -> Icons.Default.ShowChart
-                        AppRoute.Setups -> Icons.Default.AutoAwesome
-                        AppRoute.Risk -> Icons.Default.Calculate
-                        AppRoute.Broker -> Icons.Default.Settings
-                        AppRoute.Profile -> Icons.Default.Settings
-                        AppRoute.Journal -> Icons.Default.Analytics
-                        AppRoute.Backtest -> Icons.Default.Analytics
-                        AppRoute.Analytics -> Icons.Default.Analytics
-                        AppRoute.MarketAnalysis -> Icons.Default.ShowChart
-                        AppRoute.Settings -> Icons.Default.Settings
-                        AppRoute.Readiness -> Icons.Default.Settings
-                    }
-                    val localizedLabel = when (route) {
-                        AppRoute.Dashboard -> t("Analyze", "آنالیز")
-                        AppRoute.Signals -> t("AI Chat", "چت هوشمند")
-                        AppRoute.Chart -> t("Charts", "چارت‌ها")
-                        AppRoute.Setups -> t("Setups", "ستاپ‌ها")
-                        AppRoute.Risk -> t("Risk", "ریسک")
-                        AppRoute.Broker -> t("Broker", "بروکر")
-                        AppRoute.Profile -> t("More", "بیشتر")
-                        AppRoute.Journal -> t("Journal", "ژورنال")
-                        AppRoute.Backtest -> t("Backtest", "بک‌تست")
-                        AppRoute.Analytics -> t("Analytics", "آنالیتیکس")
-                        AppRoute.MarketAnalysis -> t("Market Analysis", "تحلیل بازار")
-                        AppRoute.Settings -> t("Settings", "تنظیمات")
-                        AppRoute.Readiness -> t("Readiness", "آمادگی")
-                    }
-
-                    NavigationBarItem(
-                        selected = currentDestination?.hierarchy?.any { it.route == route.route } == true,
-                        onClick = {
-                            navController.navigate(route.route) {
-                                launchSingleTop = true
-                                restoreState = true
-                                popUpTo(navController.graph.startDestinationId) {
-                                    saveState = true
-                                }
-                            }
-                        },
-                        icon = { Icon(icon, contentDescription = localizedLabel) },
-                        label = { Text(localizedLabel) }
-                    )
-                }
-            }
-        }
-    ) { innerPadding ->
+    Scaffold { innerPadding ->
         NavHost(
             navController = navController,
             startDestination = AppRoute.Dashboard.route,
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(AppRoute.Dashboard.route) {
-                AnalyzeScreen()
+                HomeDashboard(
+                    onOpenSettings = { navController.navigate(AppRoute.Settings.route) },
+                    onOpenAbout = { navController.navigate("about") },
+                )
             }
 
                 composable("news") {
                     NewsScreen(onBack = { navController.popBackStack() })
                 }
+            composable("about") {
+                AboutScreen(onBack = { navController.popBackStack() })
+            }
             composable(AppRoute.Signals.route) {
                 AIChatScreen()
             }
