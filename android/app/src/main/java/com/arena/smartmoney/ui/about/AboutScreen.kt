@@ -4,6 +4,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -55,7 +56,7 @@ fun AboutScreen(onBack: () -> Unit) {
             .fillMaxSize()
             .background(DarkBg)
     ) {
-        Row(Modifier.padding(horizontal = 6.dp, top = 8.dp)) {
+        Row(Modifier.padding(PaddingValues(start = 6.dp, end = 6.dp, top = 8.dp))) {
             IconButton(onClick = onBack) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = SoftText)
             }
@@ -64,7 +65,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 color = Color.White,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 14.dp, start = 4.dp),
+                modifier = Modifier.padding(PaddingValues(start = 4.dp, top = 14.dp)),
             )
         }
         Column(

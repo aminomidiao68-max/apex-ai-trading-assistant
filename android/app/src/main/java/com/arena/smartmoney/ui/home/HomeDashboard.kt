@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -124,7 +125,7 @@ fun HomeDashboard(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .padding(start = 18.dp, end = 6.dp, top = 14.dp),
+                    .padding(PaddingValues(start = 18.dp, end = 6.dp, top = 14.dp)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
@@ -174,14 +175,20 @@ fun HomeDashboard(
             ) {
                 HomeModule.values().chunked(2).forEach { rowItems ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        rowItems.forEach { module ->
+                        ModuleCard(
+                            module = rowItems[0],
+                            modifier = Modifier.weight(1f),
+                            onClick = { openModule = rowItems[0] },
+                        )
+                        if (rowItems.size > 1) {
                             ModuleCard(
-                                module = module,
+                                module = rowItems[1],
                                 modifier = Modifier.weight(1f),
-                                onClick = { openModule = module },
+                                onClick = { openModule = rowItems[1] },
                             )
+                        } else {
+                            Spacer(Modifier.weight(1f))
                         }
-                        if (rowItems.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
                 Spacer(Modifier.height(18.dp))
@@ -301,7 +308,7 @@ private fun ModuleDialog(
                         color = CyanAccent,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f).padding(start = 8.dp),
+                        modifier = Modifier.weight(1f).padding(PaddingValues(start = 8.dp)),
                     )
                     IconButton(onClick = onClose) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = SoftText)
