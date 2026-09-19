@@ -3,6 +3,7 @@ package com.arena.smartmoney.ui.dashboard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arena.smartmoney.data.model.MarketOverviewItem
+import com.arena.smartmoney.util.AlertPrefs
 import com.arena.smartmoney.data.model.MarketStreamSnapshotDto
 import com.arena.smartmoney.data.model.TradeJournalStatsDto
 import com.arena.smartmoney.data.network.AuthTokenProvider
@@ -18,7 +19,7 @@ data class DashboardUiState(
     val sessionName: String = "Loading...",
     val marketQuality: String = "-",
     val sessionScore: Double = 0.0,
-    val watchlistSymbols: List<String> = listOf("BTCUSDT", "ETHUSDT", "XRPUSDT", "XAUUSD", "EURUSD", "GBPUSD", "USOIL", "US100"),
+    val watchlistSymbols: List<String> = AlertPrefs.watchlist.map { it.first },
     val watchlist: List<MarketOverviewItem> = emptyList(),
     val tradeStats: TradeJournalStatsDto? = null,
     val streamSymbol: String = "BTCUSDT",

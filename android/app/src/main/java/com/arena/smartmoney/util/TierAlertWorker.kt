@@ -48,6 +48,23 @@ class TierAlertWorker(
                 val key = symbol + "_" + tier
                 if (now - prefs.getLong(key, 0L) < SUPPRESS_MS) continue
                 prefs.edit().putLong(key, now).apply()
+                // --- history log (last 20) for AlertSettings UI ---
+                try {
+                    val histPrefs = ctx.getSharedPreferences("tier_alert_prefs", android.content.Context.MODE_PRIVATE)
+                    val histRaw = histPrefs.getString("alert_history_json", "[]") ?: "[]"
+                    val arr = org.json.JSONArray(histRaw)
+                    val entry = org.json.JSONObject().apply {
+                        put("at", now)
+                        put("symbol", symbol)
+                        put("tier", tier)
+                        put("prob", report.estimatedWinProbability)
+                        put("side", report.direction)
+                    }
+                    arr.put(entry)
+                    // keep last 20
+                    while (arr.length() > 20) arr.remove(0)
+                    histPrefs.edit().putString("alert_history_json", arr.toString()).putLong("last_worker_run_at", now).apply()
+                } catch (_: Exception) {}
                 val sideFa = if (report.direction == "long") "خرید (LONG)" else "فروش (SHORT)"
                 val tierFa = when (tier) {
                     "ACTIONABLE" -> "🟢 سیگنال اکشن — همهٔ گیت‌ها پاس"
@@ -65,6 +82,10 @@ class TierAlertWorker(
                 // offline symbol — next cycle retries
             }
         }
+        // log last run even if nothing sent
+        try {
+            ctx.getSharedPreferences("tier_alert_prefs", android.content.Context.MODE_PRIVATE).edit().putLong("last_worker_run_at", System.currentTimeMillis()).apply()
+        } catch (_: Exception) {}
         return Result.success()
     }
 

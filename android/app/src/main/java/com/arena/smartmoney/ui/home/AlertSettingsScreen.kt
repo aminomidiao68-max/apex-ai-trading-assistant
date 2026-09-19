@@ -194,23 +194,42 @@ fun AlertSettingsScreen() {
         Spacer(Modifier.height(10.dp))
         SettingCard {
             Column {
-                Text("📜 تاریخچهٔ هشدارها (لوکال)", color = SoftText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("📜 تاریخچهٔ هشدارها", color = SoftText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 val prefs = context.getSharedPreferences("tier_alert_prefs", Context.MODE_PRIVATE)
                 val lastTest = prefs.getLong("last_test_notification_at", 0L)
-                val lastTestStr = if (lastTest > 0) {
-                    val d = java.time.Instant.ofEpochMilli(lastTest).atZone(java.time.ZoneId.systemDefault())
-                    d.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
-                } else "هنوز تستی ارسال نشده"
-                Text("آخرین تست: $lastTestStr", color = SoftText.copy(alpha = 0.7f), fontSize = 12.sp)
+                val lastRun = prefs.getLong("last_worker_run_at", 0L)
+                val fmt: (Long) -> String = { ts ->
+                    if (ts == 0L) "—"
+                    else java.time.Instant.ofEpochMilli(ts).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+                }
+                Text("آخرین تست لوکال: ${if (lastTest>0) fmt(lastTest) else "هنوز نه"} • آخرین اسکن Worker: ${fmt(lastRun)}", color = SoftText.copy(alpha = 0.7f), fontSize = 11.sp)
                 Spacer(Modifier.height(4.dp))
-                Text("هشدارهای پس‌زمینه هر ۱۵ دقیقه برای هر نماد+لایه چک می‌شود • هر کدام حداکثر هر ۴ ساعت یک‌بار", color = SoftText.copy(alpha = 0.55f), fontSize = 11.sp, lineHeight = 15.sp)
+                Text("هر ۱۵ دقیقه برای هر نماد+لایه چک می‌شود • هر کدام حداکثر هر ۴ ساعت یک‌بار", color = SoftText.copy(alpha = 0.55f), fontSize = 11.sp, lineHeight = 15.sp)
+                Spacer(Modifier.height(8.dp))
+                // Real history log (last 5)
+                val histRaw = prefs.getString("alert_history_json", "[]") ?: "[]"
+                val histList = try {
+                    val arr = org.json.JSONArray(histRaw)
+                    (0 until arr.length()).map { arr.getJSONObject(it) }.reversed().take(5)
+                } catch (_: Exception) { emptyList() }
+                if (histList.isEmpty()) {
+                    Text("هنوز هشدار واقعی ارسال نشده — طبیعی است (سیستم سخت‌گیر است؛ بعضی هفته‌ها هیچ).", color = SoftText.copy(alpha = 0.6f), fontSize = 11.sp, lineHeight = 15.sp)
+                } else {
+                    Text("۵ هشدار اخیر (واقعی):", color = CyanAccent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(4.dp))
+                    for (obj in histList) {
+                        val at = try { fmt(obj.getLong("at")) } catch (_: Exception) { "—" }
+                        val sym = try { obj.getString("symbol") } catch (_: Exception) { "?" }
+                        val tier = try { obj.getString("tier") } catch (_: Exception) { "?" }
+                        val prob = try { obj.getInt("prob") } catch (_: Exception) { 0 }
+                        val tierFa = when (tier) { "ACTIONABLE" -> "🟢 اکشن"; "HIGH_CONFIDENCE_WATCH" -> "🟡 ≥80٪"; else -> "🔵 ≥70٪" }
+                        Text("• $at — $sym $tierFa ${prob}٪", color = SoftText.copy(alpha = 0.8f), fontSize = 11.sp)
+                    }
+                }
                 Spacer(Modifier.height(6.dp))
-                // Show selected symbols as history preview
                 val selected = AlertPrefs.symbols(context)
-                Text("واچ‌لیست فعال: ${selected.sorted().joinToString(" • ").ifEmpty { "—" }}", color = CyanAccent.copy(alpha = 0.75f), fontSize = 11.sp, lineHeight = 15.sp)
-                Spacer(Modifier.height(6.dp))
-                Text("نکته: این تاریخچه لوکال است — هشدارهای واقعی از TierAlertWorker می‌آیند و فقط وقتی tier≥70 و گیت‌ها پاس شوند ارسال می‌شوند (نادری عمدی).", color = SoftText.copy(alpha = 0.45f), fontSize = 10.sp, lineHeight = 14.sp)
+                Text("واچ‌لیست فعال (${selected.size}/20): ${selected.sorted().joinToString(" • ").ifEmpty { "—" }}", color = CyanAccent.copy(alpha = 0.65f), fontSize = 10.sp, lineHeight = 14.sp)
             }
         }
     }
