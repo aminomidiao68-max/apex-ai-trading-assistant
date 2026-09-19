@@ -1705,6 +1705,8 @@ async def get_smc_analysis(
             orderflow_snapshot=flow,
         )
         report["force"] = _buyer_seller_force(report, report.get("microstructure"))
+        report["display_tier"] = report["decision"]["display_tier"]
+        report["estimated_win_probability"] = report["decision"]["estimated_win_probability"]
         try:
             report = await ai_explainability_service.enrich_report(
                 report,
