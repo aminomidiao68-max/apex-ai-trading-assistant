@@ -18,7 +18,7 @@ data class DashboardUiState(
     val sessionName: String = "Loading...",
     val marketQuality: String = "-",
     val sessionScore: Double = 0.0,
-    val watchlistSymbols: List<String> = listOf("BTCUSDT", "ETHUSDT", "EURUSD", "GBPUSD", "XAUUSD"),
+    val watchlistSymbols: List<String> = listOf("BTCUSDT", "ETHUSDT", "XRPUSDT", "XAUUSD", "EURUSD", "GBPUSD", "USOIL", "US100"),
     val watchlist: List<MarketOverviewItem> = emptyList(),
     val tradeStats: TradeJournalStatsDto? = null,
     val streamSymbol: String = "BTCUSDT",

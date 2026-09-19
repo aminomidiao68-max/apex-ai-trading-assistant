@@ -171,6 +171,10 @@ fun HomeDashboard(
             Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
                 ProbableGlanceWidget(onOpenProbable = { openModule = HomeModule.PROBABLE })
             }
+            // ------------------------------------------------ market pulse heatmap — 20 symbols
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
+                MarketPulseWidget(onOpenProbable = { openModule = HomeModule.PROBABLE })
+            }
 
             // ------------------------------------------------ one-page modules
             Column(
