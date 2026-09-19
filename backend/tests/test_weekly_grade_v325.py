@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 
 from app.services.intraday_fusion_service import IntradayFusionService
 from app.services.precision_window import in_killzone, week_key
-from app.services.signal_quota_service import WeeklySignalQuota
 from app.services.strict_decision_engine import apply_strict_decision
 
 NOW = datetime(2026, 9, 16, 13, 0, tzinfo=timezone.utc)   # Wednesday, London/NY overlap
@@ -153,57 +152,6 @@ def test_real_flow_evidence_floor_is_060():
 
 
 # ---------------------------------------------------- weekly scarcity governor
-def _quota_db(tmp_path):
-    from app.services.database_service import DatabaseManager, LATEST_SCHEMA_VERSION
-    db = DatabaseManager(db_path=str(tmp_path / "quota.db"))
-    assert db.schema_version() == LATEST_SCHEMA_VERSION == 24
-    return db
-
-
-def test_weekly_quota_caps_two_signals_per_week(tmp_path):
-    quota = WeeklySignalQuota(_quota_db(tmp_path))
-    assert quota.remaining(NOW) == 2
-    ok1, _ = quota.try_consume("BTCUSDT", NOW)
-    ok_dup, info_dup = quota.try_consume("BTCUSDT", NOW)   # same symbol again
-    ok2, _ = quota.try_consume("ETHUSDT", NOW)             # second slot
-    ok3, info3 = quota.try_consume("XRPUSDT", NOW)         # third -> exhausted
-    assert ok1 and ok2
-    assert not ok_dup and info_dup["reason"] == "symbol_already_signaled_this_week"
-    assert not ok3 and info3["reason"] == "weekly_quota_exhausted"
-    assert quota.remaining(NOW) == 0
-    next_week = datetime(2026, 9, 23, 13, 0, tzinfo=timezone.utc)
-    assert quota.remaining(next_week) == 2  # ISO week rollover frees the quota
-
-
-def test_fusion_downgrades_candidate_when_quota_exhausted(tmp_path):
-    quota = WeeklySignalQuota(_quota_db(tmp_path))
-    quota.try_consume("AAAUSDT", NOW)
-    quota.try_consume("BBBUSDT", NOW)
-    result = IntradayFusionService().fuse("BTCUSDT", "crypto", _fusion_frames(),
-                                          quota=quota, now_utc=NOW)
-    assert result["status"] == "WATCH"
-    assert "weekly_quota" in result["failed_gates"]
-    # duplicate-symbol path: quota has room, but this symbol already fired
-    from app.services.database_service import DatabaseManager
-    quota2 = WeeklySignalQuota(DatabaseManager(db_path=str(tmp_path / "quota2.db")))
-    ok_first, _ = quota2.try_consume("BTCUSDT", NOW)
-    assert ok_first
-    dup = IntradayFusionService().fuse("BTCUSDT", "crypto", _fusion_frames(),
-                                       quota=quota2, now_utc=NOW)
-    assert dup["status"] == "WATCH"
-    assert "weekly_quota_consumed" in dup["failed_gates"]
-
-
-def test_fusion_consumes_quota_on_candidate(tmp_path):
-    quota = WeeklySignalQuota(_quota_db(tmp_path))
-    result = IntradayFusionService().fuse("BTCUSDT", "crypto", _fusion_frames(),
-                                          quota=quota, now_utc=NOW)
-    assert result["status"] == "ACTIONABLE_CANDIDATE"
-    assert quota.remaining(NOW) == 1
-    assert result["weekly_quota"]["reason"] == "consumed"
-
-
-# ------------------------------------------------------------ fusion strictness
 def test_fusion_context_must_be_trending():
     result = IntradayFusionService().fuse("BTCUSDT", "crypto",
                                           _fusion_frames(**{"1h": {"market_regime": {"name": "balanced"}}}),

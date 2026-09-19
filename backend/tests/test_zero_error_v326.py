@@ -187,7 +187,7 @@ def test_fusion_blocks_symbol_in_loss_cooldown(tmp_path):
 def test_omega_zero_error_constants():
     from app.services import smc_engine
     assert (smc_engine.OMEGA_MIN_RR, smc_engine.OMEGA_MIN_CONF, smc_engine.OMEGA_MIN_PROB) == (3.5, 85, 88)
-    assert smc_engine.OMEGA_MAX_DAILY_TRADES == 1 and smc_engine.OMEGA_MAX_WEEKLY_TRADES == 2
+    assert smc_engine.OMEGA_MAX_DAILY_TRADES == -1 and smc_engine.OMEGA_MAX_WEEKLY_TRADES == -1
 
 
 def test_zero_error_baseline_actionable_in_overlap():

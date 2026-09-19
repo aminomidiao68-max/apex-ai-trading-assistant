@@ -397,10 +397,33 @@ def apply_strict_decision(
         risk_tier = "blocked"
 
     failed_names = [item["name"] for item in failed_hard]
+
+    # v3.30 QUALITY-ONLY display tiers (user directive 2026-09-19): no artificial
+    # count caps anywhere; setups are SHOWN by estimated quality even when they
+    # are not trade-grade. Probability remains an UNCALIBRATED model estimate.
+    cost_ok = (not cost["applicable"]) or cost["passed"]
+    news_ok = not bool(report.get("news_blocked"))
+    if status == "actionable":
+        display_tier = "ACTIONABLE"
+    elif (
+        direction in ("long", "short") and grade in ("A+", "A") and probability >= 80
+        and quality["score"] >= 85 and news_ok and cost_ok
+    ):
+        display_tier = "HIGH_CONFIDENCE_WATCH"
+    elif (
+        direction in ("long", "short") and grade in ("A+", "A", "B+") and probability >= 70
+        and quality["score"] >= 80 and news_ok
+    ):
+        display_tier = "PROB_WATCH_70"
+    else:
+        display_tier = "NONE"
+
     decision = {
         "status": status,
         "side": direction if direction in ("long", "short") else "flat",
         "action_label": action_label,
+        "display_tier": display_tier,
+        "estimated_win_probability": probability,
         "strict_omega_compliant": status == "actionable",
         "risk_tier": risk_tier,
         "risk_multiplier": regime["risk_multiplier"] if status == "actionable" else 0.0,

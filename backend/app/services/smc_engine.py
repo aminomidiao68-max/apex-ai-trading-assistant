@@ -1865,8 +1865,8 @@ def _divergence(cs, indicator_vals, window=20):
 OMEGA_MIN_RR = 3.5   # v3.26 ZERO-ERROR: gross RR floor (was 3.0)
 OMEGA_MIN_CONF = 85  # v3.26 ZERO-ERROR: institutional confluence floor (was 82)
 OMEGA_MIN_PROB = 88  # v3.26 ZERO-ERROR: model probability floor (was 85)
-OMEGA_MAX_DAILY_TRADES = 1  # v3.25 WEEKLY-GRADE: one setup per day, max (was 3)
-OMEGA_MAX_WEEKLY_TRADES = 2  # v3.25 WEEKLY-GRADE: fused weekly cap (governor-enforced)
+OMEGA_MAX_DAILY_TRADES = -1  # v3.30 QUALITY-ONLY: no artificial daily cap
+OMEGA_MAX_WEEKLY_TRADES = -1  # v3.30 QUALITY-ONLY: no artificial weekly cap
 
 def _omega_compliant(conf, prob, rr, mtf_aligned=True, session_killzone=True, volume_ok=True):
     """Return (actionable, reasons_list) per Omega-100 Ultra-Strict rule."""

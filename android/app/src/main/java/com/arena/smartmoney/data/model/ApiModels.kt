@@ -1535,6 +1535,8 @@ data class SmcReport(
     val note: String = "",
     val status: String = "",
     val grade: String = "-",
+    @SerializedName("display_tier") val displayTier: String = "",
+    @SerializedName("estimated_win_probability") val estimatedWinProbability: Int = 0,
     @SerializedName("trend_strength") val trendStrength: Int = 0,
     val vwap: Float = 0f,
     val levels: SmcLevel = SmcLevel(),
