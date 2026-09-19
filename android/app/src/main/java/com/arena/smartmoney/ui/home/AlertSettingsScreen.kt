@@ -191,6 +191,28 @@ fun AlertSettingsScreen() {
                 Text("کانالی: APEX_TEST • اگر بنر نیامد: تنظیمات گوشی → اعلان‌ها → APEX MARKET AI را چک کنید", color = SoftText.copy(alpha = 0.45f), fontSize = 10.sp)
             }
         }
+        Spacer(Modifier.height(10.dp))
+        SettingCard {
+            Column {
+                Text("📜 تاریخچهٔ هشدارها (لوکال)", color = SoftText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                val prefs = context.getSharedPreferences("tier_alert_prefs", Context.MODE_PRIVATE)
+                val lastTest = prefs.getLong("last_test_notification_at", 0L)
+                val lastTestStr = if (lastTest > 0) {
+                    val d = java.time.Instant.ofEpochMilli(lastTest).atZone(java.time.ZoneId.systemDefault())
+                    d.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+                } else "هنوز تستی ارسال نشده"
+                Text("آخرین تست: $lastTestStr", color = SoftText.copy(alpha = 0.7f), fontSize = 12.sp)
+                Spacer(Modifier.height(4.dp))
+                Text("هشدارهای پس‌زمینه هر ۱۵ دقیقه برای هر نماد+لایه چک می‌شود • هر کدام حداکثر هر ۴ ساعت یک‌بار", color = SoftText.copy(alpha = 0.55f), fontSize = 11.sp, lineHeight = 15.sp)
+                Spacer(Modifier.height(6.dp))
+                // Show selected symbols as history preview
+                val selected = AlertPrefs.symbols(context)
+                Text("واچ‌لیست فعال: ${selected.sorted().joinToString(" • ").ifEmpty { "—" }}", color = CyanAccent.copy(alpha = 0.75f), fontSize = 11.sp, lineHeight = 15.sp)
+                Spacer(Modifier.height(6.dp))
+                Text("نکته: این تاریخچه لوکال است — هشدارهای واقعی از TierAlertWorker می‌آیند و فقط وقتی tier≥70 و گیت‌ها پاس شوند ارسال می‌شوند (نادری عمدی).", color = SoftText.copy(alpha = 0.45f), fontSize = 10.sp, lineHeight = 14.sp)
+            }
+        }
     }
 }
 
@@ -216,6 +238,7 @@ private fun sendTestNotification(context: Context, symbols: Set<String>) {
         .setAutoCancel(true)
         .build()
     nm.notify(9001, notif)
+    context.getSharedPreferences("tier_alert_prefs", Context.MODE_PRIVATE).edit().putLong("last_test_notification_at", System.currentTimeMillis()).apply()
 }
 
 @Composable

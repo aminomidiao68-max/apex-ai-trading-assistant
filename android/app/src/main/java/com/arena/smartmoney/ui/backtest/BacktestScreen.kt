@@ -504,6 +504,47 @@ private fun BulkPrimeCard(viewModel: BacktestViewModel) {
                     }
                 }
             }
+            Spacer(Modifier.height(10.dp))
+            Text("🗺 هیت‌مپ برد — سبز ≥55٪، زرد 45–55٪، قرمز <45٪، خاکستری بدون معامله", color = Color.White.copy(alpha = 0.55f), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(6.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (row in state.bulkPrimeResults.chunked(4)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (item in row) {
+                            val w = item.result?.all?.winRatePct
+                            val trades = item.result?.all?.trades ?: 0
+                            val bg = when {
+                                trades == 0 -> Color(0xFF1A2535)
+                                w == null -> Color(0xFF1A2535)
+                                w >= 55.0 -> Color(0xFF33E6A6).copy(alpha = 0.22f)
+                                w >= 45.0 -> Color(0xFFFFC857).copy(alpha = 0.20f)
+                                else -> Color(0xFFFF7A7A).copy(alpha = 0.18f)
+                            }
+                            val border = when {
+                                trades == 0 -> Color.White.copy(alpha = 0.06f)
+                                w == null -> Color.White.copy(alpha = 0.06f)
+                                w >= 55.0 -> Color(0xFF33E6A6).copy(alpha = 0.5f)
+                                w >= 45.0 -> Color(0xFFFFC857).copy(alpha = 0.5f)
+                                else -> Color(0xFFFF7A7A).copy(alpha = 0.5f)
+                            }
+                            val wrText = if (trades == 0) "—" else "${"%.0f".format(w ?: 0.0)}٪"
+                            Column(
+                                modifier = Modifier.weight(1f)
+                                    .background(bg, RoundedCornerShape(10.dp))
+                                    .border(1.dp, border, RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 6.dp, vertical = 7.dp),
+                                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+                            ) {
+                                Text(item.symbol, color = Color.White, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, maxLines = 1)
+                                Spacer(Modifier.height(3.dp))
+                                Text(wrText, color = if (trades==0) Color.White.copy(alpha=0.45f) else border, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                Text(if (trades==0) "بدون معامله" else "${trades} ت", color = Color.White.copy(alpha=0.55f), style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                        repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
             Spacer(Modifier.height(6.dp))
             Text("Prime = ساده‌ترین بک‌تست؛ برای سوییپ/واک‌فوروارد از بالا استفاده کنید.", color = Color.White.copy(alpha = 0.45f), style = MaterialTheme.typography.bodySmall)
         }
