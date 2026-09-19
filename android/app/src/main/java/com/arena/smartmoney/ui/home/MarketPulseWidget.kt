@@ -17,8 +17,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -56,6 +60,7 @@ data class PulseUiState(
     val items: List<PulseItem> = emptyList(),
     val scanned: Int = 0,
     val lastScan: String = "",
+    val lastScanMillis: Long = 0L,
     val error: String? = null
 )
 
@@ -106,6 +111,7 @@ class MarketPulseViewModel(
                 items = list,
                 scanned = scanned,
                 lastScan = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")),
+                lastScanMillis = System.currentTimeMillis(),
                 error = firstError
             )
         }
@@ -118,6 +124,13 @@ fun MarketPulseWidget(
     onOpenProbable: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
+    var autoRefresh by remember { mutableStateOf(true) }
+    LaunchedEffect(autoRefresh) {
+        while (autoRefresh) {
+            kotlinx.coroutines.delay(90_000)
+            if (!viewModel.uiState.value.loading) viewModel.scan()
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -127,15 +140,19 @@ fun MarketPulseWidget(
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("🗺 پالس بازار — ۲۰ نماد", color = Color.White, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
-                Text("نقشهٔ حرارتی لحظه‌ای — هر کاشی یک نماد (سبز=اکشن، فیروزه‌ای≥۸۰٪، آبی≥۷۰٪)", color = SoftText.copy(alpha = 0.55f), fontSize = 10.sp, lineHeight = 13.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    val ageSec = if (state.lastScanMillis > 0) ((System.currentTimeMillis() - state.lastScanMillis) / 1000).toInt() else 999
+                    val dotColor = when { ageSec < 120 -> SuccessGreen; ageSec < 300 -> Color(0xFFFFC857); else -> DangerRed }
+                    Box(modifier = Modifier.width(8.dp).height(8.dp).background(dotColor, RoundedCornerShape(4.dp)))
+                    Spacer(Modifier.width(6.dp))
+                    Text("🗺 پالس بازار — ۲۰ نماد", color = Color.White, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                }
+                Text("خودکار ۹۰ثانیه ${if (autoRefresh) "فعال" else "متوقف"} • ${state.lastScan.ifEmpty { "—" }} UTC • ${state.scanned} نماد", color = SoftText.copy(alpha = 0.55f), fontSize = 10.sp, lineHeight = 13.sp)
             }
-            Text(
-                if (state.loading) "…" else "↻",
-                color = CyanAccent,
-                fontSize = 18.sp,
-                modifier = Modifier.clickable(enabled = !state.loading) { viewModel.scan() }.padding(6.dp)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(if (autoRefresh) "⏸" else "▶", color = if (autoRefresh) SoftText else CyanAccent, fontSize = 14.sp, modifier = Modifier.clickable { autoRefresh = !autoRefresh }.padding(6.dp))
+                Text(if (state.loading) "…" else "↻", color = CyanAccent, fontSize = 18.sp, modifier = Modifier.clickable(enabled = !state.loading) { viewModel.scan() }.padding(6.dp))
+            }
         }
         Spacer(Modifier.height(10.dp))
         if (state.loading && state.items.isEmpty()) {

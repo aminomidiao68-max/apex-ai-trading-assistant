@@ -63,6 +63,7 @@ data class ProbableUiState(
     val items: List<ProbableItem> = emptyList(),
     val scanned: Int = 0,
     val lastScan: String = "",
+    val lastScanMillis: Long = 0L,
     val error: String? = null,
 )
 
@@ -138,6 +139,7 @@ class ProbableSetupsViewModel(
                 scanned = scanned,
                 lastScan = java.time.ZonedDateTime.now(java.time.ZoneOffset.UTC)
                     .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")),
+                lastScanMillis = System.currentTimeMillis(),
                 error = firstError,
             )
         }
