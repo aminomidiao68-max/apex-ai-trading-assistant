@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -230,9 +231,50 @@ fun AlertSettingsScreen() {
                 Spacer(Modifier.height(6.dp))
                 val selected = AlertPrefs.symbols(context)
                 Text("واچ‌لیست فعال (${selected.size}/20): ${selected.sorted().joinToString(" • ").ifEmpty { "—" }}", color = CyanAccent.copy(alpha = 0.65f), fontSize = 10.sp, lineHeight = 14.sp)
+                Spacer(Modifier.height(8.dp))
+                androidx.compose.material3.OutlinedButton(
+                    onClick = {
+                        val csv = buildAlertHistoryCsv(context)
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/csv"
+                            putExtra(Intent.EXTRA_SUBJECT, "APEX Alert History — ${java.time.LocalDate.now()}")
+                            putExtra(Intent.EXTRA_TEXT, csv)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "اشتراک CSV تاریخچه"))
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("📤 خروجی CSV تاریخچه (۲۰ هشدار اخیر)", fontSize = 12.sp)
+                }
             }
         }
     }
+}
+
+private fun buildAlertHistoryCsv(context: Context): String {
+    val prefs = context.getSharedPreferences("tier_alert_prefs", Context.MODE_PRIVATE)
+    val raw = prefs.getString("alert_history_json", "[]") ?: "[]"
+    val sb = StringBuilder()
+    sb.append("time,symbol,tier,prob,side\n")
+    try {
+        val arr = org.json.JSONArray(raw)
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            val at = try {
+                val ts = o.getLong("at")
+                java.time.Instant.ofEpochMilli(ts).atZone(java.time.ZoneId.systemDefault()).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+            } catch (_: Exception) { "" }
+            val sym = try { o.getString("symbol") } catch (_: Exception) { "" }
+            val tier = try { o.getString("tier") } catch (_: Exception) { "" }
+            val prob = try { o.getInt("prob").toString() } catch (_: Exception) { "" }
+            val side = try { o.getString("side") } catch (_: Exception) { "" }
+            sb.append("$at,$sym,$tier,$prob,$side\n")
+        }
+    } catch (_: Exception) {}
+    if (sb.toString().trim().endsWith("time,symbol,tier,prob,side")) {
+        sb.append("— no history yet —,,,\n")
+    }
+    return sb.toString()
 }
 
 private fun sendTestNotification(context: Context, symbols: Set<String>) {

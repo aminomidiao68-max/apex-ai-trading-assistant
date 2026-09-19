@@ -1,5 +1,6 @@
 package com.arena.smartmoney.ui.backtest
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -546,8 +547,40 @@ private fun BulkPrimeCard(viewModel: BacktestViewModel) {
                     }
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            androidx.compose.material3.OutlinedButton(
+                onClick = {
+                    val csv = buildBulkPrimeCsv(state.bulkPrimeResults)
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/csv"
+                        putExtra(Intent.EXTRA_SUBJECT, "APEX Bulk Prime 20 — ${java.time.LocalDate.now()}")
+                        putExtra(Intent.EXTRA_TEXT, csv)
+                    }
+                    ctx.startActivity(Intent.createChooser(intent, "اشتراک CSV بک‌تست ۲۰تایی"))
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = state.bulkPrimeResults.isNotEmpty()
+            ) {
+                Text("📤 خروجی CSV بک‌تست ۲۰تایی")
+            }
             Spacer(Modifier.height(6.dp))
             Text("Prime = ساده‌ترین بک‌تست؛ برای سوییپ/واک‌فوروارد از بالا استفاده کنید.", color = Color.White.copy(alpha = 0.45f), style = MaterialTheme.typography.bodySmall)
         }
     }
 }
+
+private fun buildBulkPrimeCsv(items: List<com.arena.smartmoney.ui.backtest.BulkPrimeItem>): String {
+    val sb = StringBuilder()
+    sb.append("symbol,trades,wins,losses,winRatePct,avgR,totalR,profitFactor,expectancyR\n")
+    for (it in items) {
+        val st = it.result?.all
+        if (st != null) {
+            sb.append("${it.symbol},${st.trades},${st.wins},${st.losses},${st.winRatePct ?: ""},${st.avgR ?: ""},${st.totalR ?: ""},${st.profitFactor ?: ""},${st.expectancyR ?: ""}\n")
+        } else {
+            sb.append("${it.symbol},,,,,,,,${it.error?.replace(",",";") ?: ""}\n")
+        }
+    }
+    return sb.toString()
+}
+
