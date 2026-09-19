@@ -79,3 +79,11 @@ def test_gate_rejects_short_stop_without_hunt_buffer():
                     levels={"entry": close, "sl": swing_high + 0.05 * atr,
                             "tp": close - 3 * atr}, tp1=close - 2 * atr, rr=3.5)
     assert "stop_placement" in _strict(tight, cs)["decision"]["failed_gates"]
+
+
+def test_report_exposes_stop_hunt_field():
+    rep = smc_engine.analyze(_candles(), symbol="TESTUSD", timeframe="1h")
+    assert "stop_hunt" in rep
+    sh = rep["stop_hunt"]
+    if sh is not None:  # only when a directional setup exists
+        assert sh["buffer_atr"] >= 0.35

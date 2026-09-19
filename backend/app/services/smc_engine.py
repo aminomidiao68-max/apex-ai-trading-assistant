@@ -1529,6 +1529,25 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
         htf_bias, mtf_align, trend_str, setup.get("poi_reasons",[]) if setup else [],
     )
 
+    # v3.31 stop-hunt transparency for the UI: how far the stop sits beyond the
+    # nearest liquidity pool, and how big the anti-hunt buffer is (in ATR units).
+    stop_hunt = None
+    if sl is not None and atr > 0 and direction in (LONG, SHORT):
+        _ref_entry = entry if entry is not None else price
+        _pool = _deepest_pool_edge(cs, direction, _ref_entry)
+        _w90 = _wick_depth_p90(cs, direction)
+        _buf = max(0.35 * atr, 0.6 * _w90)
+        _dist = None
+        if _pool is not None:
+            _dist = (float(sl) - float(_pool)) / atr if direction == LONG else (float(_pool) - float(sl)) / atr
+        stop_hunt = {
+            "pool_edge": round(float(_pool), 6) if _pool is not None else None,
+            "wick90": round(_w90, 6),
+            "buffer": round(_buf, 6),
+            "buffer_atr": round(_buf / atr, 2),
+            "pool_distance_atr": round(_dist, 2) if _dist is not None else None,
+        }
+
     return {
         "symbol":symbol,"timeframe":timeframe,"market":"","price":price,"bias":bias,"direction":direction,
         "confluence":conf,"probability":setup.get("probability",0) if setup else 0,
@@ -1543,6 +1562,7 @@ def analyze(candles_raw, symbol="", timeframe="", htf_bias=None, news_blocked=Fa
         },
         "trend_strength":trend_str,"vwap":vwap,"watching":watching,
         "levels":{"entry":entry,"sl":sl,"tp":tp2},"tp1":tp1,"tp2":tp2,"tp3":tp3,"invalidation":inv,
+        "stop_hunt":stop_hunt,
         "entry_zone":ezone,"plan_lines":plan_lines,
         "premium_zone":("discount" if fib and fib.get("in_discount") else "premium" if fib and fib.get("in_premium") else "eq") if fib else "eq",
         "mtf_aligned":mtf_align,"htf_bias":htf_bias,

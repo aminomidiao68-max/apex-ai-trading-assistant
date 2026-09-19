@@ -53,6 +53,8 @@ data class ProbableItem(
     val probability: Int,
     val rr: Float,
     val price: Float,
+    val stopBufferAtr: Float?,
+    val poolDistanceAtr: Float?,
 )
 
 data class ProbableUiState(
@@ -75,8 +77,13 @@ class ProbableSetupsViewModel(
         Triple("ETHUSDT", "crypto", "1h"),
         Triple("SOLUSDT", "crypto", "1h"),
         Triple("XAUUSD", "", "1h"),
+        Triple("XAGUSD", "", "1h"),
         Triple("EURUSD", "", "1h"),
         Triple("GBPUSD", "", "1h"),
+        Triple("USDJPY", "", "1h"),
+        Triple("GBPJPY", "", "1h"),
+        Triple("USOIL", "", "1h"),
+        Triple("US100", "", "1h"),
     )
 
     init {
@@ -123,6 +130,8 @@ class ProbableSetupsViewModel(
                                 probability = report.estimatedWinProbability,
                                 rr = report.rr,
                                 price = report.price,
+                                stopBufferAtr = report.stopHunt?.bufferAtr,
+                                poolDistanceAtr = report.stopHunt?.poolDistanceAtr,
                             ),
                         )
                     }
@@ -289,5 +298,18 @@ private fun ProbableCard(item: ProbableItem) {
             color = SoftText.copy(alpha = 0.6f),
             fontSize = 12.sp,
         )
+        if (item.stopBufferAtr != null) {
+            Spacer(Modifier.height(6.dp))
+            val poolFa = if (item.poolDistanceAtr != null) {
+                " • فاصلهٔ استاپ تا استخر نقدینگی ${"%.2f".format(item.poolDistanceAtr)}×ATR"
+            } else {
+                " • استخر نقدینگی نزدیکی یافت نشد"
+            }
+            Text(
+                "🛡 بافر ضد شکار استاپ ${"%.2f".format(item.stopBufferAtr)}×ATR" + poolFa,
+                color = SuccessGreen.copy(alpha = 0.85f),
+                fontSize = 11.sp,
+            )
+        }
     }
 }

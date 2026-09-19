@@ -1520,6 +1520,14 @@ data class SmcMicroLevel(
     val price: Float = 0f,
     val label: String = ""
 )
+data class SmcStopHunt(
+    @SerializedName("pool_edge") val poolEdge: Float? = null,
+    @SerializedName("wick90") val wick90: Float = 0f,
+    @SerializedName("buffer") val buffer: Float = 0f,
+    @SerializedName("buffer_atr") val bufferAtr: Float = 0f,
+    @SerializedName("pool_distance_atr") val poolDistanceAtr: Float? = null,
+)
+
 data class SmcReport(
     val symbol: String = "",
     val timeframe: String = "",
@@ -1536,6 +1544,7 @@ data class SmcReport(
     val status: String = "",
     val grade: String = "-",
     @SerializedName("display_tier") val displayTier: String = "",
+    @SerializedName("stop_hunt") val stopHunt: SmcStopHunt? = null,
     @SerializedName("estimated_win_probability") val estimatedWinProbability: Int = 0,
     @SerializedName("trend_strength") val trendStrength: Int = 0,
     val vwap: Float = 0f,
