@@ -2,6 +2,7 @@ package com.arena.smartmoney.ui.readiness
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.arena.smartmoney.data.model.ShadowPanelDto
 import com.arena.smartmoney.data.model.SystemReadinessDto
 import com.arena.smartmoney.data.repository.TradingRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,6 +12,7 @@ import kotlinx.coroutines.launch
 data class ReadinessUiState(
     val loading: Boolean = false,
     val readiness: SystemReadinessDto? = null,
+    val panel: ShadowPanelDto? = null,
     val error: String? = null
 )
 
@@ -27,16 +29,19 @@ class ReadinessViewModel(
     fun load() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(loading = true, error = null)
-            runCatching { repository.getSystemReadiness() }
-                .onSuccess { readiness ->
-                    _uiState.value = ReadinessUiState(loading = false, readiness = readiness)
+            val readinessResult = runCatching { repository.getSystemReadiness() }
+            val panelResult = runCatching { repository.getShadowPanel() }
+            val readinessError = readinessResult.exceptionOrNull()?.message
+            _uiState.value = ReadinessUiState(
+                loading = false,
+                readiness = readinessResult.getOrNull(),
+                panel = panelResult.getOrNull(),
+                error = if (readinessResult.isFailure && panelResult.isFailure) {
+                    readinessError ?: "Failed to load readiness / خطا در بارگذاری"
+                } else {
+                    null
                 }
-                .onFailure { throwable ->
-                    _uiState.value = ReadinessUiState(
-                        loading = false,
-                        error = throwable.message ?: "Failed to load system readiness / خطا در بارگذاری آمادگی سیستم"
-                    )
-                }
+            )
         }
     }
 }

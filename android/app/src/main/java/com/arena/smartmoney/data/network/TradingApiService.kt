@@ -3,6 +3,7 @@ package com.arena.smartmoney.data.network
 import com.arena.smartmoney.BuildConfig
 import com.arena.smartmoney.data.model.AnalyticsReportDto
 import com.arena.smartmoney.data.model.NewsBrief
+import com.arena.smartmoney.data.model.ShadowPanelDto
 import com.arena.smartmoney.data.model.SmcReport
 import com.arena.smartmoney.data.model.SmcScanResponse
 import com.arena.smartmoney.data.model.AnalyticsSummaryDto
@@ -344,6 +345,8 @@ interface TradingApiService {
 
     @GET("api/v1/news/personalized")
     suspend fun getPersonalizedNewsBrief(): NewsBrief
+    @GET("api/v1/analysis/intraday-fusion/shadow/system-panel")
+    suspend fun getShadowPanel(): ShadowPanelDto
     @GET("api/v1/analysis/smc")
     suspend fun getSmcAnalysis(
         @Query("symbol") symbol: String = "XAUUSD",

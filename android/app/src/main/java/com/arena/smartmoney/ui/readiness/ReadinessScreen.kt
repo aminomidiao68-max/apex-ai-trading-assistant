@@ -2,11 +2,14 @@ package com.arena.smartmoney.ui.readiness
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -75,6 +78,9 @@ fun ReadinessScreen(viewModel: ReadinessViewModel = viewModel()) {
                     }
                 }
             }
+            item {
+                ForwardTestCard(state.panel)
+            }
             readiness?.let { data ->
                 items(data.items) { item ->
                     PremiumGlassCard(borderColor = statusColor(item.status).copy(alpha = 0.35f)) {
@@ -91,6 +97,87 @@ fun ReadinessScreen(viewModel: ReadinessViewModel = viewModel()) {
             }
         }
     }
+}
+
+@Composable
+private fun ForwardTestCard(panel: com.arena.smartmoney.data.model.ShadowPanelDto?) {
+    PremiumGlassCard(borderColor = Color(0x4033E6A6)) {
+        Text(
+            "🧪 آزمون رو‌به‌جلو (سایهٔ زنده)",
+            style = MaterialTheme.typography.titleLarge,
+            color = Color.White,
+            fontWeight = FontWeight.Bold
+        )
+        if (panel == null) {
+            Text(
+                "پنل سایه در دسترس نیست (سرور خواب یا خطای شبکه) — دوباره بروزرسانی کنید.",
+                color = Color(0xFFFFC857)
+            )
+            return@PremiumGlassCard
+        }
+        Text(
+            "موتور فعلی: ${panel.currentEngineVersion ?: "?"} • مشاهده‌ها: ${panel.observationsCurrentEngine} • کاندیداهای اکشن: ${panel.candidatesCurrentEngine}",
+            color = Color(0xFFDDF8FF)
+        )
+        Spacer(Modifier.height(10.dp))
+        ProgressRow("معاملات حل‌شده (cohort فعلی)", panel.resolvedCurrentEngine, panel.minimumRequiredResolved)
+        ProgressRow("حل‌شده‌های فعال‌شده", panel.activatedResolvedCurrentEngine, panel.minimumRequiredActivated)
+        val span = panel.cohortSpanDays ?: 0.0
+        ProgressRowDouble("طول دورهٔ کوهورت (روز)", span, 7.0)
+        Spacer(Modifier.height(8.dp))
+        if (panel.researchReadyCurrentEngine && panel.winRateCiLow != null && panel.winRateCiHigh != null) {
+            val wl = panel.cohortWins + panel.cohortLosses
+            Text(
+                "نرخ برد کوهورت: ${panel.cohortWins} برد / ${panel.cohortLosses} باخت از $wl",
+                color = Color(0xFF33E6A6),
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "بازهٔ اطمینان ۹۵٪ (Wilson): ${(panel.winRateCiLow * 100).toInt()}٪ تا ${(panel.winRateCiHigh * 100).toInt()}٪",
+                color = Color.White
+            )
+            Text(
+                "این آمار توصیفیِ عملکرد سایه است، نه وعدهٔ آینده. precision_claimed=${panel.precisionClaimed}",
+                color = Color(0xFFDDF8FF)
+            )
+        } else {
+            Text(
+                "دادهٔ کافی نیست (${panel.status}) — تا رسیدن به ۳۰ معاملهٔ حل‌شدهٔ فعال + ۷ روز، هیچ ادعای دقتی مطرح نمی‌شود.",
+                color = Color(0xFFFFC857)
+            )
+        }
+        Text(
+            "سایه = بدون اجرای واقعی • actionable_for_live=${panel.actionableForLive} • اجرای زنده همچنان غیرفعال است.",
+            color = Color(0x99FFFFFF),
+            fontSize = MaterialTheme.typography.bodySmall.fontSize
+        )
+    }
+}
+
+@Composable
+private fun ProgressRow(label: String, value: Int, required: Int) {
+    val frac = if (required > 0) (value.toFloat() / required.toFloat()).coerceIn(0f, 1f) else 0f
+    Text("$label: $value / $required", color = Color.White)
+    LinearProgressIndicator(
+        progress = { frac },
+        modifier = Modifier.fillMaxWidth(),
+        color = Color(0xFF33E6A6),
+        trackColor = Color(0x33FFFFFF),
+    )
+    Spacer(Modifier.height(6.dp))
+}
+
+@Composable
+private fun ProgressRowDouble(label: String, value: Double, required: Double) {
+    val frac = if (required > 0.0) (value / required).toFloat().coerceIn(0f, 1f) else 0f
+    Text("$label: ${"%.1f".format(value)} / ${"%.0f".format(required)}", color = Color.White)
+    LinearProgressIndicator(
+        progress = { frac },
+        modifier = Modifier.fillMaxWidth(),
+        color = Color(0xFF33E6A6),
+        trackColor = Color(0x33FFFFFF),
+    )
+    Spacer(Modifier.height(6.dp))
 }
 
 private fun localizedStatus(t: (String, String) -> String, status: String): String {

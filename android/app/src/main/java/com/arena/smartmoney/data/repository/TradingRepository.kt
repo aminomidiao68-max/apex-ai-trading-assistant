@@ -98,6 +98,8 @@ class TradingRepository(
 
     suspend fun getSystemReadiness() = api.getSystemReadiness()
 
+    suspend fun getShadowPanel() = api.getShadowPanel()
+
     suspend fun getAnalyticsSummary() = api.getAnalyticsSummary()
 
     suspend fun getAnalyticsReport() = api.getAnalyticsReport()

@@ -1520,6 +1520,32 @@ data class SmcMicroLevel(
     val price: Float = 0f,
     val label: String = ""
 )
+data class ShadowPanelDto(
+    @SerializedName("total_observations") val totalObservations: Int = 0,
+    @SerializedName("no_trade_count") val noTradeCount: Int = 0,
+    @SerializedName("watch_count") val watchCount: Int = 0,
+    @SerializedName("candidate_count") val candidateCount: Int = 0,
+    @SerializedName("pending_outcomes") val pendingOutcomes: Int = 0,
+    @SerializedName("resolved_outcomes") val resolvedOutcomes: Int = 0,
+    @SerializedName("activated_resolved_outcomes") val activatedResolvedOutcomes: Int = 0,
+    @SerializedName("minimum_required_resolved") val minimumRequiredResolved: Int = 30,
+    @SerializedName("minimum_required_activated") val minimumRequiredActivated: Int = 30,
+    val status: String = "",
+    @SerializedName("precision_claimed") val precisionClaimed: Boolean = false,
+    @SerializedName("actionable_for_live") val actionableForLive: Boolean = false,
+    @SerializedName("current_engine_version") val currentEngineVersion: String? = null,
+    @SerializedName("observations_current_engine") val observationsCurrentEngine: Int = 0,
+    @SerializedName("candidates_current_engine") val candidatesCurrentEngine: Int = 0,
+    @SerializedName("resolved_current_engine") val resolvedCurrentEngine: Int = 0,
+    @SerializedName("activated_resolved_current_engine") val activatedResolvedCurrentEngine: Int = 0,
+    @SerializedName("research_ready_current_engine") val researchReadyCurrentEngine: Boolean = false,
+    @SerializedName("cohort_span_days_current_engine") val cohortSpanDays: Double? = null,
+    @SerializedName("cohort_wins_current_engine") val cohortWins: Int = 0,
+    @SerializedName("cohort_losses_current_engine") val cohortLosses: Int = 0,
+    @SerializedName("win_rate_ci_low") val winRateCiLow: Double? = null,
+    @SerializedName("win_rate_ci_high") val winRateCiHigh: Double? = null,
+)
+
 data class SmcStopHunt(
     @SerializedName("pool_edge") val poolEdge: Float? = null,
     @SerializedName("wick90") val wick90: Float = 0f,
