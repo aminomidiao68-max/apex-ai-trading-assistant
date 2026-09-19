@@ -2655,8 +2655,10 @@ async def resolve_intraday_fusion_shadow(observation_id: str, user=Depends(curre
 @app.get("/api/v1/analysis/intraday-fusion/shadow/system-panel", response_model=SignalShadowPanelResponse)
 def get_system_intraday_fusion_shadow_panel(
     minimum_required_resolved: int = Query(default=30, ge=10, le=1000),
-    user=Depends(current_user),
 ):
+    # v3.31: aggregate SYSTEM cohort stats are benign (counts + Wilson CI only,
+    # no keys, no per-user data) — public so the app's Forward-Test module can
+    # show honest progress without login. Per-user panel below stays protected.
     return signal_shadow_service.panel(0, minimum_required_resolved)
 
 
