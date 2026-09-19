@@ -1991,6 +1991,36 @@ class SignalShadowPanelResponse(BaseModel):
     win_rate_ci_high: float | None = None
 
 
+
+class SignalShadowTimelineItem(BaseModel):
+    observation_id: str
+    symbol: str
+    market: str
+    fusion_status: str
+    side: str
+    outcome_status: str
+    activated: bool = False
+    realized_rr: Optional[float] = None
+    bars_observed: int = 0
+    resolution_reason: Optional[str] = None
+    resolution_close_price: Optional[float] = None
+    entry_price: Optional[float] = None
+    stop_price: Optional[float] = None
+    target_price: Optional[float] = None
+    resolution_timeframe: Optional[str] = None
+    captured_at: str
+    resolved_at: Optional[str] = None
+    engine_version: Optional[str] = None
+    probability: Optional[int] = None
+
+
+class SignalShadowTimelineResponse(BaseModel):
+    current_engine_version: str
+    total: int
+    limit: int
+    items: List[SignalShadowTimelineItem] = Field(default_factory=list)
+
+
 class SignalShadowDiagnosticsResponse(BaseModel):
     total_observations: int
     observations_analyzed: int

@@ -4,6 +4,7 @@ import com.arena.smartmoney.BuildConfig
 import com.arena.smartmoney.data.model.AnalyticsReportDto
 import com.arena.smartmoney.data.model.NewsBrief
 import com.arena.smartmoney.data.model.ShadowPanelDto
+import com.arena.smartmoney.data.model.ShadowTimelineDto
 import com.arena.smartmoney.data.model.SmcReport
 import com.arena.smartmoney.data.model.SmcScanResponse
 import com.arena.smartmoney.data.model.AnalyticsSummaryDto
@@ -347,6 +348,8 @@ interface TradingApiService {
     suspend fun getPersonalizedNewsBrief(): NewsBrief
     @GET("api/v1/analysis/intraday-fusion/shadow/system-panel")
     suspend fun getShadowPanel(): ShadowPanelDto
+    @GET("api/v1/analysis/intraday-fusion/shadow/system-timeline")
+    suspend fun getShadowTimeline(@Query("limit") limit: Int = 50): ShadowTimelineDto
     @GET("api/v1/analysis/smc")
     suspend fun getSmcAnalysis(
         @Query("symbol") symbol: String = "XAUUSD",

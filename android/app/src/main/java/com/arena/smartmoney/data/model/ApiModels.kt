@@ -1546,6 +1546,35 @@ data class ShadowPanelDto(
     @SerializedName("win_rate_ci_high") val winRateCiHigh: Double? = null,
 )
 
+data class ShadowTimelineItemDto(
+    @SerializedName("observation_id") val observationId: String = "",
+    val symbol: String = "",
+    val market: String = "",
+    @SerializedName("fusion_status") val fusionStatus: String = "",
+    val side: String = "",
+    @SerializedName("outcome_status") val outcomeStatus: String = "",
+    val activated: Boolean = false,
+    @SerializedName("realized_rr") val realizedRr: Double? = null,
+    @SerializedName("bars_observed") val barsObserved: Int = 0,
+    @SerializedName("resolution_reason") val resolutionReason: String? = null,
+    @SerializedName("resolution_close_price") val resolutionClosePrice: Double? = null,
+    @SerializedName("entry_price") val entryPrice: Double? = null,
+    @SerializedName("stop_price") val stopPrice: Double? = null,
+    @SerializedName("target_price") val targetPrice: Double? = null,
+    @SerializedName("resolution_timeframe") val resolutionTimeframe: String? = null,
+    @SerializedName("captured_at") val capturedAt: String = "",
+    @SerializedName("resolved_at") val resolvedAt: String? = null,
+    @SerializedName("engine_version") val engineVersion: String? = null,
+    val probability: Int? = null,
+)
+
+data class ShadowTimelineDto(
+    @SerializedName("current_engine_version") val currentEngineVersion: String = "",
+    val total: Int = 0,
+    val limit: Int = 50,
+    val items: List<ShadowTimelineItemDto> = emptyList(),
+)
+
 data class SmcStopHunt(
     @SerializedName("pool_edge") val poolEdge: Float? = null,
     @SerializedName("wick90") val wick90: Float = 0f,

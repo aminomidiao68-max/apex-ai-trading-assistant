@@ -490,6 +490,66 @@ class SignalShadowService:
         half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
         return round(max(0.0, center - half), 4), round(min(1.0, center + half), 4)
 
+
+    def timeline(self, user_id: int = 0, limit: int = 50) -> dict:
+        """Recent observations for the system cohort (user_id=0 by default).
+        Public-safe: no secrets, only aggregate observation fields + probability
+        extracted from evidence_json. Newest first.
+        """
+        limit = max(1, min(int(limit), 100))
+        with self.database.connection() as conn:
+            rows = conn.execute(
+                "SELECT observation_id,symbol,market,fusion_status,side,outcome_status,"
+                "activated,realized_rr,bars_observed,resolution_reason,resolution_close_price,"
+                "entry_price,stop_price,target_price,resolution_timeframe,captured_at,resolved_at,"
+                "engine_version,evidence_json "
+                "FROM signal_shadow_observations WHERE user_id=? ORDER BY captured_at DESC LIMIT ?",
+                (user_id, limit),
+            ).fetchall()
+            total_row = conn.execute(
+                "SELECT COUNT(*) AS c FROM signal_shadow_observations WHERE user_id=?",
+                (user_id,),
+            ).fetchone()
+        total = int(total_row["c"]) if total_row else 0
+        items = []
+        for row in rows:
+            prob = None
+            try:
+                ev = json.loads(row["evidence_json"] or "{}")
+                for fr in ev.get("frames") or []:
+                    rep = (fr.get("report") or {})
+                    dec = rep.get("decision") or {}
+                    if dec.get("status") == "actionable":
+                        prob = int(rep.get("probability") or 0)
+                        break
+                    # fallback: any frame probability
+                    if rep.get("probability") is not None and prob is None:
+                        prob = int(rep.get("probability"))
+            except Exception:
+                prob = None
+            items.append({
+                "observation_id": str(row["observation_id"]),
+                "symbol": str(row["symbol"]),
+                "market": str(row["market"]),
+                "fusion_status": str(row["fusion_status"]),
+                "side": str(row["side"]),
+                "outcome_status": str(row["outcome_status"]),
+                "activated": bool(row["activated"]),
+                "realized_rr": float(row["realized_rr"]) if row["realized_rr"] is not None else None,
+                "bars_observed": int(row["bars_observed"] or 0),
+                "resolution_reason": str(row["resolution_reason"]) if row["resolution_reason"] else None,
+                "resolution_close_price": float(row["resolution_close_price"]) if row["resolution_close_price"] is not None else None,
+                "entry_price": float(row["entry_price"]) if row["entry_price"] is not None else None,
+                "stop_price": float(row["stop_price"]) if row["stop_price"] is not None else None,
+                "target_price": float(row["target_price"]) if row["target_price"] is not None else None,
+                "resolution_timeframe": str(row["resolution_timeframe"]) if row["resolution_timeframe"] else None,
+                "captured_at": str(row["captured_at"]),
+                "resolved_at": str(row["resolved_at"]) if row["resolved_at"] else None,
+                "engine_version": str(row["engine_version"]) if row["engine_version"] else None,
+                "probability": prob,
+            })
+        return {"current_engine_version": str(settings.engine_version), "total": total, "limit": limit, "items": items}
+
     def panel(self, user_id: int, minimum_required_resolved: int = 30) -> SignalShadowPanelResponse:
         with self.database.connection() as conn:
             rows = conn.execute(

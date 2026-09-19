@@ -112,6 +112,7 @@ from app.models import (
     SignalShadowHoldoutConsumeRequest,
     SignalShadowHoldoutConsumptionResponse,
     SignalShadowPanelResponse,
+    SignalShadowTimelineResponse,
     SignalShadowResearchPanelResponse,
     SignalShadowResearchSnapshotResponse,
     SignalShadowResolutionResponse,
@@ -2660,6 +2661,18 @@ def get_system_intraday_fusion_shadow_panel(
     # no keys, no per-user data) — public so the app's Forward-Test module can
     # show honest progress without login. Per-user panel below stays protected.
     return signal_shadow_service.panel(0, minimum_required_resolved)
+
+
+@app.get("/api/v1/analysis/intraday-fusion/shadow/system-timeline", response_model=SignalShadowTimelineResponse)
+def get_system_intraday_fusion_shadow_timeline(limit: int = Query(default=50, ge=1, le=100)):
+    # Public: recent SYSTEM cohort observations (user_id=0). Benign fields only,
+    # same honesty guarantees as system-panel — newest first.
+    return signal_shadow_service.timeline(0, limit)
+
+
+@app.get("/api/v1/analysis/intraday-fusion/shadow/timeline", response_model=SignalShadowTimelineResponse)
+def get_intraday_fusion_shadow_timeline(limit: int = Query(default=50, ge=1, le=100), user=Depends(current_user)):
+    return signal_shadow_service.timeline(user.id, limit)
 
 
 @app.get("/api/v1/analysis/intraday-fusion/shadow/panel", response_model=SignalShadowPanelResponse)
