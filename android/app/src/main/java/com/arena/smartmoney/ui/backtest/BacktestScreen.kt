@@ -520,7 +520,7 @@ private fun BulkPrimeCard(viewModel: BacktestViewModel) {
                                 w >= 45.0 -> Color(0xFFFFC857).copy(alpha = 0.20f)
                                 else -> Color(0xFFFF7A7A).copy(alpha = 0.18f)
                             }
-                            val border = when {
+                            val borderColor = when {
                                 trades == 0 -> Color.White.copy(alpha = 0.06f)
                                 w == null -> Color.White.copy(alpha = 0.06f)
                                 w >= 55.0 -> Color(0xFF33E6A6).copy(alpha = 0.5f)
@@ -531,13 +531,13 @@ private fun BulkPrimeCard(viewModel: BacktestViewModel) {
                             Column(
                                 modifier = Modifier.weight(1f)
                                     .background(bg, RoundedCornerShape(10.dp))
-                                    .border(1.dp, border, RoundedCornerShape(10.dp))
+                                    .border(1.dp, borderColor, RoundedCornerShape(10.dp))
                                     .padding(horizontal = 6.dp, vertical = 7.dp),
                                 horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
                             ) {
                                 Text(item.symbol, color = Color.White, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, maxLines = 1)
                                 Spacer(Modifier.height(3.dp))
-                                Text(wrText, color = if (trades==0) Color.White.copy(alpha=0.45f) else border, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                                Text(wrText, color = if (trades==0) Color.White.copy(alpha=0.45f) else borderColor, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                                 Text(if (trades==0) "بدون معامله" else "${trades} ت", color = Color.White.copy(alpha=0.55f), style = MaterialTheme.typography.labelSmall)
                             }
                         }
