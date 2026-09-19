@@ -5,10 +5,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -485,16 +487,18 @@ private fun BulkPrimeCard(viewModel: BacktestViewModel) {
         if (state.bulkPrimeResults.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
             // summary
-            val withTrades = state.bulkPrimeResults.filter { (it.result?.stats?.totalTrades ?: 0) > 0 }
+            val withTrades = state.bulkPrimeResults.filter { (it.result?.all?.trades ?: 0) > 0 }
             Text("نتیجه: ${withTrades.size} از ۲۰ نماد معامله داشتند • ${state.bulkPrimeResults.size} اسکن شد", color = Color(0xFF67ECFF), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
             for (item in state.bulkPrimeResults) {
                 val r = item.result
-                val stats = r?.stats
+                val stats = r?.all
                 Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(item.symbol, color = Color.White, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     if (stats != null) {
-                        Text("${stats.totalTrades} ت • برد ${"%.0f".format(stats.winRate * 100)}٪ • PF ${"%.2f".format(stats.profitFactor)}", color = if (stats.winRate >= 0.5) Color(0xFF33E6A6) else Color(0xFFFFC857), style = MaterialTheme.typography.bodySmall)
+                        val wr = stats.winRatePct ?: 0.0
+                        val pf = stats.profitFactor ?: 0.0
+                        Text("${stats.trades} ت • برد ${"%.0f".format(wr)}٪ • PF ${"%.2f".format(pf)}", color = if (wr >= 50.0) Color(0xFF33E6A6) else Color(0xFFFFC857), style = MaterialTheme.typography.bodySmall)
                     } else {
                         Text(item.error ?: "—", color = Color(0xFFFF7A7A), style = MaterialTheme.typography.bodySmall)
                     }

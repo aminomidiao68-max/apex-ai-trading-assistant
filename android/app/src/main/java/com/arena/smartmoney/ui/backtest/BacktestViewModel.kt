@@ -327,7 +327,7 @@ class BacktestViewModel(
                 }.map { it.await() }
             }
             // sort by trades desc, then winRate desc
-            val sorted = results.sortedWith(compareByDescending<BulkPrimeItem> { it.result?.stats?.totalTrades ?: -1 }.thenByDescending { it.result?.stats?.winRate ?: -1.0 })
+            val sorted = results.sortedWith(compareByDescending<BulkPrimeItem> { it.result?.all?.trades ?: -1 }.thenByDescending { it.result?.all?.winRatePct ?: -1.0 })
             _uiState.value = _uiState.value.copy(bulkPrimeLoading = false, bulkPrimeResults = sorted, bulkPrimeError = if (sorted.all { it.result == null }) "همهٔ درخواست‌ها ناموفق — سرور یا شبکه" else null)
         }
     }
