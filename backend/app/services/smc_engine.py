@@ -113,6 +113,65 @@ def _atr(cs, n=14) -> float:
 
 
 # =========================================================
+# v3.31 ANTI-STOP-HUNT: stops are placed BEYOND the liquidity
+# pools (equal lows/highs) that market makers sweep, plus a
+# buffer derived from REAL recent wick depth — so a typical
+# stop-hunt wick cannot reach them. Deterministic, no lookahead.
+# =========================================================
+def _wick_depth_p90(cs, side, n=30) -> float:
+    """90th percentile adverse-wick depth over the last n bars."""
+    recent = cs[-n:]
+    if not recent:
+        return 0.0
+    if side == LONG:
+        vals = sorted(min(float(c["o"]), float(c["c"])) - float(c["l"]) for c in recent)
+    else:
+        vals = sorted(float(c["h"]) - max(float(c["o"]), float(c["c"])) for c in recent)
+    return max(0.0, vals[int(0.9 * (len(vals) - 1))])
+
+
+def _deepest_pool_edge(cs, side, entry, lookback=60, tol=0.0012):
+    """Outermost equal-low/high (liquidity pool) edge on the stop side.
+    Two+ touches within `tol` of the same price = a stop cluster that
+    gets swept; the stop must sit beyond the whole cluster."""
+    pts = []
+    for c in cs[-lookback:]:
+        q = float(c["l"]) if side == LONG else float(c["h"])
+        if (side == LONG and q < float(entry)) or (side == SHORT and q > float(entry)):
+            pts.append(q)
+    best = None
+    for q in pts:
+        touches = sum(1 for r in pts if abs(r - q) <= max(q * tol, 1e-9))
+        if touches >= 2:
+            if best is None or (side == LONG and q < best) or (side == SHORT and q > best):
+                best = q
+    return best
+
+
+def _harden_stop(cs, atr, direction, entry, sl):
+    """Widen-only stop hardening: SL goes beyond min/max of (initial SL,
+    20-bar swing, deepest liquidity pool) minus/plus a buffer of
+    max(0.35xATR, 0.6x p90 wick depth). Never tightens, never crosses entry."""
+    if atr <= 0 or len(cs) < 25 or sl is None:
+        return sl
+    buf = max(0.35 * atr, 0.6 * _wick_depth_p90(cs, direction))
+    pool = _deepest_pool_edge(cs, direction, entry)
+    if direction == LONG:
+        swing = min(float(c["l"]) for c in cs[-20:])
+        cands = [x for x in (float(sl), swing, pool) if x is not None and x < float(entry)]
+        if not cands:
+            return sl
+        new_sl = min(cands) - buf
+        return new_sl if new_sl < float(sl) else sl
+    swing = max(float(c["h"]) for c in cs[-20:])
+    cands = [x for x in (float(sl), swing, pool) if x is not None and x > float(entry)]
+    if not cands:
+        return sl
+    new_sl = max(cands) + buf
+    return new_sl if new_sl > float(sl) else sl
+
+
+# =========================================================
 # Structural swings (zigzag) — require at least 3 bars each side
 # =========================================================
 def _swings(cs, left=3, right=3) -> Tuple[List[Tuple[int,float]], List[Tuple[int,float]]]:
@@ -1058,6 +1117,7 @@ def _detect(cs, bias, active_obs, active_fvgs, br, liq, price, atr, of, fib, vwa
                 elow = price - atr*0.2; ehigh = price + atr*0.3
 
         if stype is None or entry is None or sl is None: continue
+        sl = _harden_stop(cs, atr, direction, entry, sl)  # v3.31 anti-stop-hunt
         risk = abs(entry-sl)
         if risk < atr*0.25: continue
         # Targets based on liquidity + RR

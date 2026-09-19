@@ -202,12 +202,26 @@ def apply_strict_decision(
     if direction in ("long", "short") and _sl is not None and _entry is not None and _atr > 0:
         _sl = float(_sl); _entry = float(_entry)
         _risk = abs(_entry - _sl)
+        # v3.31 ANTI-STOP-HUNT: beyond the swing is NOT enough — the stop must
+        # also clear a hunt buffer of max(0.25xATR, 0.5x p90 adverse-wick depth).
+        _wick90 = 0.0
+        _recent = candles[-30:]
+        if len(_recent) >= 10:
+            if direction == "long":
+                _w = sorted(min(float(x["o"]), float(x["c"])) - float(x["l"]) for x in _recent)
+            else:
+                _w = sorted(float(x["h"]) - max(float(x["o"]), float(x["c"])) for x in _recent)
+            _wick90 = max(0.0, _w[int(0.9 * (len(_w) - 1))])
+        _buf_req = max(0.25 * _atr, 0.5 * _wick90)
         if direction == "long":
-            _stop_ok = _sl <= (_swing_low or _sl) and _risk <= 4.0 * _atr
+            _ref = (_swing_low - _buf_req) if _swing_low is not None else _sl
+            _stop_ok = _sl <= _ref and _risk <= 4.0 * _atr
         else:
-            _stop_ok = _sl >= (_swing_high or _sl) and _risk <= 4.0 * _atr
+            _ref = (_swing_high + _buf_req) if _swing_high is not None else _sl
+            _stop_ok = _sl >= _ref and _risk <= 4.0 * _atr
         _stop_actual = {"sl": _sl, "swing_low": _swing_low, "swing_high": _swing_high,
-                        "risk_atr": round(_risk / _atr, 2)}
+                        "risk_atr": round(_risk / _atr, 2),
+                        "hunt_buffer_required": round(_buf_req, 6)}
         _chase_ok = abs(_entry - _last_close) <= 1.0 * _atr
         _chase_actual = round(abs(_entry - _last_close) / _atr, 2)
     else:
@@ -343,7 +357,7 @@ def apply_strict_decision(
             "stop_placement",
             _stop_ok,
             _stop_actual,
-            "stop beyond 20-bar swing, risk <= 4x ATR (v3.27)",
+            "stop beyond 20-bar swing + hunt buffer max(0.25xATR, 0.5xwick90), risk <= 4x ATR (v3.31)",
         ),
         _gate(
             "entry_proximity",
