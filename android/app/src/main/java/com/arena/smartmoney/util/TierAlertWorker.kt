@@ -6,9 +6,9 @@ import androidx.work.WorkerParameters
 import com.arena.smartmoney.data.repository.TradingRepository
 
 /**
- * v3.31 tier alerts: periodically scans the same watchlist as the
- * "Probable Setups" module and notifies ONLY for the two highest tiers
- * (ACTIONABLE / HIGH_CONFIDENCE_WATCH). PROB_WATCH_70 stays in-app only.
+ * v3.31 tier alerts: periodically scans the AlertPrefs watchlist and notifies
+ * per the user's settings (Alert Settings module). Defaults: ACTIONABLE always,
+ * HIGH_CONFIDENCE_WATCH on, PROB_WATCH_70 off (in-app only).
  *
  * Honesty rules:
  *  - the probability shown is the model's UNCALIBRATED estimate, labeled as such;
@@ -21,23 +21,16 @@ class TierAlertWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
+        val ctx = applicationContext
+        if (!AlertPrefs.alertsEnabled(ctx)) return Result.success()
+        val enabledSymbols = AlertPrefs.symbols(ctx)
+        val notifyHigh = AlertPrefs.notifyHighConfidence(ctx)
+        val notifyProb70 = AlertPrefs.notifyProb70(ctx)
         val repo = TradingRepository()
-        val watchlist = listOf(
-            Triple("BTCUSDT", "crypto", "1h"),
-            Triple("ETHUSDT", "crypto", "1h"),
-            Triple("SOLUSDT", "crypto", "1h"),
-            Triple("XAUUSD", "", "1h"),
-            Triple("XAGUSD", "", "1h"),
-            Triple("EURUSD", "", "1h"),
-            Triple("GBPUSD", "", "1h"),
-            Triple("USDJPY", "", "1h"),
-            Triple("GBPJPY", "", "1h"),
-            Triple("USOIL", "", "1h"),
-            Triple("US100", "", "1h"),
-        )
-        val prefs = applicationContext.getSharedPreferences("tier_alerts", Context.MODE_PRIVATE)
+        val prefs = ctx.getSharedPreferences("tier_alerts", Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
-        for ((symbol, market, interval) in watchlist) {
+        for ((symbol, market, interval) in AlertPrefs.watchlist) {
+            if (symbol !in enabledSymbols) continue
             try {
                 val report = repo.getSmcAnalysis(
                     symbol = symbol,
@@ -45,18 +38,24 @@ class TierAlertWorker(
                     interval = interval,
                 )
                 val tier = report.displayTier
-                if (tier != "ACTIONABLE" && tier != "HIGH_CONFIDENCE_WATCH") continue
+                val shouldNotify = when (tier) {
+                    "ACTIONABLE" -> true
+                    "HIGH_CONFIDENCE_WATCH" -> notifyHigh
+                    "PROB_WATCH_70" -> notifyProb70
+                    else -> false
+                }
+                if (!shouldNotify) continue
                 val key = symbol + "_" + tier
                 if (now - prefs.getLong(key, 0L) < SUPPRESS_MS) continue
                 prefs.edit().putLong(key, now).apply()
                 val sideFa = if (report.direction == "long") "خرید (LONG)" else "فروش (SHORT)"
-                val tierFa = if (tier == "ACTIONABLE") {
-                    "🟢 سیگنال اکشن — همهٔ گیت‌ها پاس"
-                } else {
-                    "🟡 تماشای اطمینان بالا (≥۸۰٪)"
+                val tierFa = when (tier) {
+                    "ACTIONABLE" -> "🟢 سیگنال اکشن — همهٔ گیت‌ها پاس"
+                    "HIGH_CONFIDENCE_WATCH" -> "🟡 تماشای اطمینان بالا (≥۸۰٪)"
+                    else -> "🔵 ستاپ محتمل (≥۷۰٪)"
                 }
                 NotificationHelper.showSignalNotification(
-                    applicationContext,
+                    ctx,
                     "$tierFa — $symbol",
                     "$sideFa • احتمال برد تخمینی (غیرکالیبره) ${report.estimatedWinProbability}٪ " +
                         "• گرید ${report.grade} • RR ${"%.1f".format(report.rr)}",

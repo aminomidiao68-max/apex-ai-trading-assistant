@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.arena.smartmoney.data.repository.TradingRepository
+import com.arena.smartmoney.util.AlertPrefs
 import com.arena.smartmoney.ui.theme.BlueAccent
 import com.arena.smartmoney.ui.theme.CardBg
 import com.arena.smartmoney.ui.theme.CyanAccent
@@ -72,19 +73,7 @@ class ProbableSetupsViewModel(
     private val _uiState = MutableStateFlow(ProbableUiState())
     val uiState: StateFlow<ProbableUiState> = _uiState
 
-    private val watchlist = listOf(
-        Triple("BTCUSDT", "crypto", "1h"),
-        Triple("ETHUSDT", "crypto", "1h"),
-        Triple("SOLUSDT", "crypto", "1h"),
-        Triple("XAUUSD", "", "1h"),
-        Triple("XAGUSD", "", "1h"),
-        Triple("EURUSD", "", "1h"),
-        Triple("GBPUSD", "", "1h"),
-        Triple("USDJPY", "", "1h"),
-        Triple("GBPJPY", "", "1h"),
-        Triple("USOIL", "", "1h"),
-        Triple("US100", "", "1h"),
-    )
+    private val watchlist = AlertPrefs.watchlist
 
     init {
         scan()
