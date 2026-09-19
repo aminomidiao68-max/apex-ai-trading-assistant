@@ -349,7 +349,12 @@ interface TradingApiService {
     @GET("api/v1/analysis/intraday-fusion/shadow/system-panel")
     suspend fun getShadowPanel(): ShadowPanelDto
     @GET("api/v1/analysis/intraday-fusion/shadow/system-timeline")
-    suspend fun getShadowTimeline(@Query("limit") limit: Int = 50): ShadowTimelineDto
+    suspend fun getShadowTimeline(
+        @Query("limit") limit: Int = 50,
+        @Query("offset") offset: Int = 0,
+        @Query("fusion_status") fusionStatus: String? = null,
+        @Query("outcome_status") outcomeStatus: String? = null
+    ): ShadowTimelineDto
     @GET("api/v1/analysis/smc")
     suspend fun getSmcAnalysis(
         @Query("symbol") symbol: String = "XAUUSD",

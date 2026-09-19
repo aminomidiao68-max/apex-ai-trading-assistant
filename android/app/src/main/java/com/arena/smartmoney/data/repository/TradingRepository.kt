@@ -106,7 +106,8 @@ class TradingRepository(
     }
 
     suspend fun getShadowPanel() = stagingApi.getShadowPanel()
-    suspend fun getShadowTimeline(limit: Int = 50) = stagingApi.getShadowTimeline(limit)
+    suspend fun getShadowTimeline(limit: Int = 50, offset: Int = 0, fusionStatus: String? = null, outcomeStatus: String? = null) =
+        stagingApi.getShadowTimeline(limit, offset, fusionStatus, outcomeStatus)
 
     suspend fun getAnalyticsSummary() = api.getAnalyticsSummary()
 

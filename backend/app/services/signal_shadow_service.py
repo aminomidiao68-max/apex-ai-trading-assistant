@@ -491,26 +491,55 @@ class SignalShadowService:
         return round(max(0.0, center - half), 4), round(min(1.0, center + half), 4)
 
 
-    def timeline(self, user_id: int = 0, limit: int = 50) -> dict:
+    def timeline(self, user_id: int = 0, limit: int = 50, offset: int = 0, fusion_status: str | None = None, outcome_status: str | None = None) -> dict:
         """Recent observations for the system cohort (user_id=0 by default).
         Public-safe: no secrets, only aggregate observation fields + probability
         extracted from evidence_json. Newest first.
+        Supports server-side filtering so historic candidates remain discoverable
+        even when the ultra-strict engine produces mostly NO_TRADE/WATCH.
         """
-        limit = max(1, min(int(limit), 100))
+        limit = max(1, min(int(limit), 500))
+        offset = max(0, int(offset))
+        allowed_fusion = {"ACTIONABLE_CANDIDATE", "WATCH", "NO_TRADE"}
+        allowed_outcome = {"PENDING", "WIN", "LOSS", "EXPIRED_ACTIVE", "EXPIRED_NO_ENTRY", "NOT_APPLICABLE"}
+        fusion_status = str(fusion_status).strip().upper() if fusion_status else None
+        if fusion_status and fusion_status not in allowed_fusion:
+            fusion_status = None
+        outcome_status = str(outcome_status).strip().upper() if outcome_status else None
+        if outcome_status and outcome_status not in allowed_outcome:
+            outcome_status = None
+        # Build filtered query
+        where = ["user_id=?"]
+        params: list = [user_id]
+        if fusion_status:
+            where.append("fusion_status=?")
+            params.append(fusion_status)
+        if outcome_status:
+            where.append("outcome_status=?")
+            params.append(outcome_status)
+        where_sql = " AND ".join(where)
         with self.database.connection() as conn:
             rows = conn.execute(
                 "SELECT observation_id,symbol,market,fusion_status,side,outcome_status,"
                 "activated,realized_rr,bars_observed,resolution_reason,resolution_close_price,"
                 "entry_price,stop_price,target_price,resolution_timeframe,captured_at,resolved_at,"
                 "engine_version,evidence_json "
-                "FROM signal_shadow_observations WHERE user_id=? ORDER BY captured_at DESC LIMIT ?",
-                (user_id, limit),
+                f"FROM signal_shadow_observations WHERE {where_sql} ORDER BY captured_at DESC LIMIT ? OFFSET ?",
+                (*params, limit, offset),
             ).fetchall()
             total_row = conn.execute(
+                f"SELECT COUNT(*) AS c FROM signal_shadow_observations WHERE {where_sql}",
+                tuple(params),
+            ).fetchone()
+            # overall unfiltered total for header subtitle (honest denominator)
+            overall_row = conn.execute(
                 "SELECT COUNT(*) AS c FROM signal_shadow_observations WHERE user_id=?",
                 (user_id,),
             ).fetchone()
-        total = int(total_row["c"]) if total_row else 0
+        filtered_total = int(total_row["c"]) if total_row else 0
+        overall_total = int(overall_row["c"]) if overall_row else filtered_total
+        # For unfiltered requests, filtered_total == overall_total; keep 'total' as filtered_total for backward compat
+        total = filtered_total
         items = []
         for row in rows:
             prob = None
@@ -548,7 +577,7 @@ class SignalShadowService:
                 "engine_version": str(row["engine_version"]) if row["engine_version"] else None,
                 "probability": prob,
             })
-        return {"current_engine_version": str(settings.engine_version), "total": total, "limit": limit, "items": items}
+        return {"current_engine_version": str(settings.engine_version), "total": total, "overall_total": overall_total, "limit": limit, "offset": offset, "items": items}
 
     def panel(self, user_id: int, minimum_required_resolved: int = 30) -> SignalShadowPanelResponse:
         with self.database.connection() as conn:

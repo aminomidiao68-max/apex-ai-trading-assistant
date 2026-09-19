@@ -1571,7 +1571,9 @@ data class ShadowTimelineItemDto(
 data class ShadowTimelineDto(
     @SerializedName("current_engine_version") val currentEngineVersion: String = "",
     val total: Int = 0,
+    @SerializedName("overall_total") val overallTotal: Int? = null,
     val limit: Int = 50,
+    val offset: Int = 0,
     val items: List<ShadowTimelineItemDto> = emptyList(),
 )
 

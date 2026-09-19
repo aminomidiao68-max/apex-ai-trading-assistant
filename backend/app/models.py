@@ -2017,7 +2017,9 @@ class SignalShadowTimelineItem(BaseModel):
 class SignalShadowTimelineResponse(BaseModel):
     current_engine_version: str
     total: int
+    overall_total: int | None = None
     limit: int
+    offset: int = 0
     items: List[SignalShadowTimelineItem] = Field(default_factory=list)
 
 

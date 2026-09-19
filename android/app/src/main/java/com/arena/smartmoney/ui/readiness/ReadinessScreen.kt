@@ -20,9 +20,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -90,12 +87,19 @@ fun ReadinessScreen(viewModel: ReadinessViewModel = viewModel()) {
             item {
                 ForwardTestCard(
                     panel = state.panel,
-                    timeline = state.timeline,
+                    timelineItems = state.timelineItems,
+                    timelineTotal = state.timelineTotal,
+                    timelineOverallTotal = state.timelineOverallTotal,
+                    timelineHasMore = state.timelineHasMore,
                     timelineExpanded = state.timelineExpanded,
                     timelineLoading = state.timelineLoading,
+                    timelineLoadingMore = state.timelineLoadingMore,
                     timelineError = state.timelineError,
+                    timelineFilter = state.timelineFilter,
                     onToggleTimeline = { viewModel.toggleTimeline() },
-                    onRefreshTimeline = { viewModel.refreshTimeline() }
+                    onRefreshTimeline = { viewModel.refreshTimeline() },
+                    onLoadMore = { viewModel.loadMoreTimeline() },
+                    onSetFilter = { viewModel.setTimelineFilter(it) }
                 )
             }
             readiness?.let { data ->
@@ -119,14 +123,20 @@ fun ReadinessScreen(viewModel: ReadinessViewModel = viewModel()) {
 @Composable
 private fun ForwardTestCard(
     panel: com.arena.smartmoney.data.model.ShadowPanelDto?,
-    timeline: com.arena.smartmoney.data.model.ShadowTimelineDto?,
+    timelineItems: List<ShadowTimelineItemDto>,
+    timelineTotal: Int?,
+    timelineOverallTotal: Int?,
+    timelineHasMore: Boolean,
     timelineExpanded: Boolean,
     timelineLoading: Boolean,
+    timelineLoadingMore: Boolean,
     timelineError: String?,
+    timelineFilter: String,
     onToggleTimeline: () -> Unit,
-    onRefreshTimeline: () -> Unit
+    onRefreshTimeline: () -> Unit,
+    onLoadMore: () -> Unit,
+    onSetFilter: (String) -> Unit
 ) {
-    var filter by remember { mutableStateOf("ALL") } // ALL, CANDIDATE, RESOLVED, WINLOSS
     PremiumGlassCard(borderColor = Color(0x4033E6A6)) {
         Text(
             "🧪 آزمون رو‌به‌جلو (سایهٔ زنده)",
@@ -184,55 +194,89 @@ private fun ForwardTestCard(
         )
         Spacer(Modifier.height(12.dp))
         // Timeline toggle
+        val totalLabel = timelineOverallTotal ?: timelineTotal ?: panel.observationsCurrentEngine
         Button(
             onClick = onToggleTimeline,
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A5F))
         ) {
-            Text(if (timelineExpanded) "▾ بستن تاریخچهٔ مشاهدات" else "▸ نمایش تاریخچهٔ کامل مشاهدات سایه (${timeline?.total ?: panel.observationsCurrentEngine} مشاهده)")
+            Text(if (timelineExpanded) "▾ بستن تاریخچهٔ مشاهدات" else "▸ نمایش تاریخچهٔ کامل مشاهدات سایه (کل $totalLabel مشاهده)")
         }
         if (timelineExpanded) {
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                TimelineFilterChip("همه", filter == "ALL") { filter = "ALL" }
-                TimelineFilterChip("کاندیدا", filter == "CANDIDATE") { filter = "CANDIDATE" }
-                TimelineFilterChip("حل‌شده", filter == "RESOLVED") { filter = "RESOLVED" }
-                TimelineFilterChip("برد/باخت", filter == "WINLOSS") { filter = "WINLOSS" }
+                TimelineFilterChip("همه", timelineFilter == "ALL") { onSetFilter("ALL") }
+                TimelineFilterChip("کاندیدا", timelineFilter == "CANDIDATE") { onSetFilter("CANDIDATE") }
+                TimelineFilterChip("حل‌شده", timelineFilter == "RESOLVED") { onSetFilter("RESOLVED") }
+                TimelineFilterChip("برد/باخت", timelineFilter == "WINLOSS") { onSetFilter("WINLOSS") }
             }
+            Text(
+                when (timelineFilter) {
+                    "ALL" -> "همهٔ مشاهدات اخیر (NO_TRADE/WATCH/کاندیدا) — جدیدترین اول. برای دیدن ۸ کاندیدای تاریخی، «کاندیدا» را بزنید (سرور فیلتر می‌کند)."
+                    "CANDIDATE" -> "فقط کاندیداهای اکشن (ACTIONABLE_CANDIDATE) — حتی قدیمی‌ترین‌ها از کل تاریخ (۸ مورد کل) — جدیدترین کاندیدا اول."
+                    "RESOLVED" -> "کاندیداهای حل‌شده (WIN/LOSS/EXPIRED) — از کل تاریخ."
+                    else -> "فقط معاملات فعال‌شده با نتیجهٔ برد/باخت (activated WIN/LOSS) — دقیق‌ترین برش."
+                },
+                color = Color(0x99FFFFFF),
+                fontSize = MaterialTheme.typography.bodySmall.fontSize
+            )
             Spacer(Modifier.height(6.dp))
-            TextButton(onClick = onRefreshTimeline, modifier = Modifier.fillMaxWidth()) {
-                Text(if (timelineLoading) "در حال بارگذاری..." else "⟳ بروزرسانی تاریخچه (۵۰ مورد اخیر)")
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onRefreshTimeline, modifier = Modifier.weight(1f)) {
+                    Text(if (timelineLoading) "در حال بارگذاری..." else "⟳ بروزرسانی")
+                }
+                if (timelineHasMore && timelineFilter == "ALL") {
+                    Button(
+                        onClick = onLoadMore,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A4A6B)),
+                        enabled = !timelineLoadingMore
+                    ) {
+                        Text(if (timelineLoadingMore) "..." else "۵۰ قدیمی‌تر")
+                    }
+                }
             }
             timelineError?.let {
                 Text("خطا: $it", color = Color(0xFFFF7A7A), fontSize = MaterialTheme.typography.bodySmall.fontSize)
             }
-            val items = timeline?.items ?: emptyList()
-            if (!timelineLoading && items.isEmpty() && timeline != null) {
-                Text(
-                    "هنوز سابقه‌ای برای این موتور وجود ندارد — cohort از ${panel.currentEngineVersion} تازه شروع شده است.",
-                    color = Color(0xFFFFC857)
-                )
-            }
-            if (timelineLoading && items.isEmpty()) {
+            if (timelineLoading && timelineItems.isEmpty()) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Color(0xFF33E6A6), trackColor = Color(0x22FFFFFF))
+                Text("در حال دریافت تاریخچه از سرور سایه...", color = Color(0x99FFFFFF), fontSize = MaterialTheme.typography.bodySmall.fontSize)
             }
-            val filtered = when (filter) {
-                "CANDIDATE" -> items.filter { it.fusionStatus == "ACTIONABLE_CANDIDATE" }
-                "RESOLVED" -> items.filter { it.outcomeStatus in setOf("WIN","LOSS","EXPIRED_ACTIVE","EXPIRED_NO_ENTRY") }
-                "WINLOSS" -> items.filter { it.outcomeStatus in setOf("WIN","LOSS") && it.activated }
-                else -> items
+            // Client-side refinement for RESOLVED/WINLOSS (server already filtered to candidates)
+            val displayed = when (timelineFilter) {
+                "RESOLVED" -> timelineItems.filter { it.outcomeStatus in setOf("WIN","LOSS","EXPIRED_ACTIVE","EXPIRED_NO_ENTRY") }
+                "WINLOSS" -> timelineItems.filter { it.outcomeStatus in setOf("WIN","LOSS") && it.activated }
+                else -> timelineItems
             }
-            if (timeline != null && filtered.isEmpty() && items.isNotEmpty()) {
-                Text("فیلتر انتخابی نتیجه‌ای ندارد — «همه» را امتحان کنید.", color = Color(0x99FFFFFF), fontSize = MaterialTheme.typography.bodySmall.fontSize)
+            if (!timelineLoading && displayed.isEmpty() && timelineItems.isNotEmpty()) {
+                Text("فیلتر انتخابی نتیجه‌ای ندارد — «همه» یا «کاندیدا» را امتحان کنید.", color = Color(0x99FFFFFF), fontSize = MaterialTheme.typography.bodySmall.fontSize)
+            }
+            if (!timelineLoading && timelineItems.isEmpty() && timelineTotal != null) {
+                if (timelineFilter == "ALL") {
+                    Text(
+                        "هنوز سابقه‌ای برای این فیلتر وجود ندارد — cohort از ${panel.currentEngineVersion} تازه شروع شده است.",
+                        color = Color(0xFFFFC857)
+                    )
+                } else {
+                    Text(
+                        "برای فیلتر «${timelineFilter}» نتیجه‌ای یافت نشد. «همه» را ببینید یا بعداً دوباره بروزرسانی کنید.",
+                        color = Color(0xFFFFC857)
+                    )
+                }
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                filtered.forEach { obs ->
+                displayed.forEach { obs ->
                     TimelineItemCard(obs)
                 }
             }
-            if (timeline != null) {
+            if (timelineLoadingMore) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Color(0xFF33E6A6), trackColor = Color(0x22FFFFFF))
+            }
+            if (timelineTotal != null) {
+                val overall = timelineOverallTotal ?: timelineTotal
                 Text(
-                    "نمایش ${filtered.size} از ${items.size} (۵۰ مورد اخیر، کل ${timeline.total}) • موتور ${timeline.currentEngineVersion}",
+                    "نمایش ${displayed.size} از ${timelineItems.size} دریافت‌شده (فیلترشده از $timelineTotal، کل تاریخ $overall) • موتور ${panel.currentEngineVersion}",
                     color = Color(0x66FFFFFF),
                     fontSize = MaterialTheme.typography.bodySmall.fontSize
                 )
@@ -283,9 +327,9 @@ private fun TimelineItemCard(obs: ShadowTimelineItemDto) {
         "EXPIRED_ACTIVE" -> "فعال→انقضا"
         "EXPIRED_NO_ENTRY" -> "عدم ورود"
         "PENDING" -> "در انتظار"
+        "NOT_APPLICABLE" -> "—"
         else -> obs.outcomeStatus
     }
-    // Persian short date: take ISO and show YYYY-MM-DD HH:mm
     val capturedShort = try { obs.capturedAt.take(16).replace("T"," ") } catch (_: Exception) { obs.capturedAt }
     val rrStr = obs.realizedRr?.let { "%.2f".format(it) } ?: "—"
     Column(
@@ -293,21 +337,14 @@ private fun TimelineItemCard(obs: ShadowTimelineItemDto) {
             .fillMaxWidth()
             .padding(2.dp),
     ) {
-        // Outer card look via nested PremiumGlassCard would be too heavy; use simple Column with background via Text weight
-        androidx.compose.foundation.layout.Box(
-            modifier = Modifier
-                .fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
+        androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("${obs.symbol} • ${obs.market.ifEmpty { "crypto" }} • ${obs.side}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = MaterialTheme.typography.bodyMedium.fontSize)
                     Text(outcomeFa, color = outcomeColor, fontWeight = FontWeight.Bold, fontSize = MaterialTheme.typography.bodyMedium.fontSize)
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("$statusFa • ${obs.probability?.let { "$it٪" } ?: "—"}", color = Color(0xFFDDF8FF), fontSize = MaterialTheme.typography.bodySmall.fontSize)
+                    Text("$statusFa • ${obs.probability?.let { "$it٪" } ?: "—"} • ${obs.engineVersion ?: "?"}", color = Color(0xFFDDF8FF), fontSize = MaterialTheme.typography.bodySmall.fontSize)
                     Text(capturedShort, color = Color(0x99FFFFFF), fontSize = MaterialTheme.typography.bodySmall.fontSize)
                 }
                 if (obs.fusionStatus == "ACTIONABLE_CANDIDATE") {
@@ -326,15 +363,8 @@ private fun TimelineItemCard(obs: ShadowTimelineItemDto) {
                 if (obs.outcomeStatus == "PENDING") {
                     Text("نتیجه هنوز باز است — با کندل‌های آینده حل می‌شود.", color = Color(0xFFFFC857), fontSize = MaterialTheme.typography.bodySmall.fontSize)
                 }
-                // thin divider
-                Spacer(Modifier.height(4.dp))
-                androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth().height(1.dp).padding(horizontal = 0.dp)) {
-                    androidx.compose.foundation.layout.Box(modifier = Modifier.fillMaxWidth().height(1.dp)) {
-                    }
-                }
             }
         }
-        // divider line using Text
         Text("─".repeat(36), color = Color(0x1AFFFFFF), fontSize = MaterialTheme.typography.bodySmall.fontSize, maxLines = 1)
     }
 }
@@ -343,12 +373,7 @@ private fun TimelineItemCard(obs: ShadowTimelineItemDto) {
 private fun ProgressRow(label: String, value: Int, required: Int) {
     val frac = if (required > 0) (value.toFloat() / required.toFloat()).coerceIn(0f, 1f) else 0f
     Text("$label: $value / $required", color = Color.White)
-    LinearProgressIndicator(
-        progress = { frac },
-        modifier = Modifier.fillMaxWidth(),
-        color = Color(0xFF33E6A6),
-        trackColor = Color(0x33FFFFFF),
-    )
+    LinearProgressIndicator(progress = { frac }, modifier = Modifier.fillMaxWidth(), color = Color(0xFF33E6A6), trackColor = Color(0x33FFFFFF))
     Spacer(Modifier.height(6.dp))
 }
 
@@ -356,12 +381,7 @@ private fun ProgressRow(label: String, value: Int, required: Int) {
 private fun ProgressRowDouble(label: String, value: Double, required: Double) {
     val frac = if (required > 0.0) (value / required).toFloat().coerceIn(0f, 1f) else 0f
     Text("$label: ${"%.1f".format(value)} / ${"%.0f".format(required)}", color = Color.White)
-    LinearProgressIndicator(
-        progress = { frac },
-        modifier = Modifier.fillMaxWidth(),
-        color = Color(0xFF33E6A6),
-        trackColor = Color(0x33FFFFFF),
-    )
+    LinearProgressIndicator(progress = { frac }, modifier = Modifier.fillMaxWidth(), color = Color(0xFF33E6A6), trackColor = Color(0x33FFFFFF))
     Spacer(Modifier.height(6.dp))
 }
 
