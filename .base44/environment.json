@@ -1,0 +1,27 @@
+{
+  "previewPort": 3000,
+  "healthPath": "/ready",
+  "startCommand": "docker compose -f docker-compose.base44.yml up -d",
+  "secrets": [
+    {
+      "name": "TWELVEDATA_API_KEY",
+      "description": "Optional. TwelveData API key for live market/news data. Without it the backend runs on synthetic/paper data.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "FINNHUB_API_KEY",
+      "description": "Optional. Finnhub API key for live news. Without it news endpoints use fallback data.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "AI_OPENAI_API_KEY",
+      "description": "Optional. Enables the OpenAI-compatible AI explanation layer. Without it the backend uses the deterministic explainer.",
+      "requiredAtBoot": false
+    },
+    {
+      "name": "USER_SECRET_MASTER_KEY",
+      "description": "Optional. 32-byte key (base64) used to encrypt stored broker provider secrets. Only needed to use the provider vault feature.",
+      "requiredAtBoot": false
+    }
+  ]
+}
