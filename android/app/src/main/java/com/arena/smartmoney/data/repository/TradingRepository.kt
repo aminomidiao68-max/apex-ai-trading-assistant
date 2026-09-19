@@ -98,7 +98,14 @@ class TradingRepository(
 
     suspend fun getSystemReadiness() = api.getSystemReadiness()
 
-    suspend fun getShadowPanel() = api.getShadowPanel()
+    // v3.31: the forward-test cohort lives on the STAGING server, which has a
+    // persistent PostgreSQL database (prod free-tier disk is ephemeral and its
+    // shadow rows reset on every deploy). Aggregate panel only — benign stats.
+    private val stagingApi: TradingApiService by lazy {
+        TradingApiService.create("https://apex-ai-chaos-staging.onrender.com/")
+    }
+
+    suspend fun getShadowPanel() = stagingApi.getShadowPanel()
 
     suspend fun getAnalyticsSummary() = api.getAnalyticsSummary()
 

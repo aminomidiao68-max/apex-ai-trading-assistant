@@ -108,9 +108,14 @@ private fun ForwardTestCard(panel: com.arena.smartmoney.data.model.ShadowPanelDt
             color = Color.White,
             fontWeight = FontWeight.Bold
         )
+        Text(
+            "منبع: سرور سایه با دیتابیس ماندگار (PostgreSQL) — همان موتور، دادهٔ واقعی بازار",
+            color = Color(0x99FFFFFF),
+            fontSize = MaterialTheme.typography.bodySmall.fontSize
+        )
         if (panel == null) {
             Text(
-                "پنل سایه در دسترس نیست (سرور خواب یا خطای شبکه) — دوباره بروزرسانی کنید.",
+                "پنل سایه در دسترس نیست (سرور استیجینگ خواب است — ۳۰ تا ۶۰ ثانیه دیگر دوباره بروزرسانی کنید).",
                 color = Color(0xFFFFC857)
             )
             return@PremiumGlassCard
