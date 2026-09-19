@@ -167,6 +167,11 @@ fun HomeDashboard(
             // ------------------------------------------------ market clock
             MarketClockCard(now, session)
 
+            // ------------------------------------------------ glance widget — probable setups (20 symbols)
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
+                ProbableGlanceWidget(onOpenProbable = { openModule = HomeModule.PROBABLE })
+            }
+
             // ------------------------------------------------ one-page modules
             Column(
                 Modifier
