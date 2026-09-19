@@ -32,6 +32,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
+import android.widget.Toast
+import androidx.core.app.NotificationCompat
+import com.arena.smartmoney.R
 import com.arena.smartmoney.ui.theme.CardBg
 import com.arena.smartmoney.ui.theme.CyanAccent
 import com.arena.smartmoney.ui.theme.DarkBg
@@ -159,7 +166,56 @@ fun AlertSettingsScreen() {
             color = SoftText.copy(alpha = 0.5f),
             fontSize = 11.sp,
         )
+        Spacer(Modifier.height(14.dp))
+        SettingCard {
+            Column {
+                Text("🔔 تست هشدار لوکال", color = SoftText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text("یک نوتیف آزمایشی روی همین گوشی — بدون نیاز به سرور. برای چک کردن صدا/بنر و اینکه ۲۰ نماد جدید درست انتخاب شده‌اند.", color = SoftText.copy(alpha = 0.65f), fontSize = 12.sp, lineHeight = 17.sp)
+                Spacer(Modifier.height(10.dp))
+                androidx.compose.material3.Button(
+                    onClick = {
+                        val selected = AlertPrefs.symbols(context)
+                        if (selected.isEmpty()) {
+                            Toast.makeText(context, "هیچ نمادی انتخاب نشده", Toast.LENGTH_SHORT).show()
+                        } else {
+                            sendTestNotification(context, selected)
+                            Toast.makeText(context, "تست برای ${selected.size} نماد ارسال شد — بنر را چک کنید", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("ارسال تست هشدار (${symbols.size} نماد انتخابی)")
+                }
+                Spacer(Modifier.height(6.dp))
+                Text("کانالی: APEX_TEST • اگر بنر نیامد: تنظیمات گوشی → اعلان‌ها → APEX MARKET AI را چک کنید", color = SoftText.copy(alpha = 0.45f), fontSize = 10.sp)
+            }
+        }
     }
+}
+
+private fun sendTestNotification(context: Context, symbols: Set<String>) {
+    val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    val channelId = "apex_test"
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val ch = NotificationChannel(channelId, "APEX Test Alerts", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Local test for tier alerts — 20 symbols"
+        }
+        nm.createNotificationChannel(ch)
+    }
+    val preview = symbols.sorted().take(5).joinToString(" • ")
+    val more = if (symbols.size > 5) " +${symbols.size - 5} دیگر" else ""
+    val title = "🔔 تست هشدار APEX — ${symbols.size} نماد"
+    val body = "واچ‌لیست فعال: $preview$more — اگر این را می‌بینید، هشدارهای پس‌زمینه برای ۲۰ نماد جدید آماده است. (اکشن همیشه، ≥۸۰٪ و ≥۷۰٪ طبق سوییچ‌ها)"
+    val notif = NotificationCompat.Builder(context, channelId)
+        .setSmallIcon(R.mipmap.ic_launcher)
+        .setContentTitle(title)
+        .setContentText(body)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setAutoCancel(true)
+        .build()
+    nm.notify(9001, notif)
 }
 
 @Composable

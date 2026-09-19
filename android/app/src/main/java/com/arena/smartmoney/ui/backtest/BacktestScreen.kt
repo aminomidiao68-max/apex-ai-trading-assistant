@@ -94,6 +94,9 @@ fun BacktestScreen(viewModel: BacktestViewModel = viewModel()) {
                 }
             }
             item {
+                BulkPrimeCard(viewModel)
+            }
+            item {
                 StrategyCoachCard(
                     summary = state.summary,
                     sweep = state.sweepSummary,
@@ -464,4 +467,41 @@ private fun PrimeStatsBlock(title: String, stats: PrimeBacktestStatsDto, t: (Str
     MetricLine(t("Profit Factor / Expectancy", "ضریب سود / امیدریاضی"), "${stats.profitFactor ?: "—"} / ${stats.expectancyR ?: "—"}")
     MetricLine(t("Max Consecutive Losses", "حداکثر باخت پیاپی"), stats.maxConsecutiveLosses.toString())
     MetricLine(t("Best / Worst R", "بهترین / بدترین R"), "${stats.bestR ?: "—"} / ${stats.worstR ?: "—"}")
+}
+
+@Composable
+private fun BulkPrimeCard(viewModel: BacktestViewModel) {
+    val state by viewModel.uiState.collectAsState()
+    val t = rememberTranslator()
+    PremiumGlassCard(borderColor = Color(0xFF33E6A6).copy(alpha = 0.35f)) {
+        Text("⚡ بک‌تست سریع ۲۰ نماد — Prime 1h (1000 کندل)", style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(4.dp))
+        Text("یک‌کلیک، ۲۰ درخواست موازی به بک‌اند قطعی — بدون تغییر هیچ پارامتری. فقط Prime (ساده‌ترین سناریو).", color = Color(0xFFDDF8FF).copy(alpha = 0.75f), style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(10.dp))
+        Button(onClick = { viewModel.runBulkPrime20() }, modifier = Modifier.fillMaxWidth(), enabled = !state.bulkPrimeLoading) {
+            Text(if (state.bulkPrimeLoading) "در حال اجرای ۲۰ بک‌تست…" else "اجرای بک‌تست ۲۰ نماد")
+        }
+        state.bulkPrimeError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        if (state.bulkPrimeResults.isNotEmpty()) {
+            Spacer(Modifier.height(10.dp))
+            // summary
+            val withTrades = state.bulkPrimeResults.filter { (it.result?.stats?.totalTrades ?: 0) > 0 }
+            Text("نتیجه: ${withTrades.size} از ۲۰ نماد معامله داشتند • ${state.bulkPrimeResults.size} اسکن شد", color = Color(0xFF67ECFF), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(8.dp))
+            for (item in state.bulkPrimeResults) {
+                val r = item.result
+                val stats = r?.stats
+                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(item.symbol, color = Color.White, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    if (stats != null) {
+                        Text("${stats.totalTrades} ت • برد ${"%.0f".format(stats.winRate * 100)}٪ • PF ${"%.2f".format(stats.profitFactor)}", color = if (stats.winRate >= 0.5) Color(0xFF33E6A6) else Color(0xFFFFC857), style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        Text(item.error ?: "—", color = Color(0xFFFF7A7A), style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            Text("Prime = ساده‌ترین بک‌تست؛ برای سوییپ/واک‌فوروارد از بالا استفاده کنید.", color = Color.White.copy(alpha = 0.45f), style = MaterialTheme.typography.bodySmall)
+        }
+    }
 }

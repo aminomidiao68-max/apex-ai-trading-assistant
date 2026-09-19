@@ -22,7 +22,17 @@ import kotlinx.coroutines.launch
 import kotlin.math.max
 import kotlin.math.min
 
+data class BulkPrimeItem(
+    val symbol: String,
+    val market: String,
+    val result: PrimeBacktestResponseDto? = null,
+    val error: String? = null
+)
+
 data class BacktestUiState(
+    val bulkPrimeLoading: Boolean = false,
+    val bulkPrimeResults: List<BulkPrimeItem> = emptyList(),
+    val bulkPrimeError: String? = null,
     val loading: Boolean = false,
     val symbol: String = "BTCUSDT",
     val market: String = "crypto",
@@ -296,6 +306,29 @@ class BacktestViewModel(
                 .onSuccess { analytics ->
                     _uiState.value = _uiState.value.copy(analytics = analytics)
                 }
+        }
+    }
+
+    fun runBulkPrime20() {
+        if (_uiState.value.bulkPrimeLoading) return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(bulkPrimeLoading = true, bulkPrimeError = null, bulkPrimeResults = emptyList())
+            val watchlist = com.arena.smartmoney.util.AlertPrefs.watchlist
+            val results = kotlinx.coroutines.coroutineScope {
+                watchlist.map { (symbol, market, _) ->
+                    async {
+                        try {
+                            val res = repository.getPrimeBacktest(symbol = symbol, timeframe = "1h", market = market, candles = 1000, force = false)
+                            BulkPrimeItem(symbol, market, res, null)
+                        } catch (e: Exception) {
+                            BulkPrimeItem(symbol, market, null, e.message ?: "خطا")
+                        }
+                    }
+                }.map { it.await() }
+            }
+            // sort by trades desc, then winRate desc
+            val sorted = results.sortedWith(compareByDescending<BulkPrimeItem> { it.result?.stats?.totalTrades ?: -1 }.thenByDescending { it.result?.stats?.winRate ?: -1.0 })
+            _uiState.value = _uiState.value.copy(bulkPrimeLoading = false, bulkPrimeResults = sorted, bulkPrimeError = if (sorted.all { it.result == null }) "همهٔ درخواست‌ها ناموفق — سرور یا شبکه" else null)
         }
     }
 
