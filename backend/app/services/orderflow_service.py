@@ -215,7 +215,10 @@ def analyze_okx_payloads(
     elif delta_ratio < -0.12 and price_change_bps > 3:
         divergence = "bullish"
 
-    confidence = 0.70
+    # v3.31: this number is DATA COMPLETENESS of the exchange snapshot, not a
+    # statistical confidence in the trade. Base lowered from a hardcoded 0.70 so
+    # an incomplete snapshot can no longer pass the real-flow evidence gate.
+    confidence = 0.45
     if len(ordered_trades) >= 100:
         confidence += 0.08
     if len(bid_levels) >= 20 and len(ask_levels) >= 20:
@@ -230,6 +233,7 @@ def analyze_okx_payloads(
         "source": "okx_swap_public",
         "is_real": True,
         "confidence": round(confidence, 2),
+        "confidence_is_data_completeness": True,
         "pressure": pressure,
         "delta": round(delta_ratio, 4),
         "delta_contracts": round(delta_size, 4),

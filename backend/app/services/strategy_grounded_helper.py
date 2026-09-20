@@ -1,6 +1,8 @@
 import os
 import logging
 
+from app.services.honest_edge import HONESTY_PROMPT_ADDON, enrich_strategy
+
 logger = logging.getLogger("apex.strategy_helper")
 
 class StrategyGroundedHelper:
@@ -131,7 +133,7 @@ class StrategyGroundedHelper:
 - SMT (۲۹): واگرایی دو نماد همبسته (مثلاً EURUSD/GBPUSD یا BTC/ETH).
 - Displacement + Mitigation (۳۰): کندل‌های بدنه‌بزرگ نهادی + پولبک به OB/FVG همان حرکت.
 ================================═══════════════════════════════════════
-"""
+""" + HONESTY_PROMPT_ADDON
 
     @classmethod
     def map_setup_to_handbook(cls, setup_type: str, direction: str = "") -> dict:
@@ -361,7 +363,7 @@ class StrategyGroundedHelper:
             else:
                 matched_id = 1
                 
-        return strategies[matched_id]
+        return enrich_strategy(strategies[matched_id], matched_id)
 
     ICT_ADVANCED_PACK: dict[int, dict] = {
         21: {"name": "Silver Bullet (ICT)", "number": 21, "win_rate": "۶۵٪ الی ۷۵٪", "rr": "1:2", "timeframe": "1m الی 5m", "symbols": "NASDAQ, BTC, XAUUSD", "school": "ICT"},
@@ -383,39 +385,41 @@ class StrategyGroundedHelper:
         if ict_summary:
             sb = (ict_summary.get("silver_bullet") or {}).get("active")
             if sb:
-                return cls.ICT_ADVANCED_PACK[21]
+                return enrich_strategy(cls.ICT_ADVANCED_PACK[21], 21)
             sweeps = ict_summary.get("sweeps") or []
             if sweeps:
-                return cls.ICT_ADVANCED_PACK[22]
+                return enrich_strategy(cls.ICT_ADVANCED_PACK[22], 22)
             disp = (ict_summary.get("displacement") or {}).get("direction")
             if disp in ("up", "down"):
-                return cls.ICT_ADVANCED_PACK[30]
+                return enrich_strategy(cls.ICT_ADVANCED_PACK[30], 30)
         if "BREAKER" in clean:
-            return cls.ICT_ADVANCED_PACK[23]
+            return enrich_strategy(cls.ICT_ADVANCED_PACK[23], 23)
         if "FVG" in clean or "GAP" in clean or "IMBALANCE" in clean:
-            return cls.ICT_ADVANCED_PACK[24]
+            return enrich_strategy(cls.ICT_ADVANCED_PACK[24], 24)
         if "SWEEP" in clean or "SNIPE" in clean or "TURTLE" in clean:
-            return cls.ICT_ADVANCED_PACK[22]
+            return enrich_strategy(cls.ICT_ADVANCED_PACK[22], 22)
         if "JUDAS" in clean:
-            return cls.ICT_ADVANCED_PACK[25]
+            return enrich_strategy(cls.ICT_ADVANCED_PACK[25], 25)
         if "SPRING" in clean:
-            return cls.ICT_ADVANCED_PACK[26]
+            return enrich_strategy(cls.ICT_ADVANCED_PACK[26], 26)
         if "UTAD" in clean or "UPTHRUST" in clean:
-            return cls.ICT_ADVANCED_PACK[27]
+            return enrich_strategy(cls.ICT_ADVANCED_PACK[27], 27)
         if "AMD" in clean or "POWER OF 3" in clean:
-            return cls.ICT_ADVANCED_PACK[28]
+            return enrich_strategy(cls.ICT_ADVANCED_PACK[28], 28)
         if "SMT" in clean:
-            return cls.ICT_ADVANCED_PACK[29]
+            return enrich_strategy(cls.ICT_ADVANCED_PACK[29], 29)
         if "DISPLACEMENT" in clean:
-            return cls.ICT_ADVANCED_PACK[30]
+            return enrich_strategy(cls.ICT_ADVANCED_PACK[30], 30)
         return None
 
     @classmethod
     def get_ict_pack_prompt_section(cls) -> str:
         lines = ["\n🧊 پک پیشرفته ICT/Wyckoff (استراتژی‌های ۲۱ تا ۳۰) — مبنای تطبیق ستاپ‌های زنده:"]
-        for item in cls.ICT_ADVANCED_PACK.values():
+        for raw in cls.ICT_ADVANCED_PACK.values():
+            item = enrich_strategy(raw, raw.get("number"))
             lines.append(
-                f"{item['number']}. {item['name']} ({item['school']}) | وین‌ریت: {item['win_rate']} | "
+                f"{item['number']}. {item['name']} ({item['school']}) | وین‌ریت اندازه‌گیری‌شده: {item['win_rate']} | "
+                f"قابل معامله: {'بله' if item['tradeable'] else 'خیر (edge منفی/اندازه‌گیری‌نشده)'} | "
                 f"RR: {item['rr']} | تایم‌فریم: {item['timeframe']} | نمادها: {item['symbols']}"
             )
         return "\n".join(lines)

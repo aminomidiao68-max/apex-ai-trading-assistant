@@ -142,9 +142,15 @@ def test_strategy_pack_turtle_breakout_detected():
     items = trend_items(80)
     last = items[-1]
     items[-1] = {**last, "c": last["c"] + 3.0, "h": last["h"] + 3.2}
+    # raw detector must still fire
+    raw = strategy_pack_v2.scan_all(items, "15m", calibrated=False)
+    assert "turtle_breakout" in {r["id"] for r in raw["active"]}
+    # v3.31: measured pf=0.873 (net losing after fees) → watch-only, never active
     scan = strategy_pack_v2.scan_all(items, "15m")
-    ids = {r["id"] for r in scan["active"]}
-    assert "turtle_breakout" in ids
+    assert "turtle_breakout" not in {r["id"] for r in scan["active"]}
+    dem = [r for r in scan["forming"] if r["id"] == "turtle_breakout"]
+    assert dem and dem[0]["watch_only"] is True and dem[0]["perf_ok"] is False
+
 
 
 def test_strategy_pack_scan_integrity():

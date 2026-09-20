@@ -48,6 +48,7 @@ def evidence_inflation_points(factors: list[dict]) -> float:
     capped = sum(min(value, FAMILY_POSITIVE_CAP) for value in sums.values())
     return max(0.0, raw - capped)
 
+from app.services.honest_edge import detector_for_setup, edge_verdict
 from app.services.market_quality_engine import assess_data_quality, classify_market_regime
 from app.services.trade_cost_gate import evaluate as evaluate_trade_cost
 from app.services.trade_cost_gate import project_plan as project_trade_plan
@@ -233,7 +234,26 @@ def apply_strict_decision(
     else:
         _reach, _reach_actual = True, "n/a"
 
+    # v3.31 honest-edge gate: a setup whose OWN walk-forward measurement in this
+    # codebase is net-losing after fees can never be an actionable plan, however
+    # good its live confluence looks. Unmeasured setups stay soft (watch-only
+    # signal, not a hard block) but are reported as unmeasured.
+    _edge_detector = detector_for_setup(setup_type)
+    _edge = edge_verdict(_edge_detector)
+
     gates = [
+        _gate(
+            "measured_edge_not_negative",
+            (not _edge["measured"]) or _edge["tradeable"],
+            {
+                "detector": _edge_detector,
+                "measured": _edge["measured"],
+                "tradeable": _edge["tradeable"],
+                "stats": _edge["stats"],
+            },
+            "measured profit factor > 1 after fees (v3.31)",
+            hard=_edge["measured"],
+        ),
         _gate("data_quality", quality["score"] >= 92, quality["score"], ">=92"),
         _gate("data_integrity", quality["tradable"], quality["tradable"], "true"),
         _gate("direction", direction in ("long", "short"), direction, "long|short"),
@@ -419,6 +439,9 @@ def apply_strict_decision(
     news_ok = not bool(report.get("news_blocked"))
     if status == "actionable":
         display_tier = "ACTIONABLE"
+    elif _edge["measured"] and not _edge["tradeable"]:
+        # measured negative edge: visible for study only, never as confidence
+        display_tier = "NEGATIVE_EDGE_WATCH"
     elif (
         direction in ("long", "short") and grade in ("A+", "A") and probability >= 80
         and quality["score"] >= 85 and news_ok and cost_ok
@@ -438,6 +461,14 @@ def apply_strict_decision(
         "action_label": action_label,
         "display_tier": display_tier,
         "estimated_win_probability": probability,
+        "measured_edge": {
+            "detector": _edge_detector,
+            "is_measured": _edge["measured"],
+            "tradeable": _edge["tradeable"],
+            "win_rate_fa": _edge["win_rate_fa"],
+            "stats": _edge["stats"],
+            "verdict_fa": _edge["verdict_fa"],
+        },
         "strict_omega_compliant": status == "actionable",
         "risk_tier": risk_tier,
         "risk_multiplier": regime["risk_multiplier"] if status == "actionable" else 0.0,
