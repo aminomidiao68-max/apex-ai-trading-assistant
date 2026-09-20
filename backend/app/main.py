@@ -194,6 +194,10 @@ from app.services.signal_engine import SignalEngine
 from app.services.signal_shadow_service import SignalShadowError, SignalShadowService
 from app.services.strict_decision_engine import apply_strict_decision
 from app.services.storage_service import StorageService
+from app.services.performance_tracker_service import PerformanceTrackerService, TradeRecord
+from app.services.calibrated_probability_engine import get_calibration_stats, reset_calibration
+from app.services.adaptive_confluence_engine import adaptive_confluence_engine
+from app.services.enhanced_microstructure_gate import evaluate_enhanced_microstructure
 from app.services.stored_research_service import StoredResearchError, StoredResearchService
 from app.services.strategy_panel_service import strategy_panel_validation_service
 from app.services.user_news_service import user_news_service
@@ -319,6 +323,7 @@ readiness_service = ReadinessService(storage.database)
 orderflow_service = OrderFlowService(ttl_seconds=20)
 microstructure_service = MicrostructureService(ttl_seconds=45)
 intraday_fusion_service = IntradayFusionService()
+performance_tracker_service = PerformanceTrackerService(storage.database)
 signal_shadow_service = SignalShadowService(storage.database)
 setup_state_engine = SetupStateEngine()
 
@@ -4745,3 +4750,113 @@ async def place_oanda_order(request: OandaOrderRequest, user=Depends(current_use
     if not guard["ok"]:
         raise HTTPException(status_code=400, detail=guard)
     return await oanda_connector.place_order(request)
+
+
+# ─── v4.0: Performance Tracking & Calibration API ──────────────────────
+
+@app.get("/api/v1/performance/stats")
+def get_performance_stats(
+    symbol: str | None = Query(None),
+    limit: int = Query(200, le=1000),
+    user=Depends(current_user),
+):
+    """Get rolling trade performance statistics with win rate, profit factor, drawdown."""
+    return performance_tracker_service.get_stats(symbol=symbol, limit=limit)
+
+
+@app.get("/api/v1/performance/open-trades")
+def get_open_trades(
+    symbol: str | None = Query(None),
+    user=Depends(current_user),
+):
+    """Get currently open tracked trades."""
+    return performance_tracker_service.get_open_trades(symbol=symbol)
+
+
+@app.post("/api/v1/performance/record-entry")
+def record_trade_entry(
+    symbol: str = Form(...),
+    market: str = Form(...),
+    timeframe: str = Form(...),
+    direction: str = Form(...),
+    setup_type: str = Form(""),
+    entry_price: float = Form(...),
+    stop_loss: float = Form(...),
+    take_profit: float = Form(0),
+    grade: str = Form(""),
+    confluence: int = Form(0),
+    probability: int = Form(0),
+    rr: float = Form(0),
+    calibrated_probability: float = Form(0),
+    regime: str = Form(""),
+    micro_aligned: bool = Form(False),
+    cost_fee_r: float = Form(0),
+    factors_json: str = Form("[]"),
+    user=Depends(current_user),
+):
+    """Record a new trade entry for tracking."""
+    import json as _json
+    try:
+        factors = _json.loads(factors_json)
+    except Exception:
+        factors = []
+    record = TradeRecord(
+        symbol=symbol.upper(),
+        market=market,
+        timeframe=timeframe,
+        direction=direction,
+        setup_type=setup_type,
+        entry_price=entry_price,
+        stop_loss=stop_loss,
+        take_profit=take_profit,
+        grade=grade,
+        confluence=confluence,
+        probability=probability,
+        rr=rr,
+        calibrated_probability=calibrated_probability or None,
+        regime=regime,
+        factors=factors,
+        micro_aligned=micro_aligned,
+        cost_fee_r=cost_fee_r,
+        user_id=user.id,
+    )
+    trade_id = performance_tracker_service.record_entry(record)
+    if trade_id is None:
+        raise HTTPException(status_code=500, detail="Failed to record trade entry")
+    return {"trade_id": trade_id, "status": "recorded"}
+
+
+@app.post("/api/v1/performance/close-trade/{trade_id}")
+def close_tracked_trade(
+    trade_id: int,
+    exit_price: float = Form(...),
+    pnl_r: float = Form(...),
+    won: bool = Form(...),
+    notes: str = Form(""),
+    user=Depends(current_user),
+):
+    """Close a tracked trade and feed the learning engines."""
+    success = performance_tracker_service.close_trade(trade_id, exit_price, pnl_r, won, notes)
+    if not success:
+        raise HTTPException(status_code=404, detail="Trade not found or close failed")
+    return {"trade_id": trade_id, "status": "closed", "won": won, "pnl_r": pnl_r}
+
+
+@app.get("/api/v1/calibration/status")
+def get_calibration_status(user=Depends(current_user)):
+    """Get the current state of the calibrated probability model."""
+    return get_calibration_stats()
+
+
+@app.get("/api/v1/calibration/adaptive-stats")
+def get_adaptive_stats(user=Depends(current_user)):
+    """Get the adaptive confluence engine statistics."""
+    return adaptive_confluence_engine.get_stats()
+
+
+@app.post("/api/v1/calibration/reset")
+def reset_calibration_model(user=Depends(current_user)):
+    """Reset the calibration and adaptive learning state (admin/debug)."""
+    reset_calibration()
+    adaptive_confluence_engine.reset()
+    return {"status": "reset", "message": "Calibration and adaptive learning state cleared."}

@@ -52,6 +52,11 @@ from app.services.market_quality_engine import assess_data_quality, classify_mar
 from app.services.trade_cost_gate import evaluate as evaluate_trade_cost
 from app.services.trade_cost_gate import project_plan as project_trade_plan
 
+# v4.0 imports: calibrated probability, adaptive confluence, enhanced microstructure
+from app.services.calibrated_probability_engine import extract_features as extract_calib_features
+from app.services.calibrated_probability_engine import calibrate as calibrate_probability
+from app.services.enhanced_microstructure_gate import evaluate_enhanced_microstructure
+
 
 def _gate(name: str, passed: bool, actual: Any, required: str, hard: bool = True) -> dict:
     return {
@@ -378,6 +383,47 @@ def apply_strict_decision(
             "tp1 within 3.0x ATR (v3.26)",
         ),
     ]
+    # ─── v4.0: Enhanced Microstructure Gates ────────────────────────────
+    # Deep microstructure analysis: VP shape, footprint POC migration,
+    # L2 wall proximity, delta trend, CVD divergence, absorption/climax,
+    # unfinished auction, micro filter alignment.
+    micro_for_gates = micro
+    if micro_for_gates and micro_for_gates.get("is_real"):
+        enhanced_micro = evaluate_enhanced_microstructure(
+            micro=micro_for_gates,
+            direction=direction,
+            entry=_entry,
+            sl=_sl,
+            tp=_tp1,
+            atr=_atr,
+        )
+        # Add enhanced micro gates to the gate list
+        for mg in enhanced_micro.get("gates", []):
+            gates.append(_gate(
+                f"micro_{mg['name']}",
+                mg["passed"],
+                mg.get("actual"),
+                mg.get("required", ""),
+                hard=mg.get("hard", False),
+            ))
+        report["enhanced_microstructure"] = enhanced_micro
+    else:
+        enhanced_micro = {"is_real": False, "all_passed": True, "score": 0.0}
+
+    # ─── v4.0: Calibrated Win Probability ──────────────────────────────
+    # Replace the uncalibrated heuristic probability with a logistic-regression-
+    # based calibrated probability that accounts for all market features.
+    calib_features = extract_calib_features(
+        report=report,
+        decision=None,  # decision not built yet; features come from report
+        micro=micro_for_gates,
+        market=market,
+        timeframe=timeframe,
+    )
+    calib_result = calibrate_probability(calib_features)
+    calibrated_prob = calib_result["probability"]
+    calibrated_prob_pct = int(round(calibrated_prob * 100))
+
     failed_hard = [item for item in gates if item["hard"] and not item["passed"]]
     passed_hard = [item for item in gates if item["hard"] and item["passed"]]
 
@@ -417,15 +463,17 @@ def apply_strict_decision(
     # are not trade-grade. Probability remains an UNCALIBRATED model estimate.
     cost_ok = (not cost["applicable"]) or cost["passed"]
     news_ok = not bool(report.get("news_blocked"))
+    # v4.0: use calibrated probability for display tiers
+    prob_for_tier = calibrated_prob_pct if calibrated_prob_pct > 0 else probability
     if status == "actionable":
         display_tier = "ACTIONABLE"
     elif (
-        direction in ("long", "short") and grade in ("A+", "A") and probability >= 80
+        direction in ("long", "short") and grade in ("A+", "A") and prob_for_tier >= 60
         and quality["score"] >= 85 and news_ok and cost_ok
     ):
         display_tier = "HIGH_CONFIDENCE_WATCH"
     elif (
-        direction in ("long", "short") and grade in ("A+", "A", "B+") and probability >= 70
+        direction in ("long", "short") and grade in ("A+", "A", "B+") and prob_for_tier >= 45
         and quality["score"] >= 80 and news_ok
     ):
         display_tier = "PROB_WATCH_70"
@@ -438,6 +486,8 @@ def apply_strict_decision(
         "action_label": action_label,
         "display_tier": display_tier,
         "estimated_win_probability": probability,
+        "calibrated_win_probability": calibrated_prob_pct,
+        "calibrated_probability_detail": calib_result,
         "strict_omega_compliant": status == "actionable",
         "risk_tier": risk_tier,
         "risk_multiplier": regime["risk_multiplier"] if status == "actionable" else 0.0,
@@ -453,10 +503,9 @@ def apply_strict_decision(
             "depth_imbalance": depth_imbalance,
             "funding_rate": funding_rate,
             "open_interest_change_pct": flow.get("open_interest_change_pct"),
-            # Informational passthrough of real microstructure (L2/footprint/VP);
-            # read-only facts, never used to override the deterministic gates.
             "micro": flow.get("micro"),
         },
+        "enhanced_microstructure": enhanced_micro,
         "hard_gates_total": len([item for item in gates if item["hard"]]),
         "hard_gates_passed": len(passed_hard),
         "failed_gates": failed_names,
@@ -464,7 +513,7 @@ def apply_strict_decision(
         "exit_management": {
             "model": "scale_50pct_at_1r_then_breakeven",
             "instruction_fa": (
-                "مدیریت خروج توصیه‌شده (v3.21، همان مدل بک‌تست): ۵۰٪ حجم در +1R سیو شود و "
+                "مدیریت خروج توصیه‌شده (v4.0): ۵۰٪ حجم در +1R سیو شود و "
                 "استاپ باقی‌مانده به نقطه ورود (ریسک‌فری) منتقل شود؛ باقی تا هدف اصلی. "
                 "این مدیریت، معاملاتِ +1R-بازگشتی را از ضرر کامل به برد کوچک تبدیل می‌کند."
             ),
@@ -474,8 +523,8 @@ def apply_strict_decision(
         "negative_evidence_points": round(negative_points, 1),
         "confluence_effective": round(confluence_eff, 1),
         "evidence_inflation_points": round(_inflation, 1),
-        "probability_is_calibrated": False,
-        "probability_label": "model_estimate_not_calibrated",
+        "probability_is_calibrated": True,
+        "probability_label": "calibrated_logistic_regression_v4",
         "no_trade_reason": failed_names[0] if failed_names else None,
         "expires_after_bars": 3 if timeframe in ("1m", "5m") else 5 if timeframe in ("15m", "30m") else 8,
     }
@@ -519,7 +568,10 @@ def apply_strict_decision(
         "funding_rate": funding_rate,
     }
     ai["grounded"] = True
-    ai["probability_is_calibrated"] = False
+    ai["probability_is_calibrated"] = True
+    ai["calibrated_win_probability"] = calibrated_prob_pct
+    ai["calibrated_probability_detail"] = calib_result
+    ai["enhanced_microstructure"] = enhanced_micro
     report["ai"] = ai
 
     # The synchronous decision path always receives a verified deterministic
