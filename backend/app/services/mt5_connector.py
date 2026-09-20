@@ -6,12 +6,19 @@ from app.models import ConnectorStatus, Mt5OrderRequest
 
 class Mt5Connector:
     def status(self) -> ConnectorStatus:
-        ready = bool(settings.mt5_server and settings.mt5_login and settings.mt5_password)
+        # v3.31 honesty fix: execution is NOT implemented for MT5, so this
+        # connector must never report ready=True just because credentials exist.
+        configured = bool(settings.mt5_server and settings.mt5_login and settings.mt5_password)
+        ready = False
         mode = "live-enabled" if settings.enable_live_execution else "dry-run"
         notes = ["MetaTrader 5 bridge foundation only"]
         if settings.mt5_server:
             notes.append(f"server={settings.mt5_server}")
-        if not ready:
+        notes.append(
+            "credentials_configured=true" if configured
+            else "Missing MT5 bridge credentials/configuration"
+        )
+        if not configured:
             notes.append("Missing MT5 bridge credentials/configuration")
         if not settings.enable_live_execution:
             notes.append("ENABLE_LIVE_EXECUTION=false so real order placement is blocked")

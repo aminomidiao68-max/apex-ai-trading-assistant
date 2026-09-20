@@ -117,9 +117,16 @@ def _apply_calibration(results: list[dict]) -> int:
         if adj:
             r["quality"] = int(max(0, min(100, int(r.get("quality") or 0) + adj)))
             adjusted += 1
-        if adj <= -10 and r.get("status") == "active":
-            r["status"] = "forming"
-            r["calibration_demoted"] = True
+        # v3.31: ANY measured non-positive edge (pf<=1 or avgR<=0) is watch-only.
+        # Previously only the worst bucket (adj<=-10) was demoted, so mildly
+        # losing detectors could still emit live "active" entries.
+        negative_edge = (pf is not None and float(pf) <= 1.0) or avg_r <= 0
+        if negative_edge:
+            r["watch_only"] = True
+            r["perf_ok"] = False
+            if r.get("status") == "active":
+                r["status"] = "forming"
+                r["calibration_demoted"] = True
             r["reason_fa"] = (str(r.get("reason_fa") or "") +
                               " — ⚠ edge اندازه‌گیری‌شده روی داده واقعی (پس از کارمزد) منفی است: فقط رصد، نه ورود")
     return adjusted
