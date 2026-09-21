@@ -8,6 +8,13 @@ from typing import Any
 
 import httpx
 
+# Real VP/Footprint from microstructure (re-use deterministic calculators)
+try:
+    from app.services.microstructure_service import compute_volume_profile, compute_footprint
+    _HAS_VP = True
+except Exception:
+    _HAS_VP = False
+
 
 class OrderFlowService:
     """Provider-aware order flow with honest real/proxy labeling."""
@@ -50,7 +57,7 @@ class OrderFlowService:
         async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
             responses = await asyncio.gather(
                 client.get(f"{base}/market/trades", params={"instId": inst_id, "limit": 500}),
-                client.get(f"{base}/market/books", params={"instId": inst_id, "sz": 50}),
+                client.get(f"{base}/market/books", params={"instId": inst_id, "sz": 400}),
                 client.get(
                     f"{base}/public/open-interest",
                     params={"instType": "SWAP", "instId": inst_id},
@@ -229,6 +236,19 @@ def analyze_okx_payloads(
         confidence += 0.05
     confidence = min(confidence, 0.98)
 
+    # --- Real VP(20) / Footprint(6x12) from live trades (no proxy) ---
+    _vp = None
+    _fp = None
+    if _HAS_VP:
+        try:
+            _vp = compute_volume_profile(trades, bin_count=20)
+        except Exception:
+            _vp = None
+        try:
+            _fp = compute_footprint(trades, tf_sec=60, max_candles=6, rows_per_candle=12)
+        except Exception:
+            _fp = None
+
     return {
         "source": "okx_swap_public",
         "is_real": True,
@@ -268,7 +288,11 @@ def analyze_okx_payloads(
         "cvd_divergence": divergence,
         "volume_spike": abs(large_trade_imbalance) >= 0.35,
         "sample_trades": len(ordered_trades),
-        "disclaimer": "Centralized exchange derivatives order flow; not global market order flow.",
+        "volume_profile": _vp,
+        "footprint": _fp,
+        "depth_levels": len(bid_levels) + len(ask_levels),
+        "depth_requested": 400,
+        "disclaimer": "Centralized exchange derivatives order flow (400 L2 levels) + real VP(20)/Footprint(6x12) from live trades; not global consolidated tape.",
     }
 
 
