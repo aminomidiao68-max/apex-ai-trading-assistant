@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.compose.view
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.arena.smartmoney.data.model.MicroStructureInfo
 import com.arena.smartmoney.data.model.SmcReport
 import com.arena.smartmoney.data.repository.TradingRepository
@@ -91,7 +91,7 @@ class LiveMicroViewModel(
 
 @Composable
 fun LiveMicrostructureScreen() {
-    val vm: LiveMicroViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+    val vm: LiveMicroViewModel = viewModel()
     val ui by vm.state.collectAsState()
     var tick by remember { mutableStateOf(0) }
     LaunchedEffect(ui.autoRefresh) {

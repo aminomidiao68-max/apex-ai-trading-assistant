@@ -1,6 +1,7 @@
 package com.arena.smartmoney.ui.failedgate
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -78,7 +79,6 @@ fun FailedGateReportScreen() {
         Text("هر ستاپ چرا رد شد — صادقانه، بدون عددسازی. 0 کاندیدا = بهتر از سیگنال اشتباه", color = SoftText, fontSize = 11.sp)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("آخرین: ${ui.lastRefresh}", color = SoftText.copy(alpha = 0.7f), fontSize = 10.sp)
-            androidx.compose.foundation.clickable
             Box(
                 Modifier
                     .clip(RoundedCornerShape(8.dp))

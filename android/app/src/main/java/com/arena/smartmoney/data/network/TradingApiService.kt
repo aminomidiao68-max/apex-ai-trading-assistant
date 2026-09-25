@@ -3,6 +3,7 @@ package com.arena.smartmoney.data.network
 import com.arena.smartmoney.BuildConfig
 import com.arena.smartmoney.data.model.AnalyticsReportDto
 import com.arena.smartmoney.data.model.NewsBrief
+import com.arena.smartmoney.data.model.FailedGatesResponseDto
 import com.arena.smartmoney.data.model.ShadowPanelDto
 import com.arena.smartmoney.data.model.ShadowTimelineDto
 import com.arena.smartmoney.data.model.SmcReport
