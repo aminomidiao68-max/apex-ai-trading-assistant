@@ -10,6 +10,11 @@ import httpx
 
 # Real VP/Footprint from microstructure (re-use deterministic calculators)
 try:
+    from app.services.okx_ws_service import okx_ws_service
+except Exception:
+    okx_ws_service = None
+
+try:
     from app.services.microstructure_service import compute_volume_profile, compute_footprint
     _HAS_VP = True
 except Exception:
@@ -19,7 +24,7 @@ except Exception:
 class OrderFlowService:
     """Provider-aware order flow with honest real/proxy labeling."""
 
-    def __init__(self, ttl_seconds: int = 20) -> None:
+    def __init__(self, ttl_seconds: int = 10) -> None:
         self.ttl_seconds = ttl_seconds
         self._cache: dict[str, tuple[float, dict]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
@@ -52,35 +57,129 @@ class OrderFlowService:
 
     async def _fetch_okx_swap(self, symbol: str) -> dict:
         inst_id = normalize_okx_swap(symbol)
+        # Try WebSocket live cache first (<2s) for <1s latency — honest fallback to REST
+        if okx_ws_service is not None:
+            try:
+                await okx_ws_service.ensure_subscribed(inst_id)
+                ws_trades, ws_book = await okx_ws_service.get_cached(inst_id, max_age_s=2.5)
+                if ws_trades and ws_book and len(ws_trades) >= 30:
+                    # Need OI/funding still via REST (no WS for them)
+                    base = "https://www.okx.com/api/v5"
+                    headers = {"User-Agent": "APEX-Omega-Pro/3.0", "Accept": "application/json"}
+                    async with httpx.AsyncClient(timeout=8.0, headers=headers) as client:
+                        oi_resp, fund_resp = await asyncio.gather(
+                            client.get(f"{base}/public/open-interest", params={"instType": "SWAP", "instId": inst_id}),
+                            client.get(f"{base}/public/funding-rate", params={"instId": inst_id}),
+                            return_exceptions=True,
+                        )
+                    oi_rows = None
+                    fund_rows = None
+                    if not isinstance(oi_resp, Exception) and getattr(oi_resp, "is_success", False):
+                        try:
+                            d = oi_resp.json()
+                            if str(d.get("code")) == "0":
+                                oi_rows = d.get("data") or []
+                        except Exception:
+                            pass
+                    if not isinstance(fund_resp, Exception) and getattr(fund_resp, "is_success", False):
+                        try:
+                            d = fund_resp.json()
+                            if str(d.get("code")) == "0":
+                                fund_rows = d.get("data") or []
+                        except Exception:
+                            pass
+                    previous_oi = self._previous_oi.get(inst_id)
+                    snapshot = analyze_okx_payloads(
+                        trades=ws_trades,
+                        depth=ws_book,
+                        open_interest=oi_rows[0] if oi_rows else None,
+                        funding=fund_rows[0] if fund_rows else None,
+                        previous_oi=previous_oi,
+                    )
+                    oi_value = snapshot.get("open_interest_usd")
+                    if oi_value is not None:
+                        self._previous_oi[inst_id] = (time.monotonic(), float(oi_value))
+                    snapshot["symbol"] = symbol
+                    snapshot["instrument"] = inst_id
+                    snapshot["components"] = ["trades_ws", "depth_ws", "open_interest", "funding"]
+                    snapshot["cached"] = False
+                    snapshot["cache_age_seconds"] = 0.0
+                    snapshot["source_detail"] = "okx_ws_live"
+                    return snapshot
+            except Exception:
+                pass
         base = "https://www.okx.com/api/v5"
         headers = {"User-Agent": "APEX-Omega-Pro/3.0", "Accept": "application/json"}
+        # Window: 45 minutes (2700s) to cover 15m x3 with history pagination up to 2600 trades
+        window_sec = 2700
+        max_trades = 2600
+        max_pages = 12
         async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
-            responses = await asyncio.gather(
-                client.get(f"{base}/market/trades", params={"instId": inst_id, "limit": 500}),
-                client.get(f"{base}/market/books", params={"instId": inst_id, "sz": 400}),
-                client.get(
-                    f"{base}/public/open-interest",
-                    params={"instType": "SWAP", "instId": inst_id},
-                ),
-                client.get(f"{base}/public/funding-rate", params={"instId": inst_id}),
-                return_exceptions=True,
-            )
+            # Parallel fetch for books/OI/funding, sequential for trades with history pagination
+            book_task = client.get(f"{base}/market/books", params={"instId": inst_id, "sz": 400})
+            oi_task = client.get(f"{base}/public/open-interest", params={"instType": "SWAP", "instId": inst_id})
+            funding_task = client.get(f"{base}/public/funding-rate", params={"instId": inst_id})
+            trades_resp = await client.get(f"{base}/market/trades", params={"instId": inst_id, "limit": 500})
+            # Fetch history pagination for trades to reach window_sec coverage
+            trades = []
+            if trades_resp.is_success:
+                data = trades_resp.json()
+                if str(data.get("code")) == "0":
+                    trades = list(data.get("data") or [])
+                    cutoff_ms = int((time.time() - window_sec) * 1000)
+                    guard = 0
+                    while trades and len(trades) < max_trades and guard < max_pages:
+                        oldest = trades[-1]
+                        try:
+                            oldest_ts = int(_safe_float(oldest.get("ts")))
+                        except Exception:
+                            break
+                        if oldest_ts <= cutoff_ms:
+                            break
+                        try:
+                            page_resp = await client.get(f"{base}/market/history-trades", params={"instId": inst_id, "after": oldest.get("tradeId"), "limit": 100})
+                            if not page_resp.is_success:
+                                break
+                            page_data = page_resp.json()
+                            if str(page_data.get("code")) != "0":
+                                break
+                            page_rows = page_data.get("data") or []
+                            if not page_rows:
+                                break
+                            trades.extend(page_rows)
+                            guard += 1
+                        except Exception:
+                            break
+            # Now fetch remaining parallel components
+            book_resp, oi_resp, funding_resp = await asyncio.gather(book_task, oi_task, funding_task, return_exceptions=True)
+            # Normalize payloads
+            payloads: list[Any] = []
+            components = []
+            names = ["trades", "depth", "open_interest", "funding"]
+            # trades already handled
+            for name, response in zip(names, [trades_resp, book_resp, oi_resp, funding_resp]):
+                if name == "trades":
+                    if trades:
+                        payloads.append(trades)
+                        components.append(name)
+                    else:
+                        payloads.append(None)
+                    continue
+                if isinstance(response, Exception) or not getattr(response, "is_success", False):
+                    payloads.append(None)
+                    continue
+                try:
+                    data = response.json()
+                except Exception:
+                    payloads.append(None)
+                    continue
+                if str(data.get("code")) != "0":
+                    payloads.append(None)
+                    continue
+                payloads.append(data.get("data") or [])
+                components.append(name)
 
-        payloads: list[Any] = []
-        components = []
-        names = ["trades", "depth", "open_interest", "funding"]
-        for name, response in zip(names, responses):
-            if isinstance(response, Exception) or not response.is_success:
-                payloads.append(None)
-                continue
-            data = response.json()
-            if str(data.get("code")) != "0":
-                payloads.append(None)
-                continue
-            payloads.append(data.get("data") or [])
-            components.append(name)
-
-        trades, depth_rows, oi_rows, funding_rows = payloads
+            trades, depth_rows, oi_rows, funding_rows = payloads
         if not trades or not depth_rows:
             raise RuntimeError("real order flow core components unavailable")
 
@@ -292,7 +391,7 @@ def analyze_okx_payloads(
         "footprint": _fp,
         "depth_levels": len(bid_levels) + len(ask_levels),
         "depth_requested": 400,
-        "disclaimer": "Centralized exchange derivatives order flow (400 L2 levels) + real VP(20)/Footprint(6x12) from live trades; not global consolidated tape.",
+        "disclaimer": "Centralized exchange derivatives order flow (400 L2 levels, up to 2600 trades) + real VP(20)/Footprint(6x12) from live trades; not global consolidated tape.",
     }
 
 

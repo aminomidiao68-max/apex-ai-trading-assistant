@@ -348,6 +348,8 @@ interface TradingApiService {
     suspend fun getPersonalizedNewsBrief(): NewsBrief
     @GET("api/v1/analysis/intraday-fusion/shadow/system-panel")
     suspend fun getShadowPanel(): ShadowPanelDto
+    @GET("api/v1/analysis/intraday-fusion/shadow/system-failed-gates")
+    suspend fun getFailedGates(): FailedGatesResponseDto
     @GET("api/v1/analysis/intraday-fusion/shadow/system-timeline")
     suspend fun getShadowTimeline(
         @Query("limit") limit: Int = 50,

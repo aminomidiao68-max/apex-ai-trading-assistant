@@ -1520,6 +1520,14 @@ data class SmcMicroLevel(
     val price: Float = 0f,
     val label: String = ""
 )
+data class FailedGatesResponseDto(
+    @SerializedName("total_observations") val totalObservations: Int = 0,
+    @SerializedName("failed_gate_counts") val failedGateCounts: Map<String, Int> = emptyMap(),
+    @SerializedName("leading_failed_gates") val leadingFailedGates: List<String> = emptyList(),
+    @SerializedName("status_counts") val statusCounts: Map<String, Int> = emptyMap(),
+    @SerializedName("outcome_counts") val outcomeCounts: Map<String, Int> = emptyMap()
+)
+
 data class ShadowPanelDto(
     @SerializedName("total_observations") val totalObservations: Int = 0,
     @SerializedName("no_trade_count") val noTradeCount: Int = 0,

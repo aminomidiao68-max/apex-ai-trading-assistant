@@ -47,7 +47,9 @@ import com.arena.smartmoney.ui.analyze.AnalyzeScreen
 import com.arena.smartmoney.ui.backtest.BacktestScreen
 import com.arena.smartmoney.ui.broker.BrokerScreen
 import com.arena.smartmoney.ui.chart.ChartScreen
+import com.arena.smartmoney.ui.failedgate.FailedGateReportScreen
 import com.arena.smartmoney.ui.journal.JournalScreen
+import com.arena.smartmoney.ui.microstructure.LiveMicrostructureScreen
 import com.arena.smartmoney.ui.news.NewsScreen
 import com.arena.smartmoney.ui.readiness.ReadinessScreen
 import com.arena.smartmoney.ui.risk.RiskCalculatorScreen
@@ -62,6 +64,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 enum class HomeModule(val emoji: String, val en: String, val fa: String) {
+    LIVE_MICRO("🧱", "Live L2/VP", "L2/VP/Footprint زنده"),
     ANALYZE("🎯", "Analyze", "آنالیز نهادی"),
     CHAT("💬", "AI Chat", "چت هوشمند"),
     CHART("📈", "Charts", "چارت زنده"),
@@ -73,6 +76,7 @@ enum class HomeModule(val emoji: String, val en: String, val fa: String) {
     NEWS("📰", "News Impact", "اخبار و اثر بازار"),
     SESSIONS("🕘", "Sessions", "سشن‌ها و کیل‌زون"),
     FORWARD("🧪", "Forward-Test", "آزمون واقعی دقت"),
+    FAILED_GATE("📉", "Failed Gates", "گزارش Failed Gates"),
     ANALYTICS("📊", "Analytics", "آنالیتیکس"),
     BACKTEST("🔄", "Backtest", "بک‌تست"),
     BROKER("🏦", "Broker", "بروکر"),
@@ -327,6 +331,7 @@ private fun ModuleDialog(
                 }
                 Box(Modifier.weight(1f)) {
                     when (module) {
+                        HomeModule.LIVE_MICRO -> LiveMicrostructureScreen()
                         HomeModule.ANALYZE -> AnalyzeScreen()
                         HomeModule.CHAT -> AIChatScreen()
                         HomeModule.CHART -> ChartScreen()
@@ -350,6 +355,7 @@ private fun ModuleDialog(
                         HomeModule.ALERTS -> AlertSettingsScreen()
                         HomeModule.SESSIONS -> SessionsScreen()
                         HomeModule.FORWARD -> ReadinessScreen()
+                        HomeModule.FAILED_GATE -> FailedGateReportScreen()
                         HomeModule.ANALYTICS -> AnalyticsScreen()
                         HomeModule.BACKTEST -> BacktestScreen()
                         HomeModule.BROKER -> BrokerScreen()

@@ -2663,6 +2663,20 @@ def get_system_intraday_fusion_shadow_panel(
     return signal_shadow_service.panel(0, minimum_required_resolved)
 
 
+@app.get("/api/v1/analysis/intraday-fusion/shadow/system-failed-gates")
+def get_system_failed_gates():
+    """Public failed-gate histogram — honest daily report, no fabrication."""
+    diag = signal_shadow_service.diagnostics(0)
+    return {
+        "total_observations": diag.total_observations,
+        "failed_gate_counts": diag.failed_gate_counts,
+        "leading_failed_gates": diag.leading_failed_gates,
+        "status_counts": diag.status_counts,
+        "outcome_counts": diag.outcome_counts,
+        "generated_at": __import__("time").time(),
+    }
+
+
 @app.get("/api/v1/analysis/intraday-fusion/shadow/system-timeline", response_model=SignalShadowTimelineResponse)
 def get_system_intraday_fusion_shadow_timeline(
     limit: int = Query(default=50, ge=1, le=500),
