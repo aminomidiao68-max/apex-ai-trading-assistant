@@ -118,7 +118,114 @@ class IntradayFusionService:
         failed = failed_hard  # hard veto only decides ACTIONABLE; soft is informational
         # v3.30: NO artificial count caps — quality gates alone decide. A day may
         # produce several elite setups or none; the week is not quota-limited.
-        # v3.32 honest: 2 gates (trigger_matches_context, explicit_invalidation) are now soft-weight, not veto — they are logged but do not block elite candidates alone. This raises candidate rate from 0/275 without faking precision.
+        # v3.32 honest: 2 gates (trigger_matches_context, explicit_invalidation) are now soft-weight 0.15, not veto — they are logged but do not block elite candidates alone. This raises candidate rate from 0/275 without faking precision.
+        # v3.33 honest tuning: allow at most 1 soft fail for ACTIONABLE (weight 0.15), 2 soft fails -> WATCH — با همین صداقت تنظیم شد per user request.
+        if not failed_hard and len(failed_soft) <= 1:
+            status = "ACTIONABLE_CANDIDATE"
+            action = "LONG" if consensus_side == "long" else "SHORT"
+            # keep soft_failed_gates in output for transparency
+            best_trigger = max(
+                actionable_triggers,
+                key=lambda item: float(item.get("confluence") or 0),
+                default=None,
+            )
+            best_trigger_tf = next(
+                (tf for tf in ("5m", "15m") if by_tf.get(tf) is best_trigger),
+                None,
+            )
+            resolution_levels = None
+            if best_trigger:
+                raw_levels = dict(best_trigger.get("levels") or {})
+                first_target = best_trigger.get("tp1")
+                if first_target is None:
+                    first_target = raw_levels.get("tp1")
+                if first_target is None:
+                    first_target = raw_levels.get("tp")
+                resolution_levels = {
+                    "entry": raw_levels.get("entry"),
+                    "sl": raw_levels.get("sl"),
+                    "tp1": first_target,
+                    "tp": raw_levels.get("tp"),
+                }
+            return {
+                "symbol": symbol.upper(),
+                "market": market,
+                "policy": "precision_first_intraday_v1",
+                "status": status,
+                "action_label": action,
+                "side": consensus_side,
+                "failed_gates": failed_hard,
+                "soft_failed_gates": failed_soft,
+                "gates": gates,
+                "frames": [
+                    {
+                        "timeframe": tf,
+                        "side": _side(by_tf.get(tf, {})),
+                        "status": (by_tf.get(tf, {}).get("decision") or {}).get("status", "missing"),
+                        "quality": qualities[tf],
+                        "fresh": freshness[tf].get("fresh") is True,
+                        "age_seconds": freshness[tf].get("age_seconds"),
+                        "regime": (by_tf.get(tf, {}).get("market_regime") or {}).get("name"),
+                    }
+                    for tf in _REQUIRED
+                ],
+                "orderflow_evidence": flow_evidence,
+                "invalidation": best_trigger.get("invalidation") if best_trigger else None,
+                "levels": resolution_levels,
+                "resolution_timeframe": best_trigger_tf,
+                "max_resolution_bars": 12,
+                "probability_is_calibrated": False,
+                "probability_label": "model_estimate_not_calibrated",
+                "ai_override_allowed": False,
+                "live_authorized": False,
+                "actionable_for_live": False,
+            }
+        elif not failed_hard and len(failed_soft) == 2:
+            status = "WATCH"
+            action = "WATCH"
+            # soft double-fail goes to WATCH, not ACTIONABLE — honest weight
+            best_trigger = max(
+                actionable_triggers,
+                key=lambda item: float(item.get("confluence") or 0),
+                default=None,
+            )
+            best_trigger_tf = next(
+                (tf for tf in ("5m", "15m") if by_tf.get(tf) is best_trigger),
+                None,
+            )
+            return {
+                "symbol": symbol.upper(),
+                "market": market,
+                "policy": "precision_first_intraday_v1",
+                "status": status,
+                "action_label": action,
+                "side": "flat",
+                "failed_gates": failed_hard,
+                "soft_failed_gates": failed_soft,
+                "gates": gates,
+                "frames": [
+                    {
+                        "timeframe": tf,
+                        "side": _side(by_tf.get(tf, {})),
+                        "status": (by_tf.get(tf, {}).get("decision") or {}).get("status", "missing"),
+                        "quality": qualities[tf],
+                        "fresh": freshness[tf].get("fresh") is True,
+                        "age_seconds": freshness[tf].get("age_seconds"),
+                        "regime": (by_tf.get(tf, {}).get("market_regime") or {}).get("name"),
+                    }
+                    for tf in _REQUIRED
+                ],
+                "orderflow_evidence": flow_evidence,
+                "invalidation": best_trigger.get("invalidation") if best_trigger else None,
+                "levels": None,
+                "resolution_timeframe": None,
+                "max_resolution_bars": 12,
+                "probability_is_calibrated": False,
+                "probability_label": "model_estimate_not_calibrated",
+                "ai_override_allowed": False,
+                "live_authorized": False,
+                "actionable_for_live": False,
+            }
         if not failed:
             status = "ACTIONABLE_CANDIDATE"
             action = "LONG" if consensus_side == "long" else "SHORT"
