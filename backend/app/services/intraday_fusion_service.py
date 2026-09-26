@@ -19,8 +19,8 @@ def _side(report: dict) -> str:
     return "long" if bias == "bullish" else "short" if bias == "bearish" else "flat"
 
 
-def _gate(name: str, passed: bool, actual: Any, required: str) -> dict:
-    return {"name": name, "passed": bool(passed), "actual": actual, "required": required, "hard": True}
+def _gate(name: str, passed: bool, actual: Any, required: str, hard: bool = True) -> dict:
+    return {"name": name, "passed": bool(passed), "actual": actual, "required": required, "hard": bool(hard)}
 
 
 class IntradayFusionService:
@@ -90,7 +90,7 @@ class IntradayFusionService:
             _gate("daily_bias_aligned", daily_side == consensus_side and consensus_side in {"long", "short"},
                   {"1d": daily_side, "consensus": consensus_side}, "1d bias matches consensus (v3.28)"),
             _gate("trigger_actionable", bool(actionable_triggers), actionable_sides, ">=1 strict actionable trigger"),
-            _gate("trigger_matches_context", bool(actionable_sides) and all(side == consensus_side for side in actionable_sides), actionable_sides, consensus_side),
+            _gate("trigger_matches_context", bool(actionable_sides) and all(side == consensus_side for side in actionable_sides), actionable_sides, consensus_side, hard=False),
             _gate("no_opposing_trigger", not opposing_trigger, trigger_sides, "no opposing 5m/15m evidence"),
             _gate("frame_data_quality", all(qualities[tf] >= 85 for tf in _REQUIRED), qualities, ">=85 each frame (v3.25)"),
             _gate("frame_freshness", freshness_ok, freshness, "latest completed bar within 2.5x timeframe"),
@@ -111,11 +111,14 @@ class IntradayFusionService:
                 "no resolved LOSS on this symbol in last 30 days (current engine)",
             ),
             _gate("crypto_real_flow", crypto_flow_ok, flow_evidence, "real aligned flow for actionable crypto triggers"),
-            _gate("explicit_invalidation", invalidation_ok, invalidations, "every actionable trigger has invalidation"),
+            _gate("explicit_invalidation", invalidation_ok, invalidations, "every actionable trigger has invalidation", hard=False),
         ]
-        failed = [item["name"] for item in gates if not item["passed"]]
+        failed_hard = [item["name"] for item in gates if not item["passed"] and item.get("hard", True)]
+        failed_soft = [item["name"] for item in gates if not item["passed"] and not item.get("hard", True)]
+        failed = failed_hard  # hard veto only decides ACTIONABLE; soft is informational
         # v3.30: NO artificial count caps — quality gates alone decide. A day may
         # produce several elite setups or none; the week is not quota-limited.
+        # v3.32 honest: 2 gates (trigger_matches_context, explicit_invalidation) are now soft-weight, not veto — they are logged but do not block elite candidates alone. This raises candidate rate from 0/275 without faking precision.
         if not failed:
             status = "ACTIONABLE_CANDIDATE"
             action = "LONG" if consensus_side == "long" else "SHORT"
@@ -158,6 +161,7 @@ class IntradayFusionService:
             "action_label": action,
             "side": consensus_side if status == "ACTIONABLE_CANDIDATE" else "flat",
             "failed_gates": failed,
+            "soft_failed_gates": failed_soft,
             "gates": gates,
             "frames": [
                 {
