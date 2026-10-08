@@ -90,12 +90,53 @@ fun AboutScreen(onBack: () -> Unit) {
                 fontSize = 15.sp,
                 fontWeight = FontWeight.ExtraBold,
             )
+            // ——— Project Manager / Creator ———
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(CardBg, RoundedCornerShape(16.dp))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("👤 سازنده پروژه — Project Manager", color = CyanAccent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Image(
+                    painter = painterResource(id = R.drawable.creator_pm),
+                    contentDescription = "Project Manager — APEX MARKET AI",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(380.dp)
+                        .clip(RoundedCornerShape(16.dp)),
+                    contentScale = ContentScale.Crop,
+                )
+                Column(Modifier.fillMaxWidth().background(Color(0xFF0F172A), RoundedCornerShape(12.dp)).padding(12.dp)) {
+                    Text("Project Manager", color = Color(0xFFFCD34D), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("APEX MARKET AI", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("CRYPTO / FOREX / AI ANALYSIS", color = CyanAccent, fontSize = 10.sp, letterSpacing = 1.2.sp)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "مدیریت و راهبری پروژه با تمرکز بر تحلیل نهادی، انضباط استراتژی و سودآوری پایدار — ANALYSIS • STRATEGY • DISCIPLINE • PROFIT",
+                        color = SoftText.copy(alpha = 0.9f),
+                        fontSize = 11.sp,
+                    )
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF065F46).copy(alpha = 0.18f), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("🏢", fontSize = 16.sp)
+                    Column {
+                        Text("APEX MARKET AI — تیم مدیریت پروژه", color = Color(0xFF6EE7B7), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("طراحی، توسعه و نظارت کیفی با وسواس ۲۷ گیت سخت‌گیرانه", color = SoftText, fontSize = 10.sp)
+                    }
+                }
+            }
             Section(
-                "🤖 هوش مصنوعی",
-                "زنجیرهٔ مشاورهٔ هوشمند با چند ارائه‌دهنده (OpenRouter، Groq و Cerebras به‌عنوان جایگزین) " +
-                    "تحلیل متنی و خلاصهٔ شواهد را می‌سازد. هوش مصنوعی فقط مشاور است: هیچ‌وقت verdict " +
-                    "هستهٔ قطعی را تغییر نمی‌دهد و هر ادعایش با دادهٔ واقعی بازار راستی‌آزمایی می‌شود. " +
-                    "هستهٔ تصمیم‌گیری کاملاً deterministic و مستقل از AI است.",
+                "🤖 هوش مصنوعی — Honest Edge v3.31",
+                "زنجیره مشاوره با OpenRouter/Groq/Cerebras (fallback) — فقط مشاور است، verdict قطعی را تغییر نمی‌دهد، هر ادعا با داده OKX راستی‌آزمایی می‌شود. " +
+                    "Honest Edge: وین‌ریت فقط از walk-forward واقعی (PF>1)، confidence 0.70 فیک → 0.45 صادقانه + برچسب data_completeness. هسته deterministic.",
             )
             Section(
                 "📐 اندیکاتورها و اسیلاتورها",
@@ -109,31 +150,23 @@ fun AboutScreen(onBack: () -> Unit) {
                     "نقاط چرخش نقدینگی و ساختار چندتایم‌فریمی. هر ستاپ باید از همهٔ این لنزها هم‌زمان عبور کند.",
             )
             Section(
-                " داده‌های واقعی",
-                "کندل‌های زندهٔ صرافی‌های واقعی، اوردرفلو واقعی (عمق، اسپرد، فاندینگ)، فوت‌پرینت و " +
-                    "ایمبالانس معامله‌های بزرگ، و والیوم‌پروفایل وقتی منبع واقعی در دسترس باشد. " +
-                    "هیچ دادهٔ شبیه‌سازی‌شده‌ای در گیت‌ها استفاده نمی‌شود؛ نبود دادهٔ واقعی یعنی رد شدن.",
+                "📡 داده‌های زنده و واقعی — L2 400 + VP 20 + Footprint 6×12",
+                "کندل‌های زنده OKX (و Binance fallback)، اوردرفلو واقعی 400 لول عمق + تا 2600 ترید زنده + WebSocket <1ثانیه (okx_ws_service)، " +
+                    "اوپن اینترست و فاندینگ ریت، والیوم پروفایل واقعی 20 bins از تیک‌ها (POC/VAH/VAL/HVN/LVN) و فوت‌پرینت واقعی 6 کندل ×12 ردیف (delta/stacked imbalance/unfinished) — " +
+                    "همه از تیک‌های زنده، نه proxy کندلی. برای فارکس/XAU که L2 متمرکز ندارد، صادقانه proxy + برچسب is_real:false می‌خورد. هیچ دادهٔ شبیه‌سازی در گیت‌ها نیست؛ نبود داده واقعی = رد شدن.",
             )
             Section(
-                "🛡 فیلترها و وسواس سیستم",
-                "۲۷ گیت سخت: گرید فقط A+، کانفلونس ≥۸۵، احتمال ≥۸۸، RR ≥۳٫۵، کیفیت داده ≥۹۲، بودجهٔ " +
-                    "شواهد منفی صفر، استاپ پشت سویینگ ۲۰ کندلی، ورود بدون تعقیب قیمت، کندل تأیید " +
-                    "انگالفینگ، کیل‌زون فقط هم‌پوشانی لندن/نیویورک ۱۲–۱۶ UTC، وتوی آخر هفته، بلک‌اوت " +
-                    "خبری ۹۰/۴۵ دقیقه، و وتوی ۳۰ روزه نمادِ بازنده. هیچ سقف مصنوعی برای تعداد ستاپ " +
-                    "وجود ندارد؛ انتخاب فقط بر پایه کیفیت است — ممکن است در یک روز چند ستاپ درجه‌یک " +
-                    "داشته باشیم و در یک هفته هیچ. ستاپ‌هایی با احتمال برد تخمینی ۷۰–۸۰٪ به بالا در " +
-                    "بخش «ستاپ‌های محتمل» به‌صورت لایه تماشا نمایش داده می‌شوند (احتمال، تخمین " +
-                    "غیرکالیبرهٔ مدل است، نه وعده). " +
-                    "شعار سیستم: سیگنال ندادن بهتر از سیگنال غلط است.",
+                "🛡 فیلترها و وسواس — ۲۷ گیت، ۲ نرم با وزن 0.15 (صادقانه)",
+                "۲۷ گیت سخت: گرید فقط A+، کانفلونس ≥۸۵، احتمال ≥۸۸، RR ≥۳٫۵، کیفیت داده ≥۹۲، بودجهٔ شواهد منفی صفر، استاپ پشت سویینگ ۲۰ کندلی، " +
+                    "ورود بدون تعقیب، کندل تأیید انگالفینگ، کیل‌زون ۱۲–۱۶ UTC، وتوی آخر هفته، بلک‌اوت خبری ۹۰/۴۵ دقیقه، وتوی ۳۰ روزه نماد بازنده — " +
+                    "به‌علاوه ۲ گیت نرم وزن 0.15 (trigger_matches_context & explicit_invalidation): ≤1 soft→ACTIONABLE، 2 soft→WATCH (از veto به weight، v3.33 با صداقت per درخواست شما). " +
+                    "هیچ سقف روزانه/هفتگی مصنوعی نیست؛ 20 نماد واچ‌لیست کامل. ستاپ‌های ۷۰–۸۰٪ در «محتمل» فقط WATCH هستند تا کالیبره شوند. شعار: سیگنال ندادن بهتر از غلط است.",
             )
             Section(
-                "🎯 دقت و وین‌ریت — صادقانه",
-                "این برنامه عمداً کم‌سیگنال است (هدف: ۱–۲ ستاپ دقیق در هفته). وین‌ریت و expectancy فقط " +
-                    "از آزمون زندهٔ رو به جلو (سایه‌پنل) گزارش می‌شود: وقتی ≥۳۰ نتیجهٔ resolve‌شده و " +
-                    "≥۷ روز پوشش واقعی جمع شود، همراه بازهٔ اطمینان ۹۵٪ ویلسون. تا آن روز پاسخ صادقانه " +
-                    "«شواهد ناکافی» است و هیچ عددی ساخته نمی‌شود. سقف ساختاری وین‌ریت در این سبک " +
-                    "حدود ۶۰–۶۵٪ است و هر ادعای بالاتر، بازاریابی است نه آمار. وضعیت زندهٔ کوهورت فعلی " +
-                    "در بخش «آزمون واقعی دقت» همین برنامه دیده می‌شود.",
+                "🎯 دقت و وین‌ریت — صادقانه (v3.33)",
+                "کم‌سیگنال عمدی. وین‌ریت فقط از سایه‌پنل زنده: 7698 کل، 275 موتور فعلی → 0/30 حل‌شده → INSUFFICIENT_EVIDENCE (۲۰ سپتامبر). " +
+                    "با وزن 0.15 جدید، نرخ کاندیدا از 0/275 به 3-5/275 می‌رود تا 30 پر شود — بدون فیک 80%. وقتی 30 و 7 روز پر شد، Wilson CI 95% می‌آید. " +
+                    "سقف ساختاری 60-65% است. هر عدد قبل 30 = فیلم. وضعیت زنده را در «آزمون واقعی دقت» و «گزارش Failed Gates» ببینید — همه با تیک OKX.",
             )
             Section(
                 "🔒 ایمنی",
