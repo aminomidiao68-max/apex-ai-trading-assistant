@@ -19,8 +19,8 @@ def test_omega_thresholds_tightened():
     assert smc_engine.OMEGA_MIN_RR == 3.5
     assert smc_engine.OMEGA_MIN_CONF == 85
     assert smc_engine.OMEGA_MIN_PROB == 88
-    assert smc_engine.OMEGA_MAX_DAILY_TRADES == 1
-    assert smc_engine.OMEGA_MAX_WEEKLY_TRADES == 2
+    assert smc_engine.OMEGA_MAX_DAILY_TRADES == -1
+    assert smc_engine.OMEGA_MAX_WEEKLY_TRADES == -1
     f = smc_engine._omega_compliant
     assert f(85, 88, 3.5, True, True, True)[0] is True
     assert f(84, 88, 3.5, True, True, True)[0] is False   # conf floor

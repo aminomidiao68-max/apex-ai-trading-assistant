@@ -66,6 +66,7 @@ enum class HomeModule(val emoji: String, val en: String, val fa: String) {
     CHAT("💬", "AI Chat", "چت هوشمند"),
     CHART("📈", "Charts", "چارت زنده"),
     SETUPS("🧩", "Setups", "ستاپ‌ها"),
+    PROBABLE("🎖", "Probable", "ستاپ‌های محتمل"),
     RISK("🧮", "Calc & Risk", "ماشین‌حساب و ریسک"),
     JOURNAL("📔", "Journal", "ژورنال معاملات"),
     NEWS("📰", "News Impact", "اخبار و اثر بازار"),
@@ -335,6 +336,7 @@ private fun ModuleDialog(
                         HomeModule.RISK -> RiskCalculatorScreen()
                         HomeModule.JOURNAL -> JournalScreen()
                         HomeModule.NEWS -> NewsScreen(onBack = onClose)
+                        HomeModule.PROBABLE -> ProbableSetupsScreen()
                         HomeModule.SESSIONS -> SessionsScreen()
                         HomeModule.FORWARD -> ReadinessScreen()
                         HomeModule.ANALYTICS -> AnalyticsScreen()

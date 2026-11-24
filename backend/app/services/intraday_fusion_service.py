@@ -26,7 +26,7 @@ def _gate(name: str, passed: bool, actual: Any, required: str) -> dict:
 class IntradayFusionService:
     """Causal precision-first fusion. It can only downgrade frame decisions."""
 
-    def fuse(self, symbol: str, market: str, frames: list[dict], quota=None,
+    def fuse(self, symbol: str, market: str, frames: list[dict],
              now_utc: datetime | None = None, loss_guard=None,
              calibrator=None) -> dict:
         by_tf = {str(item.get("timeframe")): item.get("report") or {} for item in frames}
@@ -97,7 +97,6 @@ class IntradayFusionService:
             _gate("context_regime", regime_ok, context_regimes, "trending on 1h and 4h (v3.25)"),
             _gate("session_killzone", in_killzone(now_utc), (now_utc or datetime.now()).strftime("%H:%M UTC"), "London AM / London-NY overlap UTC"),
             _gate("trigger_unanimity", bool(actionable_triggers) and all(side == consensus_side for side in trigger_sides), trigger_sides, "5m and 15m both match consensus"),
-            _gate("weekly_quota", (quota is None) or quota.remaining(now_utc) > 0, None if quota is None else quota.remaining(now_utc), "<2 fused signals this ISO week"),
             _gate("trigger_regime", trigger_regime_ok, trigger_regimes, "5m/15m trending|balanced (v3.26)"),
             _gate(
                 "calibrated_expectancy",
@@ -115,17 +114,11 @@ class IntradayFusionService:
             _gate("explicit_invalidation", invalidation_ok, invalidations, "every actionable trigger has invalidation"),
         ]
         failed = [item["name"] for item in gates if not item["passed"]]
-        quota_info = None
+        # v3.30: NO artificial count caps — quality gates alone decide. A day may
+        # produce several elite setups or none; the week is not quota-limited.
         if not failed:
             status = "ACTIONABLE_CANDIDATE"
             action = "LONG" if consensus_side == "long" else "SHORT"
-            if quota is not None:
-                consumed_ok, quota_info = quota.try_consume(symbol, now_utc)
-                if not consumed_ok:
-                    status = "WATCH"
-                    action = "WATCH"
-                    gates.append(_gate("weekly_quota_consumed", False, quota_info, "weekly scarcity governor (v3.25)"))
-                    failed.append("weekly_quota_consumed")
         elif consensus_side in {"long", "short"} and not opposing_trigger and len(available) >= 3:
             status = "WATCH"
             action = "WATCH"
@@ -163,8 +156,6 @@ class IntradayFusionService:
             "policy": "precision_first_intraday_v1",
             "status": status,
             "action_label": action,
-            "weekly_quota": quota_info if quota_info is not None else (
-                None if quota is None else {"remaining": quota.remaining(now_utc)}),
             "side": consensus_side if status == "ACTIONABLE_CANDIDATE" else "flat",
             "failed_gates": failed,
             "gates": gates,

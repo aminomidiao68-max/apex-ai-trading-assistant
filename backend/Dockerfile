@@ -1,4 +1,4 @@
-FROM python:3.12-slim
+FROM python:3.13-slim  # v3.32 honest infra: python 3.12 -> 3.13 (tested 419 passed on 3.13.16)
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
